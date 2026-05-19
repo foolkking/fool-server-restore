@@ -33,9 +33,11 @@ import {
   fetchMigrationStrategies,
   fetchTargets,
   loginAccount,
+  probeAgent,
   registerAccount,
   runScan,
   updateProfile,
+  type AgentProbeResult,
   type AuthUser,
   type CatalogGuide,
   type CatalogComponent,
@@ -44,6 +46,8 @@ import {
   type CurrentUser,
   type MigrationStrategy,
   type ScanResponse,
+  type TargetSoftware,
+  type SystemConfigItem,
   type TargetVirtualMachine
 } from "./api";
 import "./styles.css";
@@ -84,7 +88,13 @@ const text = {
     connectBtn: "连接",
     privacyNote: "未登录或未解锁时，只能安装公开软件；私有配置和应用数据保持锁定。",
     installCommand: "安装命令",
-    packageAlias: "包与 alias 偏好"
+    packageAlias: "包与 alias 偏好",
+    agentUrl: "Agent URL（可选，如 http://127.0.0.1:4001）",
+    agentProbe: "探测真实数据",
+    agentOnline: "Agent 在线",
+    agentOffline: "Agent 离线",
+    probing: "探测中…",
+    realData: "真实数据（来自 mock-agent）"
   },
   en: {
     appName: "Fool Server Restore",
@@ -117,7 +127,13 @@ const text = {
     connectBtn: "Connect",
     privacyNote: "Without login or unlock, only public software can be installed; private configs and app data stay locked.",
     installCommand: "Install command",
-    packageAlias: "Packages and alias preferences"
+    packageAlias: "Packages and alias preferences",
+    agentUrl: "Agent URL (optional, e.g. http://127.0.0.1:4001)",
+    agentProbe: "Probe real data",
+    agentOnline: "Agent online",
+    agentOffline: "Agent offline",
+    probing: "Probing…",
+    realData: "Live data (from mock-agent)"
   }
 };
 
@@ -175,6 +191,8 @@ function App() {
   const [authToken, setAuthToken] = useState("");
   const [connectionProfile, setConnectionProfile] = useState<ConnectionProfile | null>(null);
   const [connectionError, setConnectionError] = useState("");
+  const [probeResult, setProbeResult] = useState<AgentProbeResult | null>(null);
+  const [probing, setProbing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set(["software-node", "config-aliases"]));
   const t = text[locale];
 
@@ -200,7 +218,7 @@ function App() {
     setScan(result);
   }
 
-  async function handleConnect(fields: Record<string, string>) {
+  async function handleConnect(fields: Record<string, string>, agentUrl: string) {
     setConnectionError("");
     if (!authToken) {
       setConnectionError(locale === "zh" ? "请先登录后再保存服务器连接。" : "Please login before saving a server connection.");
@@ -219,6 +237,22 @@ function App() {
     } catch (error) {
       setConnected(false);
       setConnectionError(error instanceof Error ? error.message : "Connection failed");
+      return;
+    }
+
+    // 如果填了 agentUrl，自动探测真实数据
+    if (agentUrl.trim()) {
+      setProbing(true);
+      try {
+        const probe = await probeAgent(agentUrl.trim());
+        if (probe.reachable) {
+          setProbeResult(probe);
+        }
+      } catch {
+        // probe 失败不影响连接成功状态
+      } finally {
+        setProbing(false);
+      }
     }
   }
 
@@ -309,6 +343,8 @@ function App() {
             connected={connected}
             connectionProfile={connectionProfile}
             connectionError={connectionError}
+            probeResult={probeResult}
+            probing={probing}
             method={method}
             onMethod={setMethod}
             onConnect={handleConnect}
@@ -367,6 +403,8 @@ function MachinePage({
   connected,
   connectionProfile,
   connectionError,
+  probeResult,
+  probing,
   method,
   onMethod,
   onConnect,
@@ -381,34 +419,64 @@ function MachinePage({
   connected: boolean;
   connectionProfile: ConnectionProfile | null;
   connectionError: string;
+  probeResult: AgentProbeResult | null;
+  probing: boolean;
   method: ConnectionMethod;
   onMethod: (method: ConnectionMethod) => void;
-  onConnect: (fields: Record<string, string>) => void;
+  onConnect: (fields: Record<string, string>, agentUrl: string) => void;
   onToggle: (id: string) => void;
   onScan: () => void;
 }) {
   const [fields, setFields] = useState<Record<string, string>>({ port: "22" });
-  const hardware = [
-    { label: locale === "zh" ? "CPU 核心" : "CPU cores", value: "8 cores / 16 threads", icon: Cpu },
-    { label: locale === "zh" ? "总内存" : "Total memory", value: "32 GB", icon: MemoryStick },
-    { label: locale === "zh" ? "可用运行内存" : "Available RAM", value: "18.4 GB", icon: MemoryStick },
-    { label: locale === "zh" ? "磁盘空间" : "Disk space", value: "512 GB / 183 GB free", icon: HardDrive }
+  const [agentUrl, setAgentUrl] = useState("http://127.0.0.1:4001");
+
+  // 硬件摘要：优先用 probeResult 真实数据，否则用静态占位
+  const hardware = probeResult ? [
+    { label: locale === "zh" ? "CPU 核心" : "CPU cores", value: `${probeResult.system.cpu.cores} cores · ${probeResult.system.cpu.model.slice(0, 30)}`, icon: Cpu },
+    { label: locale === "zh" ? "总内存" : "Total memory", value: `${probeResult.system.memory.totalGb} GB`, icon: MemoryStick },
+    { label: locale === "zh" ? "可用运行内存" : "Available RAM", value: `${probeResult.system.memory.freeGb} GB free`, icon: MemoryStick },
+    { label: locale === "zh" ? "系统" : "OS", value: `${probeResult.system.platform} ${probeResult.system.arch} · ${probeResult.system.hostname}`, icon: HardDrive }
+  ] : [
+    { label: locale === "zh" ? "CPU 核心" : "CPU cores", value: "— —", icon: Cpu },
+    { label: locale === "zh" ? "总内存" : "Total memory", value: "— —", icon: MemoryStick },
+    { label: locale === "zh" ? "可用运行内存" : "Available RAM", value: "— —", icon: MemoryStick },
+    { label: locale === "zh" ? "磁盘空间" : "Disk space", value: "— —", icon: HardDrive }
   ];
 
-  const softwareRows = (target?.software ?? []).map((item) => ({
-    id: `software-${item.name}`,
-    icon: PackagePlus,
-    name: item.name,
-    value: `${item.version} · ${item.source} · ${item.status}`,
-    command: installCommands[item.name] ?? `install ${item.name}`
-  }));
+  // 软件列表：优先用 probeResult 真实数据
+  const softwareRows: Array<{ id: string; icon: LucideIcon; name: string; value: string; command: string }> =
+    probeResult
+      ? probeResult.software.map((item: TargetSoftware) => ({
+          id: `software-${item.name}`,
+          icon: PackagePlus,
+          name: item.name,
+          value: `${item.version} · ${item.source} · ${item.status}`,
+          command: installCommands[item.name] ?? `install ${item.name}`
+        }))
+      : (target?.software ?? []).map((item) => ({
+          id: `software-${item.name}`,
+          icon: PackagePlus,
+          name: item.name,
+          value: `${item.version} · ${item.source} · ${item.status}`,
+          command: installCommands[item.name] ?? `install ${item.name}`
+        }));
 
-  const configRows = [
-    { id: "config-packages", icon: PackagePlus, name: locale === "zh" ? "包管理器清单" : "Package manifest", value: "npm global, winget, scoop, apt packages", command: "npm list -g --depth=0" },
-    { id: "config-aliases", icon: Settings2, name: locale === "zh" ? "命令 alias 偏好" : "Command aliases", value: "gs, ll, k, dc, dev shortcuts", command: "Get-Alias / cat ~/.bashrc" },
-    { id: "config-shell", icon: Settings2, name: locale === "zh" ? "Shell profile" : "Shell profile", value: "PowerShell profile, PATH snippets, prompt", command: "code $PROFILE" },
-    { id: "config-registry", icon: Wifi, name: locale === "zh" ? "镜像源与代理" : "Registry and proxy", value: "npm registry, pip index, proxy env names", command: "npm config get registry" }
-  ];
+  // 配置清单：优先用 probeResult 真实数据
+  const configRows: Array<{ id: string; icon: LucideIcon; name: string; value: string; command: string }> =
+    probeResult
+      ? probeResult.configChecklist.map((item: SystemConfigItem) => ({
+          id: `config-${item.id}`,
+          icon: Settings2,
+          name: item.label,
+          value: `${item.category} · ${item.status} · ${item.lastChanged}`,
+          command: ""
+        }))
+      : [
+          { id: "config-packages", icon: PackagePlus, name: locale === "zh" ? "包管理器清单" : "Package manifest", value: "npm global, winget, scoop, apt packages", command: "npm list -g --depth=0" },
+          { id: "config-aliases", icon: Settings2, name: locale === "zh" ? "命令 alias 偏好" : "Command aliases", value: "gs, ll, k, dc, dev shortcuts", command: "Get-Alias / cat ~/.bashrc" },
+          { id: "config-shell", icon: Settings2, name: locale === "zh" ? "Shell profile" : "Shell profile", value: "PowerShell profile, PATH snippets, prompt", command: "code $PROFILE" },
+          { id: "config-registry", icon: Wifi, name: locale === "zh" ? "镜像源与代理" : "Registry and proxy", value: "npm registry, pip index, proxy env names", command: "npm config get registry" }
+        ];
 
   function updateField(key: string, value: string) {
     setFields((previous) => ({ ...previous, [key]: value }));
@@ -419,8 +487,16 @@ function MachinePage({
       <section className="connection-stage">
         <div className={connected ? "machine-intro" : "machine-intro blurred"}>
           <p className="eyebrow">{connected ? t.connected : t.disconnected}</p>
-          <h2>{target?.name ?? "prod-api-01"}</h2>
-          <p>{connected ? `${target?.provider ?? "SSH"} · ${target?.address ?? "10.0.2.14"}` : t.locked}</p>
+          <h2>{probeResult ? probeResult.system.hostname : (target?.name ?? "prod-api-01")}</h2>
+          <p>{connected
+            ? probeResult
+              ? `${probeResult.system.platform} ${probeResult.system.arch} · ${t.agentOnline}`
+              : `${target?.provider ?? "SSH"} · ${target?.address ?? "10.0.2.14"}`
+            : t.locked}
+          </p>
+          {probeResult ? (
+            <p className="agent-badge"><CheckCircle2 aria-hidden />{t.realData} · {new Date(probeResult.collectedAt).toLocaleTimeString()}</p>
+          ) : null}
         </div>
 
         <div className="connection-card">
@@ -448,9 +524,18 @@ function MachinePage({
               );
             })}
           </div>
+          <div className="agent-url-row">
+            <Server aria-hidden />
+            <input
+              placeholder={t.agentUrl}
+              value={agentUrl}
+              onChange={(event) => setAgentUrl(event.target.value)}
+            />
+          </div>
           {connectionProfile ? <p className="connection-note">{locale === "zh" ? "已保存脱敏连接档案，当前版本未执行远程命令。" : "Masked connection profile saved. No remote command was executed."}</p> : null}
           {connectionError ? <p className="connection-error">{connectionError}</p> : null}
-          <button className="primary-action" type="button" onClick={() => onConnect(fields)}>
+          {probing ? <p className="connection-note">{t.probing}</p> : null}
+          <button className="primary-action" type="button" onClick={() => onConnect(fields, agentUrl)}>
             <KeyRound aria-hidden />
             {t.connectBtn}
           </button>

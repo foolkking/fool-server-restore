@@ -1007,3 +1007,50 @@ button:disabled {
     padding: 16px;
   }
 }
+
+/* ── mock-agent 探测相关样式 ─────────────────────────────── */
+
+.agent-url-row {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #dbe3ea;
+  border-radius: 12px;
+  display: flex;
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.agent-url-row svg {
+  color: #0f766e;
+  flex-shrink: 0;
+  height: 18px;
+  width: 18px;
+}
+
+.agent-url-row input {
+  background: transparent;
+  border: 0;
+  flex: 1;
+  min-height: 46px;
+  outline: 0;
+  padding: 0;
+}
+
+.agent-badge {
+  align-items: center;
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  border-radius: 999px;
+  color: #065f46;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 5px 12px;
+}
+
+.agent-badge svg {
+  height: 15px;
+  width: 15px;
+}

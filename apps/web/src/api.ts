@@ -154,6 +154,32 @@ export interface SystemConfigItem {
   lastChanged: string;
 }
 
+export interface AgentSystemInfo {
+  hostname: string;
+  platform: string;
+  arch: string;
+  release: string;
+  uptime: number;
+  cpu: { model: string; cores: number; speedMhz: number };
+  memory: { totalBytes: number; freeBytes: number; usedBytes: number; totalGb: string; freeGb: string };
+}
+
+export interface AgentProbeResult {
+  reachable: true;
+  agentId: string;
+  collectedAt: string;
+  system: AgentSystemInfo;
+  software: TargetSoftware[];
+  configChecklist: SystemConfigItem[];
+}
+
+export interface AgentProbeFailure {
+  reachable: false;
+  error: string;
+}
+
+export type ProbeResult = AgentProbeResult | AgentProbeFailure;
+
 export async function runScan(user = "default", persist = true): Promise<ScanResponse> {
   const response = await fetch("/api/scan", {
     method: "POST",
@@ -292,4 +318,25 @@ async function readJsonOrThrow<T>(response: Response, fallback: string): Promise
     throw new Error(errorBody.error ? errorBody.error : `${fallback}: ${response.status}`);
   }
   return body as T;
+}
+
+export async function probeAgent(agentUrl: string): Promise<ProbeResult> {
+  const response = await fetch("/api/targets/probe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentUrl })
+  });
+  const body = (await response.json()) as ProbeResult;
+  return body;
+}
+
+export async function pingAgent(agentUrl: string): Promise<boolean> {
+  const response = await fetch("/api/targets/ping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentUrl })
+  });
+  if (!response.ok) return false;
+  const body = (await response.json()) as { online: boolean };
+  return body.online;
 }

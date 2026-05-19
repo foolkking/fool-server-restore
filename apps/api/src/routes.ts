@@ -10,6 +10,7 @@ import { listCatalogFromDatabase, listMigrationStrategies, readCatalogGuide } fr
 import { runReadinessChecks } from "./readiness.js";
 import { listSnapshots, persistSnapshot } from "./snapshot-store.js";
 import { listTargetVirtualMachines } from "./targets.js";
+import { probeAgent, pingAgent } from "./probe.js";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/health", async () => ({
@@ -53,6 +54,46 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     return {
       targets: listTargetVirtualMachines()
     };
+  });
+
+  // 探测目标 agent，返回真实系统信息
+  // agentUrl 示例：http://127.0.0.1:4001
+  app.post("/api/targets/probe", async (request, reply) => {
+    const body = (request.body ?? {}) as { agentUrl?: string };
+    if (!body.agentUrl) {
+      reply.code(400);
+      return { error: "agentUrl is required. Example: http://127.0.0.1:4001" };
+    }
+
+    // 只允许 http/https，防止 SSRF 到内部协议
+    let parsed: URL;
+    try {
+      parsed = new URL(body.agentUrl);
+    } catch {
+      reply.code(400);
+      return { error: "agentUrl is not a valid URL." };
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      reply.code(400);
+      return { error: "agentUrl must use http or https." };
+    }
+
+    const result = await probeAgent(body.agentUrl);
+    if (!result.reachable) {
+      reply.code(502);
+    }
+    return result;
+  });
+
+  // 仅 ping agent，检查是否在线
+  app.post("/api/targets/ping", async (request, reply) => {
+    const body = (request.body ?? {}) as { agentUrl?: string };
+    if (!body.agentUrl) {
+      reply.code(400);
+      return { error: "agentUrl is required." };
+    }
+    const online = await pingAgent(body.agentUrl);
+    return { online, agentUrl: body.agentUrl };
   });
 
   app.get("/api/catalog", async () => {
