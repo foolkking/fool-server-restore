@@ -1,0 +1,22 @@
+{
+  "name": "@fool/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "fool": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fool/collectors": "0.1.0",
+    "@fool/core": "0.1.0",
+    "@fool/restorers": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.4"
+  }
+}

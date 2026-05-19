@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.next/
+.expo/
+
+# Local runtime data
+.env
+.env.*
+!.env.example
+data/
+logs/
+*.log
+configs/snapshots/
+configs/files/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Generated package manager files can be committed once a manager is chosen.

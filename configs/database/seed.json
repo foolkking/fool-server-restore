@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "0.2.0",
+  "catalog": [],
+  "migrationStrategies": [
+    {
+      "id": "windows-usmt",
+      "name": "Windows User State Migration Tool style",
+      "source": "Microsoft USMT",
+      "useCase": "迁移用户文件、桌面偏好、应用设置和系统偏好，适合 Windows 到 Windows。",
+      "conflictModes": ["skip-existing", "replace-existing"]
+    },
+    {
+      "id": "rsync-home",
+      "name": "rsync home directory style",
+      "source": "rsync",
+      "useCase": "复制用户主目录、dotfiles 和应用数据目录，适合 Linux/macOS/SSH。",
+      "conflictModes": ["skip-existing", "replace-existing"]
+    },
+    {
+      "id": "declarative-profile",
+      "name": "Declarative profile style",
+      "source": "chezmoi / Home Manager",
+      "useCase": "用声明式清单恢复软件、alias、shell profile 和开发偏好，适合公开或半公开配置。",
+      "conflictModes": ["skip-existing", "replace-existing"]
+    }
+  ]
+}

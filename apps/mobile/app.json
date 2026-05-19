@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Fool Server Restore",
+    "slug": "fool-server-restore",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+    "assetBundlePatterns": ["**/*"]
+  }
+}
