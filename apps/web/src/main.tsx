@@ -74,7 +74,7 @@ type ConnectionMethod = "ssh-password" | "ssh-key" | "winrm" | "docker";
 
 const text = {
   zh: {
-    appName: "Fool 服务器还原",
+    appName: "EnvForge",
     subtitle: "虚拟机软硬件配置管理",
     machine: "虚拟机管理",
     market: "配置市场",
@@ -113,7 +113,7 @@ const text = {
     realData: "真实数据（来自 mock-agent）"
   },
   en: {
-    appName: "Fool Server Restore",
+    appName: "EnvForge",
     subtitle: "VM software and hardware configuration manager",
     machine: "VM Manager",
     market: "Config Market",
@@ -368,7 +368,7 @@ function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">F</div>
+          <div className="brand-mark">E</div>
           <div>
             <strong>{t.appName}</strong>
             <span>{t.subtitle}</span>

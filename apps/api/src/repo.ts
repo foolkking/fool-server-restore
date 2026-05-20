@@ -9,7 +9,7 @@ export function findRepoRoot(start = process.cwd()): string {
     if (fs.existsSync(packagePath)) {
       try {
         const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8")) as { name?: string };
-        if (packageJson.name === "fool-server-restore") {
+        if (packageJson.name === "envforge") {
           return current;
         }
       } catch {

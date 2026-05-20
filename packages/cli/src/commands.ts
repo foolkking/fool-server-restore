@@ -32,7 +32,7 @@ export async function restoreCommand(snapshotPath: string, apply: boolean): Prom
 }
 
 export async function bootstrapCommand(): Promise<void> {
-  console.log("Fool Server Restore bootstrap");
+  console.log("EnvForge bootstrap");
   console.log("1. Run npm install");
   console.log("2. Run npm run build");
   console.log("3. Run npm run scan to create the first local snapshot");

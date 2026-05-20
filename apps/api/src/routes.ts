@@ -17,7 +17,7 @@ import { probeAgent, pingAgent } from "./probe.js";
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/health", async () => ({
     ok: true,
-    service: "fool-server-restore-api",
+    service: "envforge-api",
     version: "0.1.0",
     env: getConfig().nodeEnv
   }));
