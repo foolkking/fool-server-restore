@@ -10,6 +10,8 @@ export interface StoredUser {
   passwordHash: string;
   passwordSalt: string;
   defaultSshUser?: string;
+  /** "user" = 普通用户（默认），"admin" = 系统管理员 */
+  role: "user" | "admin";
   createdAt: string;
   updatedAt: string;
 }
@@ -68,7 +70,12 @@ export interface StoredConnection {
 export interface StoredUserProfile {
   id: string;
   userId: string;
-  kind: "software" | "combo";
+  kind: "software" | "combo" | "vm-snapshot";
+  /**
+   * public  — 出现在配置市场，所有人可见
+   * private — 仅自己可见，用于存储含隐私数据的虚拟机运行环境快照
+   */
+  visibility: "public" | "private";
   name: string;
   nameEn: string;
   category: "runtime" | "developer" | "database" | "container" | "security" | "network" | "service";
@@ -84,6 +91,14 @@ export interface StoredUserProfile {
   installMode: "skip-existing" | "replace-existing";
   /** Optional markdown guide written by the user */
   guideMarkdown?: string;
+  /** 来源连接 ID（vm-snapshot 类型专用） */
+  sourceConnectionId?: string;
+  /** 完整的虚拟机运行环境快照（含隐私数据，仅 private 可见） */
+  envSnapshot?: StoredProbeSnapshot & {
+    envVars?: Record<string, string>;
+    configFiles?: Array<{ path: string; content: string }>;
+    userNotes?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -139,12 +154,15 @@ function createRuntimeDatabase(): RuntimeDatabase {
 function normalizeRuntimeDatabase(database: Partial<RuntimeDatabase>): RuntimeDatabase {
   return {
     schemaVersion: database.schemaVersion ?? "0.1.0",
-    users: database.users ?? [],
+    users: (database.users ?? []).map((u) => ({ ...u, role: u.role ?? ("user" as const) })),
     sessions: database.sessions ?? [],
     connections: (database.connections ?? []).map((c) => ({
       ...c,
       status: c.status ?? "validated"
     })) as StoredConnection[],
-    userProfiles: database.userProfiles ?? []
+    userProfiles: (database.userProfiles ?? []).map((p) => ({
+      ...p,
+      visibility: p.visibility ?? ("public" as const)
+    })) as StoredUserProfile[]
   };
 }

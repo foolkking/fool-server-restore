@@ -111,6 +111,7 @@ export interface AuthUser {
   name: string;
   email: string;
   authenticated: true;
+  role: "user" | "admin";
   defaultSshUser?: string;
 }
 
@@ -197,7 +198,8 @@ export interface ProfileComponent {
 export interface UserProfile {
   id: string;
   userId: string;
-  kind: "software" | "combo";
+  kind: "software" | "combo" | "vm-snapshot";
+  visibility: "public" | "private";
   name: string;
   nameEn: string;
   category: "runtime" | "developer" | "database" | "container" | "security" | "network" | "service";
@@ -207,12 +209,14 @@ export interface UserProfile {
   components: ProfileComponent[];
   installMode: "skip-existing" | "replace-existing";
   guideMarkdown?: string;
+  sourceConnectionId?: string;
+  envSnapshot?: AgentProbeResult & { envVars?: Record<string, string>; userNotes?: string };
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateProfileInput {
-  kind: "software" | "combo";
+  kind: "software" | "combo" | "vm-snapshot";
   name: string;
   nameEn?: string;
   category: UserProfile["category"];
@@ -222,6 +226,13 @@ export interface CreateProfileInput {
   components: ProfileComponent[];
   installMode: UserProfile["installMode"];
   guideMarkdown?: string;
+  sourceConnectionId?: string;
+}
+
+export interface UploadSnapshotInput {
+  name?: string;
+  userNotes?: string;
+  envVars?: Record<string, string>;
 }
 
 export async function runScan(user = "default", persist = true): Promise<ScanResponse> {
@@ -440,4 +451,14 @@ export async function deleteProfile(token: string, id: string): Promise<void> {
     headers: { "Authorization": `Bearer ${token}` }
   });
   await readJsonOrThrow<{ ok: boolean }>(response, "Delete profile failed");
+}
+
+export async function uploadVmSnapshot(token: string, connectionId: string, input: UploadSnapshotInput): Promise<UserProfile> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/upload-snapshot`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const body = await readJsonOrThrow<{ profile: UserProfile }>(response, "Upload snapshot failed");
+  return body.profile;
 }

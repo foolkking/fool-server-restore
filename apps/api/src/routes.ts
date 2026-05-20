@@ -6,7 +6,7 @@ import { getUserByToken, loginUser, registerUser, toPublicUser, updateUserProfil
 import { listCurrentUser } from "./catalog.js";
 import { getConfig } from "./config.js";
 import { createConnection, reprobeConnection, listUserConnections } from "./connections.js";
-import { createUserProfile, listUserProfiles, getUserProfile, updateUserProfile as updateProfile, deleteUserProfile, listAllUserProfilesAsCatalog } from "./profiles.js";
+import { createUserProfile, listUserProfiles, getUserProfile, updateUserProfile as updateProfile, deleteUserProfile, listAllPublicProfilesAsCatalog, createVmSnapshot } from "./profiles.js";
 import { listCatalogFromDatabase, listMigrationStrategies, readCatalogGuide } from "./database.js";
 import { runReadinessChecks } from "./readiness.js";
 import { readRuntimeDatabase } from "./runtime-store.js";
@@ -218,12 +218,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   // ── 用户配置组合 CRUD ──────────────────────────────────────
 
-  // 创建配置组合
+  // 创建配置组合（权限由 profiles.ts 内部校验）
   app.post("/api/profiles", async (request, reply) => {
     const user = await getUserByToken(readBearerToken(request.headers.authorization));
     if (!user) { reply.code(401); return { error: "Login required." }; }
     try {
-      const profile = await createUserProfile(user.id, request.body as Parameters<typeof createUserProfile>[1]);
+      const profile = await createUserProfile(user, request.body as Parameters<typeof createUserProfile>[1]);
       return { profile };
     } catch (error) {
       reply.code(400);
@@ -231,11 +231,25 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // 列出当前用户的配置组合
+  // 从已连接机器快速生成私有运行环境快照
+  app.post("/api/connections/:id/upload-snapshot", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    try {
+      const profile = await createVmSnapshot(user, id, request.body as Parameters<typeof createVmSnapshot>[2]);
+      return { profile };
+    } catch (error) {
+      reply.code(400);
+      return { error: error instanceof Error ? error.message : "Failed to create snapshot." };
+    }
+  });
+
+  // 列出当前用户可见的配置组合（自己的 private + 所有 public）
   app.get("/api/profiles", async (request, reply) => {
     const user = await getUserByToken(readBearerToken(request.headers.authorization));
     if (!user) { reply.code(401); return { error: "Login required." }; }
-    const profiles = await listUserProfiles(user.id);
+    const profiles = await listUserProfiles(user);
     return { profiles };
   });
 
@@ -244,7 +258,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const user = await getUserByToken(readBearerToken(request.headers.authorization));
     if (!user) { reply.code(401); return { error: "Login required." }; }
     const { id } = request.params as { id: string };
-    const profile = await getUserProfile(user.id, id);
+    const profile = await getUserProfile(user, id);
     if (!profile) { reply.code(404); return { error: "Profile not found." }; }
     return { profile };
   });
@@ -255,7 +269,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!user) { reply.code(401); return { error: "Login required." }; }
     const { id } = request.params as { id: string };
     try {
-      const profile = await updateProfile(user.id, id, request.body as Parameters<typeof updateProfile>[2]);
+      const profile = await updateProfile(user, id, request.body as Parameters<typeof updateProfile>[2]);
       if (!profile) { reply.code(404); return { error: "Profile not found." }; }
       return { profile };
     } catch (error) {
@@ -269,16 +283,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const user = await getUserByToken(readBearerToken(request.headers.authorization));
     if (!user) { reply.code(401); return { error: "Login required." }; }
     const { id } = request.params as { id: string };
-    const deleted = await deleteUserProfile(user.id, id);
+    const deleted = await deleteUserProfile(user, id);
     if (!deleted) { reply.code(404); return { error: "Profile not found." }; }
     return { ok: true };
   });
 
-  // 配置市场：合并官方 catalog + 用户上传的配置组合
+  // 配置市场：官方 catalog + 用户公开发布的配置组合
   app.get("/api/catalog/all", async () => {
     const [official, userUploaded] = await Promise.all([
       listCatalogFromDatabase(),
-      listAllUserProfilesAsCatalog()
+      listAllPublicProfilesAsCatalog()
     ]);
     return { items: [...official, ...userUploaded] };
   });

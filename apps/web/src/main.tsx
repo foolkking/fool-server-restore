@@ -42,6 +42,7 @@ import {
   reprobeConnection,
   runScan,
   updateProfile,
+  uploadVmSnapshot,
   type AgentProbeResult,
   type AuthUser,
   type CatalogGuide,
@@ -56,6 +57,7 @@ import {
   type TargetSoftware,
   type SystemConfigItem,
   type TargetVirtualMachine,
+  type UploadSnapshotInput,
   type UserProfile
 } from "./api";
 import "./styles.css";
@@ -405,6 +407,12 @@ function App() {
             onReprobe={handleReprobe}
             onToggle={toggleSelected}
             onScan={handleScan}
+            onUploadSnapshot={async (input) => {
+              if (!activeConnectionId || !authToken) return;
+              const profile = await uploadVmSnapshot(authToken, activeConnectionId, input);
+              setUserProfiles((prev) => [profile, ...prev]);
+            }}
+            authUser={authUser}
           />
         ) : null}
 
@@ -471,7 +479,9 @@ function MachinePage({
   onSelectConnection,
   onReprobe,
   onToggle,
-  onScan
+  onScan,
+  onUploadSnapshot,
+  authUser
 }: {
   t: typeof text.zh;
   locale: Locale;
@@ -491,6 +501,8 @@ function MachinePage({
   onReprobe: (id: string) => void;
   onToggle: (id: string) => void;
   onScan: () => void;
+  onUploadSnapshot: (input: UploadSnapshotInput) => Promise<void>;
+  authUser: AuthUser | null;
 }) {
   const [fields, setFields] = useState<Record<string, string>>({ port: "22" });
   const [agentUrl, setAgentUrl] = useState("http://127.0.0.1:4001");
@@ -693,14 +705,23 @@ function MachinePage({
       </section>
 
       <div className="toolbar-row">
-        <button className="primary-action" type="button" onClick={onScan} disabled={!connected}>
+        <button
+          className="primary-action"
+          type="button"
+          onClick={onScan}
+          disabled={!connected || !authUser}
+          title={!authUser ? (locale === "zh" ? "请先登录" : "Login required") : !connected ? (locale === "zh" ? "请先选择已连接的虚拟机" : "Select a connected VM first") : undefined}
+        >
           <MonitorCog aria-hidden />
           {t.runScan}
         </button>
-        <button className="secondary-action" type="button" disabled={!connected}>
-          <UploadCloud aria-hidden />
-          {t.upload}
-        </button>
+        <UploadSnapshotButton
+          locale={locale}
+          t={t}
+          connected={connected}
+          authUser={authUser}
+          onUpload={onUploadSnapshot}
+        />
         <span className="privacy-note"><Lock aria-hidden />{t.privacyNote}</span>
       </div>
 
@@ -709,6 +730,101 @@ function MachinePage({
         <InventoryPanel title={t.configs} rows={configRows} selected={selected} onToggle={onToggle} commandLabel={t.packageAlias} />
       </section>
     </div>
+  );
+}
+
+function UploadSnapshotButton({
+  locale,
+  t,
+  connected,
+  authUser,
+  onUpload
+}: {
+  locale: Locale;
+  t: typeof text.zh;
+  connected: boolean;
+  authUser: AuthUser | null;
+  onUpload: (input: UploadSnapshotInput) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const disabled = !connected || !authUser;
+  const tooltip = !authUser
+    ? (locale === "zh" ? "请先登录" : "Login required")
+    : !connected
+    ? (locale === "zh" ? "请先选择已连接的虚拟机" : "Select a connected VM first")
+    : undefined;
+
+  async function submit() {
+    setSaving(true);
+    setError("");
+    try {
+      await onUpload({ name: name.trim() || undefined, userNotes: notes.trim() || undefined });
+      setDone(true);
+      setTimeout(() => { setOpen(false); setDone(false); setName(""); setNotes(""); }, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        className="secondary-action"
+        type="button"
+        disabled={disabled}
+        title={tooltip}
+        onClick={() => !disabled && setOpen(true)}
+      >
+        <UploadCloud aria-hidden />
+        {t.upload}
+      </button>
+
+      {open ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <section className="profile-modal">
+            <header>
+              <div>
+                <p className="eyebrow">{locale === "zh" ? "上传运行环境快照" : "Upload VM snapshot"}</p>
+                <h2>{locale === "zh" ? "保存当前虚拟机配置" : "Save current VM profile"}</h2>
+              </div>
+              <button className="ghost-action icon-action" type="button" onClick={() => setOpen(false)} aria-label="Close"><X aria-hidden /></button>
+            </header>
+            <p style={{ color: "#64748b", fontSize: 14 }}>
+              {locale === "zh"
+                ? "将当前连接虚拟机的完整运行环境（软件版本、系统信息等）保存为私有快照，仅自己可见，可用于换机器时还原。"
+                : "Save the full environment of the connected VM as a private snapshot. Only visible to you, useful for restoring on a new machine."}
+            </p>
+            <div className="modal-form">
+              <label>
+                <span>{locale === "zh" ? "快照名称（可选）" : "Snapshot name (optional)"}</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder={locale === "zh" ? "留空则自动使用主机名" : "Leave blank to use hostname"} />
+              </label>
+              <label>
+                <span>{locale === "zh" ? "备注（可选）" : "Notes (optional)"}</span>
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder={locale === "zh" ? "记录这台机器的用途、特殊配置等" : "Describe this machine's purpose or special config"} style={{ padding: "10px 12px", resize: "vertical" }} />
+              </label>
+            </div>
+            {error ? <p className="connection-error">{error}</p> : null}
+            {done ? <p className="success-note"><CheckCircle2 aria-hidden />{locale === "zh" ? "快照已保存到「我的空间」" : "Snapshot saved to My Space"}</p> : null}
+            <footer style={{ display: "flex", gap: 12, justifyContent: "flex-end", borderTop: "1px solid #eef0f2", paddingTop: 16 }}>
+              <button className="ghost-action" type="button" onClick={() => setOpen(false)}>{locale === "zh" ? "取消" : "Cancel"}</button>
+              <button className="primary-action" type="button" onClick={() => void submit()} disabled={saving}>
+                <UploadCloud aria-hidden />
+                {saving ? (locale === "zh" ? "保存中…" : "Saving…") : (locale === "zh" ? "保存快照" : "Save snapshot")}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -885,7 +1001,7 @@ function MePage({
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
 
   const emptyForm = (): CreateProfileInput => ({
-    kind: "software",
+    kind: "combo",
     name: "",
     nameEn: "",
     category: "developer",
@@ -1064,9 +1180,11 @@ function MePage({
                 </label>
                 <label>
                   <span>{locale === "zh" ? "类型" : "Kind"}</span>
-                  <select value={uploadForm.kind} onChange={(e) => setUploadForm((p) => ({ ...p, kind: e.target.value as "software" | "combo" }))}>
-                    <option value="software">{locale === "zh" ? "软件配置" : "Software"}</option>
+                  <select value={uploadForm.kind} onChange={(e) => setUploadForm((p) => ({ ...p, kind: e.target.value as "software" | "combo" | "vm-snapshot" }))}>
                     <option value="combo">{locale === "zh" ? "热门组合" : "Combo"}</option>
+                    {authUser?.role === "admin" ? (
+                      <option value="software">{locale === "zh" ? "软件配置" : "Software"}</option>
+                    ) : null}
                   </select>
                 </label>
                 <label>
@@ -1162,7 +1280,12 @@ function MePage({
                     {locale === "zh"
                       ? categoryOptions.find((c) => c.value === profile.category)?.label
                       : categoryOptions.find((c) => c.value === profile.category)?.labelEn}
-                    {" · "}{profile.kind === "combo" ? (locale === "zh" ? "组合" : "Combo") : (locale === "zh" ? "软件" : "Software")}
+                    {" · "}
+                    {profile.kind === "vm-snapshot"
+                      ? (locale === "zh" ? "🔒 私有快照" : "🔒 Private snapshot")
+                      : profile.kind === "combo"
+                      ? (locale === "zh" ? "热门组合" : "Combo")
+                      : (locale === "zh" ? "软件配置" : "Software")}
                     {" · "}{sensitivityLabels[profile.sensitivity]}
                     {" · "}{profile.components.length} {locale === "zh" ? "个组件" : "components"}
                     {" · "}{new Date(profile.updatedAt).toLocaleDateString()}

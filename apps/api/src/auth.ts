@@ -10,6 +10,7 @@ export interface PublicUser {
   name: string;
   email: string;
   authenticated: true;
+  role: "user" | "admin";
   defaultSshUser?: string;
 }
 
@@ -37,6 +38,7 @@ export async function registerUser(input: { name?: string; email?: string; passw
     passwordHash,
     passwordSalt,
     defaultSshUser: "ubuntu",
+    role: "user",
     createdAt: now,
     updatedAt: now
   };
@@ -110,6 +112,7 @@ export function toPublicUser(user: StoredUser): PublicUser {
     name: user.name,
     email: user.email,
     authenticated: true,
+    role: user.role ?? "user",
     defaultSshUser: user.defaultSshUser
   };
 }
