@@ -3,7 +3,7 @@
 更新时间：2026-05-20
 
 项目名称：**EnvForge**（原名 fool-server-restore）
-GitHub：https://github.com/foolkking/fool-server-restore
+GitHub：https://github.com/foolkking/envforge
 
 ---
 

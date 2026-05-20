@@ -2,7 +2,7 @@
 
 EnvForge 是一个自托管的虚拟机/服务器配置管理平台。用户登录后可以通过 SSH、WinRM 或 Docker Context 连接目标虚拟机，查看软硬件配置清单，从配置市场选择软件配置或热门组合，并将其安装/应用到目标机器。
 
-GitHub 仓库：https://github.com/foolkking/fool-server-restore
+GitHub 仓库：https://github.com/foolkking/envforge
 
 ## 当前能力
 
