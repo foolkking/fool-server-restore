@@ -29,12 +29,14 @@ import {
   connectServer,
   fetchCatalog,
   fetchCatalogGuide,
+  fetchConnections,
   fetchCurrentUser,
   fetchMigrationStrategies,
   fetchTargets,
   loginAccount,
   probeAgent,
   registerAccount,
+  reprobeConnection,
   runScan,
   updateProfile,
   type AgentProbeResult,
@@ -190,27 +192,47 @@ function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authToken, setAuthToken] = useState("");
   const [connectionProfile, setConnectionProfile] = useState<ConnectionProfile | null>(null);
+  const [connections, setConnections] = useState<ConnectionProfile[]>([]);
+  const [activeConnectionId, setActiveConnectionId] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState("");
   const [probeResult, setProbeResult] = useState<AgentProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set(["software-node", "config-aliases"]));
   const t = text[locale];
 
+  // 当前激活的连接档案（含 probeSnapshot）
+  const activeConnection = connections.find((c) => c.id === activeConnectionId) ?? connectionProfile ?? null;
+  const activeProbe = (activeConnection?.probeSnapshot as AgentProbeResult | undefined) ?? probeResult;
+
   useEffect(() => {
     void load();
   }, []);
 
-  async function load() {
-    const [targetResult, catalogResult, userResult] = await Promise.allSettled([
-      fetchTargets(),
+  async function load(token?: string) {
+    const [catalogResult, userResult] = await Promise.allSettled([
       fetchCatalog(),
       fetchCurrentUser()
     ]);
     const strategyResult = await fetchMigrationStrategies().catch(() => []);
-    if (targetResult.status === "fulfilled") setTargets(targetResult.value);
     if (catalogResult.status === "fulfilled") setCatalog(catalogResult.value);
     if (userResult.status === "fulfilled") setCurrentUser(userResult.value);
     setStrategies(strategyResult);
+
+    // 如果有 token，加载已保存的连接列表
+    const activeToken = token ?? authToken;
+    if (activeToken) {
+      const conns = await fetchConnections(activeToken).catch(() => []);
+      setConnections(conns);
+      // 自动激活最近一次 probed 的连接
+      const probed = conns.find((c) => c.status === "probed");
+      if (probed) {
+        setActiveConnectionId(probed.id);
+        setConnected(true);
+        if (probed.probeSnapshot) {
+          setProbeResult(probed.probeSnapshot as AgentProbeResult);
+        }
+      }
+    }
   }
 
   async function handleScan() {
@@ -220,8 +242,10 @@ function App() {
 
   async function handleConnect(fields: Record<string, string>, agentUrl: string) {
     setConnectionError("");
+    setProbing(true);
     if (!authToken) {
       setConnectionError(locale === "zh" ? "请先登录后再保存服务器连接。" : "Please login before saving a server connection.");
+      setProbing(false);
       return;
     }
 
@@ -230,35 +254,47 @@ function App() {
         token: authToken,
         method,
         label: fields.host || fields.contextName || method,
-        fields
+        fields,
+        agentUrl: agentUrl.trim() || undefined
       });
       setConnectionProfile(result.connection);
+      setActiveConnectionId(result.connection.id);
       setConnected(true);
+      // probe 结果直接从连接响应里拿，不需要再单独请求
+      if (result.probe) {
+        setProbeResult(result.probe as AgentProbeResult);
+      }
+      // 刷新连接列表
+      const conns = await fetchConnections(authToken).catch(() => connections);
+      setConnections(conns);
     } catch (error) {
       setConnected(false);
       setConnectionError(error instanceof Error ? error.message : "Connection failed");
-      return;
+    } finally {
+      setProbing(false);
     }
+  }
 
-    // 如果填了 agentUrl，自动探测真实数据
-    if (agentUrl.trim()) {
-      setProbing(true);
-      try {
-        const probe = await probeAgent(agentUrl.trim());
-        if (probe.reachable) {
-          setProbeResult(probe);
-        }
-      } catch {
-        // probe 失败不影响连接成功状态
-      } finally {
-        setProbing(false);
+  async function handleReprobe(connectionId: string) {
+    if (!authToken) return;
+    setProbing(true);
+    try {
+      const updated = await reprobeConnection(authToken, connectionId);
+      setConnections((prev) => prev.map((c) => c.id === updated.id ? updated : c));
+      if (updated.probeSnapshot) {
+        setProbeResult(updated.probeSnapshot as AgentProbeResult);
       }
+    } catch {
+      // reprobe 失败静默处理
+    } finally {
+      setProbing(false);
     }
   }
 
   function handleAuthSuccess(result: { token: string; user: AuthUser }) {
     setAuthToken(result.token);
     setAuthUser(result.user);
+    void load(result.token);
   }
 
   function toggleSelected(id: string) {
@@ -337,17 +373,25 @@ function App() {
           <MachinePage
             t={t}
             locale={locale}
-            target={activeTarget}
+            connections={connections}
+            activeConnectionId={activeConnectionId}
             scan={scan}
             selected={selected}
             connected={connected}
             connectionProfile={connectionProfile}
             connectionError={connectionError}
-            probeResult={probeResult}
+            probeResult={activeProbe ?? null}
             probing={probing}
             method={method}
             onMethod={setMethod}
             onConnect={handleConnect}
+            onSelectConnection={(id) => {
+              setActiveConnectionId(id);
+              const conn = connections.find((c) => c.id === id);
+              if (conn?.probeSnapshot) setProbeResult(conn.probeSnapshot as AgentProbeResult);
+              setConnected(true);
+            }}
+            onReprobe={handleReprobe}
             onToggle={toggleSelected}
             onScan={handleScan}
           />
@@ -397,7 +441,8 @@ function App() {
 function MachinePage({
   t,
   locale,
-  target,
+  connections,
+  activeConnectionId,
   scan,
   selected,
   connected,
@@ -408,12 +453,15 @@ function MachinePage({
   method,
   onMethod,
   onConnect,
+  onSelectConnection,
+  onReprobe,
   onToggle,
   onScan
 }: {
   t: typeof text.zh;
   locale: Locale;
-  target?: TargetVirtualMachine;
+  connections: ConnectionProfile[];
+  activeConnectionId: string | null;
   scan: ScanResponse | null;
   selected: Set<string>;
   connected: boolean;
@@ -424,11 +472,14 @@ function MachinePage({
   method: ConnectionMethod;
   onMethod: (method: ConnectionMethod) => void;
   onConnect: (fields: Record<string, string>, agentUrl: string) => void;
+  onSelectConnection: (id: string) => void;
+  onReprobe: (id: string) => void;
   onToggle: (id: string) => void;
   onScan: () => void;
 }) {
   const [fields, setFields] = useState<Record<string, string>>({ port: "22" });
   const [agentUrl, setAgentUrl] = useState("http://127.0.0.1:4001");
+  const [showNewForm, setShowNewForm] = useState(connections.length === 0);
 
   // 硬件摘要：优先用 probeResult 真实数据，否则用静态占位
   const hardware = probeResult ? [
@@ -453,13 +504,7 @@ function MachinePage({
           value: `${item.version} · ${item.source} · ${item.status}`,
           command: installCommands[item.name] ?? `install ${item.name}`
         }))
-      : (target?.software ?? []).map((item) => ({
-          id: `software-${item.name}`,
-          icon: PackagePlus,
-          name: item.name,
-          value: `${item.version} · ${item.source} · ${item.status}`,
-          command: installCommands[item.name] ?? `install ${item.name}`
-        }));
+      : [];
 
   // 配置清单：优先用 probeResult 真实数据
   const configRows: Array<{ id: string; icon: LucideIcon; name: string; value: string; command: string }> =
@@ -482,16 +527,54 @@ function MachinePage({
     setFields((previous) => ({ ...previous, [key]: value }));
   }
 
+  const activeConn = connections.find((c) => c.id === activeConnectionId);
+  const statusColor: Record<string, string> = { probed: "#065f46", validated: "#1d4ed8", unreachable: "#b42318" };
+
   return (
     <div className="page-stack">
+
+      {/* 已保存的连接列表 */}
+      {connections.length > 0 ? (
+        <section className="saved-connections">
+          <div className="saved-connections-header">
+            <p className="eyebrow">{locale === "zh" ? "已保存的连接" : "Saved connections"}</p>
+            <button className="ghost-action" type="button" onClick={() => setShowNewForm((v) => !v)}>
+              {showNewForm ? (locale === "zh" ? "收起" : "Collapse") : (locale === "zh" ? "+ 新建连接" : "+ New connection")}
+            </button>
+          </div>
+          <div className="connection-chips">
+            {connections.map((conn) => (
+              <button
+                key={conn.id}
+                type="button"
+                className={`connection-chip ${conn.id === activeConnectionId ? "active" : ""}`}
+                onClick={() => onSelectConnection(conn.id)}
+              >
+                <span className="chip-dot" style={{ background: statusColor[conn.status] ?? "#6b7280" }} />
+                <span>{conn.label}</span>
+                <span className="chip-method">{conn.method}</span>
+                {conn.id === activeConnectionId && conn.agentUrl ? (
+                  <button
+                    className="chip-reprobe"
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onReprobe(conn.id); }}
+                    title={locale === "zh" ? "重新探测" : "Reprobe"}
+                  >↻</button>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="connection-stage">
         <div className={connected ? "machine-intro" : "machine-intro blurred"}>
           <p className="eyebrow">{connected ? t.connected : t.disconnected}</p>
-          <h2>{probeResult ? probeResult.system.hostname : (target?.name ?? "prod-api-01")}</h2>
+          <h2>{probeResult ? probeResult.system.hostname : (activeConn?.label ?? "—")}</h2>
           <p>{connected
             ? probeResult
               ? `${probeResult.system.platform} ${probeResult.system.arch} · ${t.agentOnline}`
-              : `${target?.provider ?? "SSH"} · ${target?.address ?? "10.0.2.14"}`
+              : `${activeConn?.method ?? "SSH"} · ${activeConn?.fields?.host ?? "—"}`
             : t.locked}
           </p>
           {probeResult ? (
@@ -499,47 +582,49 @@ function MachinePage({
           ) : null}
         </div>
 
-        <div className="connection-card">
-          <div>
-            <h2>{t.connectTitle}</h2>
-            <p>{t.connectHint}</p>
+        {(!connected || showNewForm) ? (
+          <div className="connection-card">
+            <div>
+              <h2>{t.connectTitle}</h2>
+              <p>{t.connectHint}</p>
+            </div>
+            <select value={method} onChange={(event) => onMethod(event.target.value as ConnectionMethod)}>
+              <option value="ssh-password">SSH Password</option>
+              <option value="ssh-key">SSH Key</option>
+              <option value="winrm">WinRM</option>
+              <option value="docker">Docker Context</option>
+            </select>
+            <div className="connection-fields">
+              {connectionFields[method].map((field, index) => {
+                const key = connectionFieldKeys[method][index];
+                return (
+                  <input
+                    key={key}
+                    placeholder={field}
+                    type={field.toLowerCase().includes("password") || field.toLowerCase().includes("passphrase") ? "password" : "text"}
+                    value={fields[key] ?? ""}
+                    onChange={(event) => updateField(key, event.target.value)}
+                  />
+                );
+              })}
+            </div>
+            <div className="agent-url-row">
+              <Server aria-hidden />
+              <input
+                placeholder={t.agentUrl}
+                value={agentUrl}
+                onChange={(event) => setAgentUrl(event.target.value)}
+              />
+            </div>
+            {connectionProfile ? <p className="connection-note">{locale === "zh" ? "已保存脱敏连接档案，当前版本未执行远程命令。" : "Masked connection profile saved. No remote command was executed."}</p> : null}
+            {connectionError ? <p className="connection-error">{connectionError}</p> : null}
+            {probing ? <p className="connection-note">{t.probing}</p> : null}
+            <button className="primary-action" type="button" onClick={() => onConnect(fields, agentUrl)} disabled={probing}>
+              <KeyRound aria-hidden />
+              {probing ? t.probing : t.connectBtn}
+            </button>
           </div>
-          <select value={method} onChange={(event) => onMethod(event.target.value as ConnectionMethod)}>
-            <option value="ssh-password">SSH Password</option>
-            <option value="ssh-key">SSH Key</option>
-            <option value="winrm">WinRM</option>
-            <option value="docker">Docker Context</option>
-          </select>
-          <div className="connection-fields">
-            {connectionFields[method].map((field, index) => {
-              const key = connectionFieldKeys[method][index];
-              return (
-                <input
-                  key={key}
-                  placeholder={field}
-                  type={field.toLowerCase().includes("password") || field.toLowerCase().includes("passphrase") ? "password" : "text"}
-                  value={fields[key] ?? ""}
-                  onChange={(event) => updateField(key, event.target.value)}
-                />
-              );
-            })}
-          </div>
-          <div className="agent-url-row">
-            <Server aria-hidden />
-            <input
-              placeholder={t.agentUrl}
-              value={agentUrl}
-              onChange={(event) => setAgentUrl(event.target.value)}
-            />
-          </div>
-          {connectionProfile ? <p className="connection-note">{locale === "zh" ? "已保存脱敏连接档案，当前版本未执行远程命令。" : "Masked connection profile saved. No remote command was executed."}</p> : null}
-          {connectionError ? <p className="connection-error">{connectionError}</p> : null}
-          {probing ? <p className="connection-note">{t.probing}</p> : null}
-          <button className="primary-action" type="button" onClick={() => onConnect(fields, agentUrl)}>
-            <KeyRound aria-hidden />
-            {t.connectBtn}
-          </button>
-        </div>
+        ) : null}
       </section>
 
       <section className={connected ? "hardware-row" : "hardware-row blurred"}>

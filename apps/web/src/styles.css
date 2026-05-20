@@ -1054,3 +1054,84 @@ button:disabled {
   height: 15px;
   width: 15px;
 }
+
+/* ── 已保存连接列表 ──────────────────────────────────────── */
+
+.saved-connections {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 18px 22px;
+}
+
+.saved-connections-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.connection-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.connection-chip {
+  align-items: center;
+  background: #ffffff;
+  border: 1.5px solid #dbe3ea;
+  border-radius: 999px;
+  color: #1e293b;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 8px;
+  padding: 8px 16px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.connection-chip:hover {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.1);
+}
+
+.connection-chip.active {
+  background: #ecfdf5;
+  border-color: #0f766e;
+  color: #065f46;
+}
+
+.chip-dot {
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  height: 8px;
+  width: 8px;
+}
+
+.chip-method {
+  background: #f1f5f9;
+  border-radius: 6px;
+  color: #64748b;
+  font-size: 11px;
+  padding: 2px 7px;
+}
+
+.chip-reprobe {
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: #0f766e;
+  cursor: pointer;
+  font-size: 16px;
+  height: 22px;
+  line-height: 1;
+  padding: 0;
+  width: 22px;
+}
+
+.chip-reprobe:hover {
+  background: #d1fae5;
+}

@@ -126,16 +126,20 @@ export interface ConnectionProfile {
   userId: string;
   method: ConnectionMethod;
   label: string;
-  status: "validated";
+  status: "validated" | "probed" | "unreachable";
   fields: Record<string, string>;
   maskedSecrets: string[];
   realConnection: false;
+  agentUrl?: string;
+  probeSnapshot?: AgentProbeResult;
+  lastProbeAt?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface ConnectionResponse {
   connection: ConnectionProfile;
+  probe: AgentProbeResult | null;
   note: string;
 }
 
@@ -275,6 +279,7 @@ export async function connectServer(input: {
   method: ConnectionMethod;
   label?: string;
   fields: Record<string, string>;
+  agentUrl?: string;
 }): Promise<ConnectionResponse> {
   const response = await fetch("/api/connections/connect", {
     method: "POST",
@@ -285,7 +290,8 @@ export async function connectServer(input: {
     body: JSON.stringify({
       method: input.method,
       label: input.label,
-      fields: input.fields
+      fields: input.fields,
+      agentUrl: input.agentUrl
     })
   });
   return readJsonOrThrow<ConnectionResponse>(response, "Connection failed");
@@ -339,4 +345,21 @@ export async function pingAgent(agentUrl: string): Promise<boolean> {
   if (!response.ok) return false;
   const body = (await response.json()) as { online: boolean };
   return body.online;
+}
+
+export async function reprobeConnection(token: string, connectionId: string): Promise<ConnectionProfile> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/reprobe`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+  });
+  const body = await readJsonOrThrow<{ connection: ConnectionProfile }>(response, "Reprobe failed");
+  return body.connection;
+}
+
+export async function fetchConnections(token: string): Promise<ConnectionProfile[]> {
+  const response = await fetch("/api/connections", {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ connections: ConnectionProfile[] }>(response, "Fetch connections failed");
+  return body.connections;
 }

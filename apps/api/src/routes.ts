@@ -5,11 +5,11 @@ import { createRestorePlan } from "@fool/restorers";
 import { getUserByToken, loginUser, registerUser, toPublicUser, updateUserProfile } from "./auth.js";
 import { listCurrentUser } from "./catalog.js";
 import { getConfig } from "./config.js";
-import { createConnection } from "./connections.js";
+import { createConnection, reprobeConnection, listUserConnections } from "./connections.js";
 import { listCatalogFromDatabase, listMigrationStrategies, readCatalogGuide } from "./database.js";
 import { runReadinessChecks } from "./readiness.js";
+import { readRuntimeDatabase } from "./runtime-store.js";
 import { listSnapshots, persistSnapshot } from "./snapshot-store.js";
-import { listTargetVirtualMachines } from "./targets.js";
 import { probeAgent, pingAgent } from "./probe.js";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -50,10 +50,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.get("/api/targets", async () => {
-    return {
-      targets: listTargetVirtualMachines()
-    };
+  // 列出当前用户的已连接机器（从数据库读取，不再返回静态样例）
+  app.get("/api/targets", async (request) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      // 未登录时返回空列表
+      return { targets: [] };
+    }
+    const db = await readRuntimeDatabase();
+    const connections = db.connections.filter((c) => c.userId === user.id);
+    return { targets: connections };
   });
 
   // 探测目标 agent，返回真实系统信息
@@ -180,6 +186,33 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       reply.code(400);
       return { error: error instanceof Error ? error.message : "Connection validation failed" };
     }
+  });
+
+  // 对已保存的连接重新探测，刷新 probeSnapshot
+  app.post("/api/connections/:id/reprobe", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      reply.code(401);
+      return { error: "Login required." };
+    }
+    const { id } = request.params as { id: string };
+    const updated = await reprobeConnection(id, user.id);
+    if (!updated) {
+      reply.code(404);
+      return { error: "Connection not found or has no agentUrl." };
+    }
+    return { connection: updated };
+  });
+
+  // 列出当前用户所有连接档案
+  app.get("/api/connections", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      reply.code(401);
+      return { error: "Login required." };
+    }
+    const connections = await listUserConnections(user.id);
+    return { connections };
   });
 
   app.post("/api/diff", async (request) => {

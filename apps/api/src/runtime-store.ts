@@ -21,15 +21,37 @@ export interface StoredSession {
   expiresAt: string;
 }
 
+export interface StoredProbeSnapshot {
+  agentId: string;
+  collectedAt: string;
+  system: {
+    hostname: string;
+    platform: string;
+    arch: string;
+    release: string;
+    uptime: number;
+    cpu: { model: string; cores: number; speedMhz: number };
+    memory: { totalBytes: number; freeBytes: number; usedBytes: number; totalGb: string; freeGb: string };
+  };
+  software: Array<{ name: string; version: string; source: string; status: string }>;
+  configChecklist: Array<{ id: string; label: string; category: string; status: string; lastChanged: string }>;
+}
+
 export interface StoredConnection {
   id: string;
   userId: string;
   method: "ssh-password" | "ssh-key" | "winrm" | "docker";
   label: string;
-  status: "validated";
+  status: "validated" | "probed" | "unreachable";
   fields: Record<string, string>;
   maskedSecrets: string[];
   realConnection: false;
+  /** URL of the mock-agent or future real agent on the target machine */
+  agentUrl?: string;
+  /** Last successful probe result from the agent */
+  probeSnapshot?: StoredProbeSnapshot;
+  /** ISO timestamp of last probe attempt */
+  lastProbeAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,6 +107,9 @@ function normalizeRuntimeDatabase(database: Partial<RuntimeDatabase>): RuntimeDa
     schemaVersion: database.schemaVersion ?? "0.1.0",
     users: database.users ?? [],
     sessions: database.sessions ?? [],
-    connections: database.connections ?? []
+    connections: (database.connections ?? []).map((c) => ({
+      ...c,
+      status: c.status ?? "validated"
+    })) as StoredConnection[]
   };
 }
