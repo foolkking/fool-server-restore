@@ -1285,3 +1285,61 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── SSH 连接状态样式 ─────────────────────────────────────── */
+
+.success-note {
+  align-items: center;
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  border-radius: 10px;
+  color: #065f46;
+  display: flex;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.success-note svg {
+  flex-shrink: 0;
+  height: 16px;
+  width: 16px;
+}
+
+.probing-note {
+  animation: pulse 1.5s ease-in-out infinite;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  color: #1d4ed8;
+  font-size: 14px;
+  padding: 10px 14px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.ssh-error-inline {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-top: 8px;
+  padding: 8px 12px;
+}
+
+.chip-status {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.connection-chip.status-ssh_failed {
+  border-color: #fecaca;
+}
+
+.connection-chip.status-probed {
+  border-color: #6ee7b7;
+}

@@ -1,5 +1,6 @@
-import { createId, updateRuntimeDatabase, type StoredConnection, type StoredProbeSnapshot } from "./runtime-store.js";
+import { createId, updateRuntimeDatabase, readRuntimeDatabase, type StoredConnection, type StoredProbeSnapshot } from "./runtime-store.js";
 import { probeAgent } from "./probe.js";
+import { testSshConnection } from "./ssh.js";
 
 export type ConnectionMethod = "ssh-password" | "ssh-key" | "winrm" | "docker";
 
@@ -37,11 +38,37 @@ export async function createConnection(userId: string, input: ConnectionRequest)
   const agentUrl = normalizeAgentUrl(input.agentUrl);
   const now = new Date().toISOString();
 
-  // 如果提供了 agentUrl，尝试探测真实数据
   let probeSnapshot: StoredProbeSnapshot | null = null;
-  let probeStatus: StoredConnection["status"] = "validated";
+  let status: StoredConnection["status"] = "validated";
+  let sshError: string | undefined;
+  const notes: string[] = [];
 
-  if (agentUrl) {
+  // ── 真实 SSH 连接测试 ──────────────────────────────────────
+  if (method === "ssh-password" || method === "ssh-key") {
+    const host = fields.host;
+    const port = parseInt(fields.port ?? "22", 10) || 22;
+    const username = fields.username;
+
+    const auth =
+      method === "ssh-password"
+        ? ({ type: "password", password: fields.password } as const)
+        : ({ type: "key", privateKeyPath: fields.privateKeyPath, passphrase: fields.passphrase } as const);
+
+    const sshResult = await testSshConnection(host, port, username, auth);
+
+    if (sshResult.ok) {
+      status = "probed";
+      probeSnapshot = sshResult.snapshot;
+      notes.push(`SSH connection to ${host}:${port} succeeded (${sshResult.latencyMs}ms). Real system data collected.`);
+    } else {
+      status = "ssh_failed";
+      sshError = sshResult.error;
+      notes.push(`SSH connection to ${host}:${port} failed: ${sshResult.error}`);
+    }
+  }
+
+  // ── mock-agent HTTP 探测（SSH 未成功时的备选，或 docker/winrm 方式）──
+  if (status !== "probed" && agentUrl) {
     const result = await probeAgent(agentUrl);
     if (result.reachable) {
       probeSnapshot = {
@@ -51,10 +78,16 @@ export async function createConnection(userId: string, input: ConnectionRequest)
         software: result.software,
         configChecklist: result.configChecklist
       };
-      probeStatus = "probed";
+      status = "probed";
+      notes.push(`Agent at ${agentUrl} probed successfully. Real system data saved.`);
     } else {
-      probeStatus = "unreachable";
+      if (status === "validated") status = "unreachable";
+      notes.push(`Agent at ${agentUrl} was not reachable.`);
     }
+  }
+
+  if (notes.length === 0) {
+    notes.push("Connection fields validated and stored as a masked profile. No remote command executed.");
   }
 
   const connection: StoredConnection = {
@@ -62,13 +95,14 @@ export async function createConnection(userId: string, input: ConnectionRequest)
     userId,
     method,
     label: normalizeLabel(input.label, method, fields),
-    status: probeStatus,
+    status,
+    sshError,
     fields: maskFields(fields),
     maskedSecrets: Object.keys(fields).filter((field) => secretFields.has(field)),
     realConnection: false,
     agentUrl: agentUrl ?? undefined,
     probeSnapshot: probeSnapshot ?? undefined,
-    lastProbeAt: agentUrl ? now : undefined,
+    lastProbeAt: now,
     createdAt: now,
     updatedAt: now
   };
@@ -77,52 +111,56 @@ export async function createConnection(userId: string, input: ConnectionRequest)
     database.connections.unshift(connection);
   });
 
-  const notes: string[] = [
-    "Connection fields were validated and stored as a masked local profile. No remote SSH/WinRM/Docker command was executed."
-  ];
-  if (agentUrl && probeStatus === "probed") {
-    notes.push(`Agent at ${agentUrl} was probed successfully. Real system data has been saved.`);
-  } else if (agentUrl && probeStatus === "unreachable") {
-    notes.push(`Agent at ${agentUrl} was not reachable. Connection profile saved without live data.`);
-  }
-
   return { connection, probe: probeSnapshot, note: notes.join(" ") };
 }
 
 export async function reprobeConnection(connectionId: string, userId: string): Promise<StoredConnection | null> {
-  const database = await updateRuntimeDatabase((db) => {
-    const conn = db.connections.find((c) => c.id === connectionId && c.userId === userId);
-    return conn ?? null;
-  });
-  if (!database || !database.agentUrl) return null;
+  const db = await readRuntimeDatabase();
+  const conn = db.connections.find((c) => c.id === connectionId && c.userId === userId);
+  if (!conn) return null;
 
-  const result = await probeAgent(database.agentUrl);
   const now = new Date().toISOString();
+  let probeSnapshot: StoredProbeSnapshot | null = null;
+  let status: StoredConnection["status"] = conn.status;
+  let sshError: string | undefined;
 
-  return updateRuntimeDatabase((db) => {
-    const conn = db.connections.find((c) => c.id === connectionId && c.userId === userId);
-    if (!conn) return null;
-    conn.lastProbeAt = now;
-    conn.updatedAt = now;
+  // 重新尝试 SSH
+  if (conn.method === "ssh-password" || conn.method === "ssh-key") {
+    // 注意：密码已脱敏，reprobe 只能用 agentUrl 方式
+    // 如果有 agentUrl，走 agent 探测
+  }
+
+  if (conn.agentUrl) {
+    const result = await probeAgent(conn.agentUrl);
     if (result.reachable) {
-      conn.status = "probed";
-      conn.probeSnapshot = {
+      probeSnapshot = {
         agentId: result.agentId,
         collectedAt: result.collectedAt,
         system: result.system,
         software: result.software,
         configChecklist: result.configChecklist
       };
+      status = "probed";
     } else {
-      conn.status = "unreachable";
+      status = "unreachable";
     }
-    return conn;
+  }
+
+  return updateRuntimeDatabase((db2) => {
+    const target = db2.connections.find((c) => c.id === connectionId && c.userId === userId);
+    if (!target) return null;
+    target.lastProbeAt = now;
+    target.updatedAt = now;
+    target.status = status;
+    if (sshError !== undefined) target.sshError = sshError;
+    if (probeSnapshot) target.probeSnapshot = probeSnapshot;
+    return target;
   });
 }
 
 export async function listUserConnections(userId: string): Promise<StoredConnection[]> {
-  const { connections } = await import("./runtime-store.js").then((m) => m.readRuntimeDatabase());
-  return connections.filter((c) => c.userId === userId);
+  const db = await readRuntimeDatabase();
+  return db.connections.filter((c) => c.userId === userId);
 }
 
 function normalizeMethod(method?: ConnectionMethod): ConnectionMethod {

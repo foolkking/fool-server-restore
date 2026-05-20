@@ -126,7 +126,8 @@ export interface ConnectionProfile {
   userId: string;
   method: ConnectionMethod;
   label: string;
-  status: "validated" | "probed" | "unreachable";
+  status: "validated" | "ssh_ok" | "ssh_failed" | "probed" | "unreachable";
+  sshError?: string;
   fields: Record<string, string>;
   maskedSecrets: string[];
   realConnection: false;

@@ -42,7 +42,16 @@ export interface StoredConnection {
   userId: string;
   method: "ssh-password" | "ssh-key" | "winrm" | "docker";
   label: string;
-  status: "validated" | "probed" | "unreachable";
+  /**
+   * validated   — 字段校验通过，未做任何网络测试
+   * connecting  — 正在尝试 SSH/WinRM/Docker 握手（瞬态，不持久化）
+   * ssh_ok      — SSH 握手成功，确认目标机器可达
+   * ssh_failed  — SSH 握手失败（认证错误、超时、拒绝连接等）
+   * probed      — SSH 成功 + 采集到真实系统数据
+   * unreachable — agent HTTP 探测失败
+   */
+  status: "validated" | "ssh_ok" | "ssh_failed" | "probed" | "unreachable";
+  sshError?: string;
   fields: Record<string, string>;
   maskedSecrets: string[];
   realConnection: false;

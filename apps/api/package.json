@@ -13,9 +13,11 @@
     "@fool/collectors": "0.1.0",
     "@fool/core": "0.1.0",
     "@fool/restorers": "0.1.0",
-    "fastify": "^4.28.1"
+    "fastify": "^4.28.1",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
+    "@types/ssh2": "^1.15.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   }

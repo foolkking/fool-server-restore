@@ -543,7 +543,20 @@ function MachinePage({
   }
 
   const activeConn = connections.find((c) => c.id === activeConnectionId);
-  const statusColor: Record<string, string> = { probed: "#065f46", validated: "#1d4ed8", unreachable: "#b42318" };
+  const statusColor: Record<string, string> = {
+    probed: "#065f46",
+    ssh_ok: "#1d4ed8",
+    validated: "#6b7280",
+    ssh_failed: "#b42318",
+    unreachable: "#b42318"
+  };
+  const statusLabel: Record<string, { zh: string; en: string }> = {
+    probed:      { zh: "已采集", en: "Probed" },
+    ssh_ok:      { zh: "SSH 成功", en: "SSH OK" },
+    validated:   { zh: "已验证", en: "Validated" },
+    ssh_failed:  { zh: "SSH 失败", en: "SSH Failed" },
+    unreachable: { zh: "不可达", en: "Unreachable" }
+  };
 
   return (
     <div className="page-stack">
@@ -562,12 +575,16 @@ function MachinePage({
               <button
                 key={conn.id}
                 type="button"
-                className={`connection-chip ${conn.id === activeConnectionId ? "active" : ""}`}
+                className={`connection-chip ${conn.id === activeConnectionId ? "active" : ""} status-${conn.status}`}
                 onClick={() => onSelectConnection(conn.id)}
+                title={conn.sshError ?? conn.status}
               >
                 <span className="chip-dot" style={{ background: statusColor[conn.status] ?? "#6b7280" }} />
                 <span>{conn.label}</span>
                 <span className="chip-method">{conn.method}</span>
+                <span className="chip-status" style={{ color: statusColor[conn.status] ?? "#6b7280" }}>
+                  {locale === "zh" ? statusLabel[conn.status]?.zh : statusLabel[conn.status]?.en}
+                </span>
                 {conn.id === activeConnectionId && conn.agentUrl ? (
                   <button
                     className="chip-reprobe"
@@ -594,6 +611,11 @@ function MachinePage({
           </p>
           {probeResult ? (
             <p className="agent-badge"><CheckCircle2 aria-hidden />{t.realData} · {new Date(probeResult.collectedAt).toLocaleTimeString()}</p>
+          ) : null}
+          {activeConn?.status === "ssh_failed" && activeConn.sshError ? (
+            <p className="connection-error ssh-error-inline">
+              {locale === "zh" ? "SSH 失败：" : "SSH failed: "}{activeConn.sshError}
+            </p>
           ) : null}
         </div>
 
@@ -631,12 +653,27 @@ function MachinePage({
                 onChange={(event) => setAgentUrl(event.target.value)}
               />
             </div>
-            {connectionProfile ? <p className="connection-note">{locale === "zh" ? "已保存脱敏连接档案，当前版本未执行远程命令。" : "Masked connection profile saved. No remote command was executed."}</p> : null}
+            {connectionProfile?.status === "probed" ? (
+              <p className="connection-note success-note">
+                <CheckCircle2 aria-hidden />
+                {locale === "zh" ? "SSH 连接成功，已采集真实系统数据。" : "SSH connected. Real system data collected."}
+              </p>
+            ) : connectionProfile?.status === "ssh_failed" ? (
+              <p className="connection-error">
+                {locale === "zh" ? "SSH 连接失败：" : "SSH failed: "}{connectionProfile.sshError}
+              </p>
+            ) : connectionProfile ? (
+              <p className="connection-note">{locale === "zh" ? "已保存连接档案。" : "Connection profile saved."}</p>
+            ) : null}
             {connectionError ? <p className="connection-error">{connectionError}</p> : null}
-            {probing ? <p className="connection-note">{t.probing}</p> : null}
+            {probing ? (
+              <p className="connection-note probing-note">
+                {locale === "zh" ? "正在连接并采集系统信息，请稍候（最长 15 秒）…" : "Connecting and collecting system info, please wait (up to 15s)…"}
+              </p>
+            ) : null}
             <button className="primary-action" type="button" onClick={() => onConnect(fields, agentUrl)} disabled={probing}>
               <KeyRound aria-hidden />
-              {probing ? t.probing : t.connectBtn}
+              {probing ? (locale === "zh" ? "连接中…" : "Connecting…") : t.connectBtn}
             </button>
           </div>
         ) : null}
