@@ -56,11 +56,35 @@ export interface StoredConnection {
   updatedAt: string;
 }
 
+export interface StoredUserProfile {
+  id: string;
+  userId: string;
+  kind: "software" | "combo";
+  name: string;
+  nameEn: string;
+  category: "runtime" | "developer" | "database" | "container" | "security" | "network" | "service";
+  summary: string;
+  summaryEn: string;
+  sensitivity: "safe" | "review" | "privileged";
+  components: Array<{
+    type: "software" | "system-command" | "system-config";
+    label: string;
+    labelEn: string;
+    detail: string;
+  }>;
+  installMode: "skip-existing" | "replace-existing";
+  /** Optional markdown guide written by the user */
+  guideMarkdown?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RuntimeDatabase {
   schemaVersion: string;
   users: StoredUser[];
   sessions: StoredSession[];
   connections: StoredConnection[];
+  userProfiles: StoredUserProfile[];
 }
 
 export async function readRuntimeDatabase(): Promise<RuntimeDatabase> {
@@ -98,7 +122,8 @@ function createRuntimeDatabase(): RuntimeDatabase {
     schemaVersion: "0.1.0",
     users: [],
     sessions: [],
-    connections: []
+    connections: [],
+    userProfiles: []
   };
 }
 
@@ -110,6 +135,7 @@ function normalizeRuntimeDatabase(database: Partial<RuntimeDatabase>): RuntimeDa
     connections: (database.connections ?? []).map((c) => ({
       ...c,
       status: c.status ?? "validated"
-    })) as StoredConnection[]
+    })) as StoredConnection[],
+    userProfiles: database.userProfiles ?? []
   };
 }

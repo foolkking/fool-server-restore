@@ -184,6 +184,45 @@ export interface AgentProbeFailure {
 
 export type ProbeResult = AgentProbeResult | AgentProbeFailure;
 
+// ── 用户配置组合 ──────────────────────────────────────────
+
+export interface ProfileComponent {
+  type: "software" | "system-command" | "system-config";
+  label: string;
+  labelEn: string;
+  detail: string;
+}
+
+export interface UserProfile {
+  id: string;
+  userId: string;
+  kind: "software" | "combo";
+  name: string;
+  nameEn: string;
+  category: "runtime" | "developer" | "database" | "container" | "security" | "network" | "service";
+  summary: string;
+  summaryEn: string;
+  sensitivity: "safe" | "review" | "privileged";
+  components: ProfileComponent[];
+  installMode: "skip-existing" | "replace-existing";
+  guideMarkdown?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProfileInput {
+  kind: "software" | "combo";
+  name: string;
+  nameEn?: string;
+  category: UserProfile["category"];
+  summary: string;
+  summaryEn?: string;
+  sensitivity: UserProfile["sensitivity"];
+  components: ProfileComponent[];
+  installMode: UserProfile["installMode"];
+  guideMarkdown?: string;
+}
+
 export async function runScan(user = "default", persist = true): Promise<ScanResponse> {
   const response = await fetch("/api/scan", {
     method: "POST",
@@ -362,4 +401,42 @@ export async function fetchConnections(token: string): Promise<ConnectionProfile
   });
   const body = await readJsonOrThrow<{ connections: ConnectionProfile[] }>(response, "Fetch connections failed");
   return body.connections;
+}
+
+// ── 用户配置组合 ──────────────────────────────────────────
+
+export async function fetchProfiles(token: string): Promise<UserProfile[]> {
+  const response = await fetch("/api/profiles", {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ profiles: UserProfile[] }>(response, "Fetch profiles failed");
+  return body.profiles;
+}
+
+export async function createProfile(token: string, input: CreateProfileInput): Promise<UserProfile> {
+  const response = await fetch("/api/profiles", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const body = await readJsonOrThrow<{ profile: UserProfile }>(response, "Create profile failed");
+  return body.profile;
+}
+
+export async function updateProfileData(token: string, id: string, input: Partial<CreateProfileInput>): Promise<UserProfile> {
+  const response = await fetch(`/api/profiles/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const body = await readJsonOrThrow<{ profile: UserProfile }>(response, "Update profile failed");
+  return body.profile;
+}
+
+export async function deleteProfile(token: string, id: string): Promise<void> {
+  const response = await fetch(`/api/profiles/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow<{ ok: boolean }>(response, "Delete profile failed");
 }

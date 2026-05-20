@@ -27,11 +27,14 @@ import {
 } from "lucide-react";
 import {
   connectServer,
+  createProfile,
+  deleteProfile,
   fetchCatalog,
   fetchCatalogGuide,
   fetchConnections,
   fetchCurrentUser,
   fetchMigrationStrategies,
+  fetchProfiles,
   fetchTargets,
   loginAccount,
   probeAgent,
@@ -45,12 +48,15 @@ import {
   type CatalogComponent,
   type CatalogItem,
   type ConnectionProfile,
+  type CreateProfileInput,
   type CurrentUser,
   type MigrationStrategy,
+  type ProfileComponent,
   type ScanResponse,
   type TargetSoftware,
   type SystemConfigItem,
-  type TargetVirtualMachine
+  type TargetVirtualMachine,
+  type UserProfile
 } from "./api";
 import "./styles.css";
 
@@ -198,6 +204,7 @@ function App() {
   const [probeResult, setProbeResult] = useState<AgentProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set(["software-node", "config-aliases"]));
+  const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
   const t = text[locale];
 
   // 当前激活的连接档案（含 probeSnapshot）
@@ -218,11 +225,15 @@ function App() {
     if (userResult.status === "fulfilled") setCurrentUser(userResult.value);
     setStrategies(strategyResult);
 
-    // 如果有 token，加载已保存的连接列表
+    // 如果有 token，加载已保存的连接列表和配置组合
     const activeToken = token ?? authToken;
     if (activeToken) {
-      const conns = await fetchConnections(activeToken).catch(() => []);
+      const [conns, profs] = await Promise.all([
+        fetchConnections(activeToken).catch(() => [] as ConnectionProfile[]),
+        fetchProfiles(activeToken).catch(() => [] as UserProfile[])
+      ]);
       setConnections(conns);
+      setUserProfiles(profs);
       // 自动激活最近一次 probed 的连接
       const probed = conns.find((c) => c.status === "probed");
       if (probed) {
@@ -416,7 +427,9 @@ function App() {
             locale={locale}
             user={currentUser}
             authUser={authUser}
+            authToken={authToken}
             strategies={strategies}
+            userProfiles={userProfiles}
             onLogin={async (input) => handleAuthSuccess(await loginAccount(input))}
             onRegister={async (input) => handleAuthSuccess(await registerAccount(input))}
             onUpdateProfile={async (input) => {
@@ -428,7 +441,9 @@ function App() {
               setAuthUser(null);
               setConnected(false);
               setConnectionProfile(null);
+              setUserProfiles([]);
             }}
+            onProfilesChange={(profiles) => setUserProfiles(profiles)}
           />
         ) : null}
 
@@ -801,50 +816,154 @@ function MePage({
   locale,
   user,
   authUser,
+  authToken,
   strategies,
+  userProfiles,
   onLogin,
   onRegister,
   onUpdateProfile,
-  onLogout
+  onLogout,
+  onProfilesChange
 }: {
   t: typeof text.zh;
   locale: Locale;
   user: CurrentUser | null;
   authUser: AuthUser | null;
+  authToken: string;
   strategies: MigrationStrategy[];
+  userProfiles: UserProfile[];
   onLogin: (input: { email: string; password: string }) => Promise<void>;
   onRegister: (input: { name: string; email: string; password: string }) => Promise<void>;
   onUpdateProfile: (input: { name: string; defaultSshUser: string }) => Promise<void>;
   onLogout: () => void;
+  onProfilesChange: (profiles: UserProfile[]) => void;
 }) {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authError, setAuthError] = useState("");
   const [editingProfile, setEditingProfile] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [uploadSaving, setUploadSaving] = useState(false);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+
+  const emptyForm = (): CreateProfileInput => ({
+    kind: "software",
+    name: "",
+    nameEn: "",
+    category: "developer",
+    summary: "",
+    summaryEn: "",
+    sensitivity: "safe",
+    components: [],
+    installMode: "skip-existing",
+    guideMarkdown: ""
+  });
+  const [uploadForm, setUploadForm] = useState<CreateProfileInput>(emptyForm());
+  const [componentDraft, setComponentDraft] = useState({ type: "software" as ProfileComponent["type"], label: "", labelEn: "", detail: "" });
+
   const authenticated = Boolean(authUser);
   const displayName = authUser?.name ?? t.guest;
 
   async function submitAuth(mode: "login" | "register") {
     setAuthError("");
     try {
-      if (mode === "login") {
-        await onLogin({ email: authForm.email, password: authForm.password });
-      } else {
-        await onRegister({ name: authForm.name, email: authForm.email, password: authForm.password });
-      }
+      if (mode === "login") await onLogin({ email: authForm.email, password: authForm.password });
+      else await onRegister({ name: authForm.name, email: authForm.email, password: authForm.password });
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Authentication failed");
     }
   }
 
+  function addComponent() {
+    if (!componentDraft.label.trim()) return;
+    setUploadForm((prev) => ({
+      ...prev,
+      components: [...prev.components, { ...componentDraft, label: componentDraft.label.trim(), labelEn: componentDraft.labelEn.trim() || componentDraft.label.trim() }]
+    }));
+    setComponentDraft({ type: "software", label: "", labelEn: "", detail: "" });
+  }
+
+  function removeComponent(index: number) {
+    setUploadForm((prev) => ({ ...prev, components: prev.components.filter((_, i) => i !== index) }));
+  }
+
+  async function submitUpload() {
+    setUploadError("");
+    setUploadSaving(true);
+    try {
+      const profile = await createProfile(authToken, uploadForm);
+      onProfilesChange([profile, ...userProfiles]);
+      setUploadForm(emptyForm());
+      setShowUploadForm(false);
+      setEditingProfileId(null);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Failed to save profile.");
+    } finally {
+      setUploadSaving(false);
+    }
+  }
+
+  async function handleDeleteProfile(id: string) {
+    try {
+      await deleteProfile(authToken, id);
+      onProfilesChange(userProfiles.filter((p) => p.id !== id));
+    } catch {
+      // 静默处理
+    }
+  }
+
+  function startEdit(profile: UserProfile) {
+    setUploadForm({
+      kind: profile.kind,
+      name: profile.name,
+      nameEn: profile.nameEn,
+      category: profile.category,
+      summary: profile.summary,
+      summaryEn: profile.summaryEn,
+      sensitivity: profile.sensitivity,
+      components: profile.components,
+      installMode: profile.installMode,
+      guideMarkdown: profile.guideMarkdown ?? ""
+    });
+    setEditingProfileId(profile.id);
+    setShowUploadForm(true);
+  }
+
+  const categoryOptions: Array<{ value: UserProfile["category"]; label: string; labelEn: string }> = [
+    { value: "runtime", label: "运行时", labelEn: "Runtime" },
+    { value: "developer", label: "开发工具", labelEn: "Developer" },
+    { value: "database", label: "数据库", labelEn: "Database" },
+    { value: "container", label: "容器", labelEn: "Container" },
+    { value: "security", label: "安全", labelEn: "Security" },
+    { value: "network", label: "网络", labelEn: "Network" },
+    { value: "service", label: "服务", labelEn: "Service" }
+  ];
+
+  const sensitivityLabels: Record<UserProfile["sensitivity"], string> = {
+    safe: locale === "zh" ? "安全" : "Safe",
+    review: locale === "zh" ? "需审查" : "Review",
+    privileged: locale === "zh" ? "需权限" : "Privileged"
+  };
+
+  const componentTypeLabels: Record<ProfileComponent["type"], string> = {
+    software: locale === "zh" ? "软件" : "Software",
+    "system-command": locale === "zh" ? "命令" : "Command",
+    "system-config": locale === "zh" ? "配置" : "Config"
+  };
+
   return (
     <div className="page-stack">
+      {/* 顶部 hero */}
       <section className="profile-hero">
         <div className="profile-avatar">{authUser ? authUser.name.slice(0, 1).toUpperCase() : locale === "zh" ? "游" : "G"}</div>
         <div>
           <p className="eyebrow">{authenticated ? t.profile : t.guest}</p>
           <h1>{displayName}</h1>
-          <p>{authenticated ? (locale === "zh" ? "已登录，可管理上传配置和复用自己的虚拟机配置资产。" : "Signed in. You can manage uploaded VM profiles.") : (locale === "zh" ? "登录后可以管理个人资料、上传配置和复用自己的虚拟机配置资产。" : "Login to manage your profile, uploaded configs, and reusable VM assets.")}</p>
+          <p>{authenticated
+            ? (locale === "zh" ? "已登录，可管理上传配置和复用自己的虚拟机配置资产。" : "Signed in. You can manage uploaded VM profiles.")
+            : (locale === "zh" ? "登录后可以管理个人资料、上传配置和复用自己的虚拟机配置资产。" : "Login to manage your profile, uploaded configs, and reusable VM assets.")}
+          </p>
         </div>
         <div className="profile-actions">
           {authenticated ? (
@@ -861,6 +980,7 @@ function MePage({
         </div>
       </section>
 
+      {/* 登录/注册表单 */}
       {!authenticated ? (
         <section className="panel-large auth-panel">
           <div className="panel-heading">
@@ -869,23 +989,10 @@ function MePage({
           </div>
           <div className="form-grid">
             {authMode === "register" ? (
-              <input
-                placeholder={locale === "zh" ? "昵称" : "Display name"}
-                value={authForm.name}
-                onChange={(event) => setAuthForm((previous) => ({ ...previous, name: event.target.value }))}
-              />
+              <input placeholder={locale === "zh" ? "昵称" : "Display name"} value={authForm.name} onChange={(e) => setAuthForm((p) => ({ ...p, name: e.target.value }))} />
             ) : null}
-            <input
-              placeholder={locale === "zh" ? "邮箱" : "Email"}
-              value={authForm.email}
-              onChange={(event) => setAuthForm((previous) => ({ ...previous, email: event.target.value }))}
-            />
-            <input
-              placeholder={locale === "zh" ? "密码（至少 8 位）" : "Password (at least 8 characters)"}
-              type="password"
-              value={authForm.password}
-              onChange={(event) => setAuthForm((previous) => ({ ...previous, password: event.target.value }))}
-            />
+            <input placeholder={locale === "zh" ? "邮箱" : "Email"} value={authForm.email} onChange={(e) => setAuthForm((p) => ({ ...p, email: e.target.value }))} />
+            <input placeholder={locale === "zh" ? "密码（至少 8 位）" : "Password (at least 8 characters)"} type="password" value={authForm.password} onChange={(e) => setAuthForm((p) => ({ ...p, password: e.target.value }))} />
             <button className="primary-action" type="button" onClick={() => void submitAuth(authMode)}>
               {authMode === "login" ? <LogIn aria-hidden /> : <UserRound aria-hidden />}
               {authMode === "login" ? t.login : t.register}
@@ -895,24 +1002,147 @@ function MePage({
         </section>
       ) : null}
 
-      <section className="panel-large">
-        <div className="panel-heading">
-          <h2>{t.uploads}</h2>
-          <button className="secondary-action" type="button"><UploadCloud aria-hidden />{t.upload}</button>
-        </div>
-        <div className="profile-list">
-          {(user?.uploadedProfiles ?? []).map((profile) => (
-            <article className="profile-row" key={profile.id}>
-              <div>
-                <strong>{locale === "zh" ? profile.name : profile.nameEn}</strong>
-                <span>{profile.items} items · {profile.updatedAt}</span>
-              </div>
-              <button className="secondary-action" type="button">{locale === "zh" ? "管理" : "Manage"}</button>
-            </article>
-          ))}
-        </div>
-      </section>
+      {/* 我上传的配置组合 */}
+      {authenticated ? (
+        <section className="panel-large">
+          <div className="panel-heading">
+            <h2>{t.uploads}</h2>
+            <button className="primary-action" type="button" onClick={() => { setShowUploadForm((v) => !v); setEditingProfileId(null); setUploadForm(emptyForm()); }}>
+              <UploadCloud aria-hidden />
+              {showUploadForm ? (locale === "zh" ? "收起" : "Collapse") : (locale === "zh" ? "上传配置组合" : "Upload profile")}
+            </button>
+          </div>
 
+          {/* 上传/编辑表单 */}
+          {showUploadForm ? (
+            <div className="upload-form">
+              <div className="upload-form-grid">
+                <label>
+                  <span>{locale === "zh" ? "名称（中文）" : "Name (Chinese)"}</span>
+                  <input value={uploadForm.name} onChange={(e) => setUploadForm((p) => ({ ...p, name: e.target.value }))} placeholder={locale === "zh" ? "例：Node.js 开发环境" : "e.g. Node.js dev env"} />
+                </label>
+                <label>
+                  <span>{locale === "zh" ? "名称（英文）" : "Name (English)"}</span>
+                  <input value={uploadForm.nameEn} onChange={(e) => setUploadForm((p) => ({ ...p, nameEn: e.target.value }))} placeholder="e.g. Node.js dev env" />
+                </label>
+                <label>
+                  <span>{locale === "zh" ? "类型" : "Kind"}</span>
+                  <select value={uploadForm.kind} onChange={(e) => setUploadForm((p) => ({ ...p, kind: e.target.value as "software" | "combo" }))}>
+                    <option value="software">{locale === "zh" ? "软件配置" : "Software"}</option>
+                    <option value="combo">{locale === "zh" ? "热门组合" : "Combo"}</option>
+                  </select>
+                </label>
+                <label>
+                  <span>{locale === "zh" ? "分类" : "Category"}</span>
+                  <select value={uploadForm.category} onChange={(e) => setUploadForm((p) => ({ ...p, category: e.target.value as UserProfile["category"] }))}>
+                    {categoryOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{locale === "zh" ? opt.label : opt.labelEn}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>{locale === "zh" ? "敏感度" : "Sensitivity"}</span>
+                  <select value={uploadForm.sensitivity} onChange={(e) => setUploadForm((p) => ({ ...p, sensitivity: e.target.value as UserProfile["sensitivity"] }))}>
+                    <option value="safe">{sensitivityLabels.safe}</option>
+                    <option value="review">{sensitivityLabels.review}</option>
+                    <option value="privileged">{sensitivityLabels.privileged}</option>
+                  </select>
+                </label>
+                <label>
+                  <span>{locale === "zh" ? "安装模式" : "Install mode"}</span>
+                  <select value={uploadForm.installMode} onChange={(e) => setUploadForm((p) => ({ ...p, installMode: e.target.value as UserProfile["installMode"] }))}>
+                    <option value="skip-existing">{locale === "zh" ? "跳过已有" : "Skip existing"}</option>
+                    <option value="replace-existing">{locale === "zh" ? "覆盖已有" : "Replace existing"}</option>
+                  </select>
+                </label>
+              </div>
+
+              <label className="upload-full-label">
+                <span>{locale === "zh" ? "简介（中文）" : "Summary (Chinese)"}</span>
+                <textarea value={uploadForm.summary} onChange={(e) => setUploadForm((p) => ({ ...p, summary: e.target.value }))} rows={2} placeholder={locale === "zh" ? "一句话描述这个配置组合的用途" : "One-line description"} />
+              </label>
+              <label className="upload-full-label">
+                <span>{locale === "zh" ? "简介（英文）" : "Summary (English)"}</span>
+                <textarea value={uploadForm.summaryEn} onChange={(e) => setUploadForm((p) => ({ ...p, summaryEn: e.target.value }))} rows={2} placeholder="One-line description in English" />
+              </label>
+
+              {/* 组件列表 */}
+              <div className="upload-components">
+                <p className="upload-section-label">{locale === "zh" ? "组件列表" : "Components"}</p>
+                {uploadForm.components.length > 0 ? (
+                  <div className="component-list">
+                    {uploadForm.components.map((comp, i) => (
+                      <div className="component-row" key={i}>
+                        <span className={`comp-type-badge ${comp.type}`}>{componentTypeLabels[comp.type]}</span>
+                        <span>{comp.label}</span>
+                        {comp.detail ? <span className="comp-detail">{comp.detail}</span> : null}
+                        <button type="button" className="ghost-action icon-action" onClick={() => removeComponent(i)} aria-label="Remove"><X aria-hidden /></button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="component-draft">
+                  <select value={componentDraft.type} onChange={(e) => setComponentDraft((p) => ({ ...p, type: e.target.value as ProfileComponent["type"] }))}>
+                    <option value="software">{componentTypeLabels.software}</option>
+                    <option value="system-command">{componentTypeLabels["system-command"]}</option>
+                    <option value="system-config">{componentTypeLabels["system-config"]}</option>
+                  </select>
+                  <input value={componentDraft.label} onChange={(e) => setComponentDraft((p) => ({ ...p, label: e.target.value }))} placeholder={locale === "zh" ? "标签（中文）" : "Label"} />
+                  <input value={componentDraft.labelEn} onChange={(e) => setComponentDraft((p) => ({ ...p, labelEn: e.target.value }))} placeholder="Label (EN)" />
+                  <input value={componentDraft.detail} onChange={(e) => setComponentDraft((p) => ({ ...p, detail: e.target.value }))} placeholder={locale === "zh" ? "详情" : "Detail"} />
+                  <button type="button" className="secondary-action" onClick={addComponent}>{locale === "zh" ? "+ 添加" : "+ Add"}</button>
+                </div>
+              </div>
+
+              {/* Markdown 说明 */}
+              <label className="upload-full-label">
+                <span>{locale === "zh" ? "使用说明（Markdown，可选）" : "Guide (Markdown, optional)"}</span>
+                <textarea value={uploadForm.guideMarkdown} onChange={(e) => setUploadForm((p) => ({ ...p, guideMarkdown: e.target.value }))} rows={6} placeholder={locale === "zh" ? "## 安装步骤\n\n```bash\nnpm install ...\n```" : "## Installation\n\n```bash\nnpm install ...\n```"} className="code-textarea" />
+              </label>
+
+              {uploadError ? <p className="connection-error">{uploadError}</p> : null}
+              <div className="upload-actions">
+                <button className="primary-action" type="button" onClick={() => void submitUpload()} disabled={uploadSaving}>
+                  <UploadCloud aria-hidden />
+                  {uploadSaving ? (locale === "zh" ? "保存中…" : "Saving…") : (editingProfileId ? (locale === "zh" ? "保存修改" : "Save changes") : (locale === "zh" ? "发布配置组合" : "Publish profile"))}
+                </button>
+                <button className="ghost-action" type="button" onClick={() => { setShowUploadForm(false); setUploadForm(emptyForm()); setEditingProfileId(null); }}>
+                  {locale === "zh" ? "取消" : "Cancel"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* 已上传的配置组合列表 */}
+          <div className="profile-list">
+            {userProfiles.length === 0 ? (
+              <p className="empty-hint">{locale === "zh" ? "还没有上传任何配置组合。" : "No profiles uploaded yet."}</p>
+            ) : userProfiles.map((profile) => (
+              <article className="profile-row" key={profile.id}>
+                <div>
+                  <strong>{locale === "zh" ? profile.name : profile.nameEn}</strong>
+                  <span>
+                    {locale === "zh"
+                      ? categoryOptions.find((c) => c.value === profile.category)?.label
+                      : categoryOptions.find((c) => c.value === profile.category)?.labelEn}
+                    {" · "}{profile.kind === "combo" ? (locale === "zh" ? "组合" : "Combo") : (locale === "zh" ? "软件" : "Software")}
+                    {" · "}{sensitivityLabels[profile.sensitivity]}
+                    {" · "}{profile.components.length} {locale === "zh" ? "个组件" : "components"}
+                    {" · "}{new Date(profile.updatedAt).toLocaleDateString()}
+                  </span>
+                  {profile.summary ? <span className="profile-summary">{locale === "zh" ? profile.summary : profile.summaryEn}</span> : null}
+                </div>
+                <div className="profile-row-actions">
+                  <button className="secondary-action" type="button" onClick={() => startEdit(profile)}><Edit3 aria-hidden />{locale === "zh" ? "编辑" : "Edit"}</button>
+                  <button className="ghost-action" type="button" onClick={() => void handleDeleteProfile(profile.id)}><X aria-hidden />{locale === "zh" ? "删除" : "Delete"}</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {/* 迁移方法 */}
       <section className="panel-large">
         <div className="panel-heading">
           <h2>{locale === "zh" ? "完整迁移方法" : "Full migration methods"}</h2>
@@ -931,6 +1161,7 @@ function MePage({
         </div>
       </section>
 
+      {/* 个人信息只读展示 */}
       {authenticated ? (
         <section className="panel-large profile-locked">
           <div className="panel-heading">
@@ -945,15 +1176,13 @@ function MePage({
           </div>
         </section>
       ) : null}
+
       {editingProfile && authUser ? (
         <ProfileEditModal
           user={authUser}
           locale={locale}
           onClose={() => setEditingProfile(false)}
-          onSave={async (input) => {
-            await onUpdateProfile(input);
-            setEditingProfile(false);
-          }}
+          onSave={async (input) => { await onUpdateProfile(input); setEditingProfile(false); }}
         />
       ) : null}
     </div>

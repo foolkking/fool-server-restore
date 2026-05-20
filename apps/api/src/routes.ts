@@ -6,6 +6,7 @@ import { getUserByToken, loginUser, registerUser, toPublicUser, updateUserProfil
 import { listCurrentUser } from "./catalog.js";
 import { getConfig } from "./config.js";
 import { createConnection, reprobeConnection, listUserConnections } from "./connections.js";
+import { createUserProfile, listUserProfiles, getUserProfile, updateUserProfile as updateProfile, deleteUserProfile, listAllUserProfilesAsCatalog } from "./profiles.js";
 import { listCatalogFromDatabase, listMigrationStrategies, readCatalogGuide } from "./database.js";
 import { runReadinessChecks } from "./readiness.js";
 import { readRuntimeDatabase } from "./runtime-store.js";
@@ -213,6 +214,73 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
     const connections = await listUserConnections(user.id);
     return { connections };
+  });
+
+  // ── 用户配置组合 CRUD ──────────────────────────────────────
+
+  // 创建配置组合
+  app.post("/api/profiles", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    try {
+      const profile = await createUserProfile(user.id, request.body as Parameters<typeof createUserProfile>[1]);
+      return { profile };
+    } catch (error) {
+      reply.code(400);
+      return { error: error instanceof Error ? error.message : "Failed to create profile." };
+    }
+  });
+
+  // 列出当前用户的配置组合
+  app.get("/api/profiles", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const profiles = await listUserProfiles(user.id);
+    return { profiles };
+  });
+
+  // 获取单个配置组合
+  app.get("/api/profiles/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const profile = await getUserProfile(user.id, id);
+    if (!profile) { reply.code(404); return { error: "Profile not found." }; }
+    return { profile };
+  });
+
+  // 更新配置组合
+  app.patch("/api/profiles/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    try {
+      const profile = await updateProfile(user.id, id, request.body as Parameters<typeof updateProfile>[2]);
+      if (!profile) { reply.code(404); return { error: "Profile not found." }; }
+      return { profile };
+    } catch (error) {
+      reply.code(400);
+      return { error: error instanceof Error ? error.message : "Failed to update profile." };
+    }
+  });
+
+  // 删除配置组合
+  app.delete("/api/profiles/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const deleted = await deleteUserProfile(user.id, id);
+    if (!deleted) { reply.code(404); return { error: "Profile not found." }; }
+    return { ok: true };
+  });
+
+  // 配置市场：合并官方 catalog + 用户上传的配置组合
+  app.get("/api/catalog/all", async () => {
+    const [official, userUploaded] = await Promise.all([
+      listCatalogFromDatabase(),
+      listAllUserProfilesAsCatalog()
+    ]);
+    return { items: [...official, ...userUploaded] };
   });
 
   app.post("/api/diff", async (request) => {
