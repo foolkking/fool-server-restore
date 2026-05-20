@@ -1479,3 +1479,249 @@ button:disabled {
 .task-step.status-failed .task-step-label { color: #fca5a5; }
 .task-step.status-running .task-step-label { color: #93c5fd; }
 .task-step.status-skipped { opacity: 0.5; }
+
+/* ── 连接详情面板 ─────────────────────────────────────────── */
+
+.connection-chip-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.chip-expand {
+  color: #94a3b8;
+  font-size: 10px;
+  margin-left: 2px;
+}
+
+.conn-detail-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0 0 14px 14px;
+  border-top: 0;
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.conn-detail-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.conn-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.conn-detail-id {
+  color: #94a3b8;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.conn-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.conn-detail-fields {
+  display: grid;
+  gap: 6px;
+}
+
+.conn-field-row {
+  align-items: center;
+  display: flex;
+  font-size: 13px;
+  gap: 10px;
+}
+
+.conn-field-row span {
+  color: #64748b;
+  flex-shrink: 0;
+  min-width: 120px;
+}
+
+.conn-field-row code {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  color: #334155;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.conn-field-row.error code {
+  color: #b42318;
+}
+
+.conn-edit-form {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.conn-edit-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.conn-edit-form span {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.conn-edit-form input {
+  background: #f8fafc;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  font: inherit;
+  min-height: 38px;
+  outline: 0;
+  padding: 0 10px;
+}
+
+.conn-probe-summary {
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.conn-probe-summary .eyebrow {
+  color: #065f46;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.conn-probe-grid {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.conn-probe-grid span { color: #334155; }
+.conn-probe-grid strong { color: #065f46; }
+
+.conn-probe-software {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── 清单面板可操作行 ─────────────────────────────────────── */
+
+.inventory-item-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.inventory-item {
+  align-items: center;
+  border: 1px solid #eef0f2;
+  border-radius: 14px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 22px 32px minmax(0, 1fr) auto;
+  min-height: 82px;
+  padding: 14px;
+}
+
+.inventory-item.expanded {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.inventory-item-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.inv-action-btn {
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #475569;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  height: 32px;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.12s;
+  width: 32px;
+}
+
+.inv-action-btn:hover:not(:disabled) { background: #e2e8f0; }
+.inv-action-btn:disabled { cursor: not-allowed; opacity: 0.4; }
+.inv-action-btn.install:hover:not(:disabled) { background: #dbeafe; color: #1d4ed8; }
+.inv-action-btn.apply:hover:not(:disabled) { background: #fef3c7; color: #92400e; }
+
+.inventory-detail {
+  background: #f8fafc;
+  border: 1px solid #eef0f2;
+  border-radius: 0 0 14px 14px;
+  border-top: 0;
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.inv-detail-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.inv-detail-row {
+  align-items: baseline;
+  display: flex;
+  font-size: 13px;
+  gap: 10px;
+}
+
+.inv-detail-row > span:first-child {
+  color: #64748b;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.inv-detail-row code {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  color: #334155;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.inv-detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inv-task-result {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+}

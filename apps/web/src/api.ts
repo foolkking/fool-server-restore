@@ -415,6 +415,24 @@ export async function fetchConnections(token: string): Promise<ConnectionProfile
   return body.connections;
 }
 
+export async function deleteConnection(token: string, id: string): Promise<void> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow<{ ok: boolean }>(response, "Delete connection failed");
+}
+
+export async function updateConnection(token: string, id: string, input: { label?: string; agentUrl?: string }): Promise<ConnectionProfile> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const body = await readJsonOrThrow<{ connection: ConnectionProfile }>(response, "Update connection failed");
+  return body.connection;
+}
+
 // ── 用户配置组合 ──────────────────────────────────────────
 
 export async function fetchProfiles(token: string): Promise<UserProfile[]> {

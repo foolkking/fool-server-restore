@@ -28,6 +28,7 @@ import {
 import {
   connectServer,
   createProfile,
+  deleteConnection,
   deleteProfile,
   executeProfile,
   extractCombo,
@@ -44,6 +45,7 @@ import {
   reprobeConnection,
   runScan,
   streamTask,
+  updateConnection,
   updateProfile,
   uploadVmSnapshot,
   type AgentProbeResult,
@@ -309,6 +311,28 @@ function App() {
     }
   }
 
+  async function handleDeleteConnection(id: string) {
+    if (!authToken) return;
+    try {
+      await deleteConnection(authToken, id);
+      setConnections((prev) => prev.filter((c) => c.id !== id));
+      if (activeConnectionId === id) {
+        setActiveConnectionId(null);
+        setConnected(false);
+        setProbeResult(null);
+        setConnectionProfile(null);
+      }
+    } catch { /* 静默 */ }
+  }
+
+  async function handleUpdateConnection(id: string, input: { label?: string; agentUrl?: string }) {
+    if (!authToken) return;
+    try {
+      const updated = await updateConnection(authToken, id, input);
+      setConnections((prev) => prev.map((c) => c.id === id ? updated : c));
+    } catch { /* 静默 */ }
+  }
+
   function handleAuthSuccess(result: { token: string; user: AuthUser }) {
     setAuthToken(result.token);
     setAuthUser(result.user);
@@ -418,6 +442,9 @@ function App() {
               setUserProfiles((prev) => [profile, ...prev]);
             }}
             authUser={authUser}
+            authToken={authToken}
+            onDeleteConnection={handleDeleteConnection}
+            onUpdateConnection={handleUpdateConnection}
           />
         ) : null}
 
@@ -491,7 +518,10 @@ function MachinePage({
   onToggle,
   onScan,
   onUploadSnapshot,
-  authUser
+  authUser,
+  authToken,
+  onDeleteConnection,
+  onUpdateConnection
 }: {
   t: typeof text.zh;
   locale: Locale;
@@ -513,11 +543,14 @@ function MachinePage({
   onScan: () => void;
   onUploadSnapshot: (input: UploadSnapshotInput) => Promise<void>;
   authUser: AuthUser | null;
+  authToken: string;
+  onDeleteConnection: (id: string) => void;
+  onUpdateConnection: (id: string, input: { label?: string; agentUrl?: string }) => void;
 }) {
   const [fields, setFields] = useState<Record<string, string>>({ port: "22" });
   const [agentUrl, setAgentUrl] = useState("http://127.0.0.1:4001");
   const [showNewForm, setShowNewForm] = useState(connections.length === 0);
-
+  const [expandedConnId, setExpandedConnId] = useState<string | null>(null);
   // 硬件摘要：优先用 probeResult 真实数据，否则用静态占位
   const hardware = probeResult ? [
     { label: locale === "zh" ? "CPU 核心" : "CPU cores", value: `${probeResult.system.cpu.cores} cores · ${probeResult.system.cpu.model.slice(0, 30)}`, icon: Cpu },
@@ -594,28 +627,35 @@ function MachinePage({
           </div>
           <div className="connection-chips">
             {connections.map((conn) => (
-              <button
-                key={conn.id}
-                type="button"
-                className={`connection-chip ${conn.id === activeConnectionId ? "active" : ""} status-${conn.status}`}
-                onClick={() => onSelectConnection(conn.id)}
-                title={conn.sshError ?? conn.status}
-              >
-                <span className="chip-dot" style={{ background: statusColor[conn.status] ?? "#6b7280" }} />
-                <span>{conn.label}</span>
-                <span className="chip-method">{conn.method}</span>
-                <span className="chip-status" style={{ color: statusColor[conn.status] ?? "#6b7280" }}>
-                  {locale === "zh" ? statusLabel[conn.status]?.zh : statusLabel[conn.status]?.en}
-                </span>
-                {conn.id === activeConnectionId && conn.agentUrl ? (
-                  <button
-                    className="chip-reprobe"
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); onReprobe(conn.id); }}
-                    title={locale === "zh" ? "重新探测" : "Reprobe"}
-                  >↻</button>
+              <div key={conn.id} className="connection-chip-wrap">
+                <button
+                  type="button"
+                  className={`connection-chip ${conn.id === activeConnectionId ? "active" : ""} status-${conn.status}`}
+                  onClick={() => {
+                    onSelectConnection(conn.id);
+                    setExpandedConnId(expandedConnId === conn.id ? null : conn.id);
+                  }}
+                  title={conn.sshError ?? conn.status}
+                >
+                  <span className="chip-dot" style={{ background: statusColor[conn.status] ?? "#6b7280" }} />
+                  <span>{conn.label}</span>
+                  <span className="chip-method">{conn.method}</span>
+                  <span className="chip-status" style={{ color: statusColor[conn.status] ?? "#6b7280" }}>
+                    {locale === "zh" ? statusLabel[conn.status]?.zh : statusLabel[conn.status]?.en}
+                  </span>
+                  <span className="chip-expand">{expandedConnId === conn.id ? "▲" : "▼"}</span>
+                </button>
+
+                {expandedConnId === conn.id ? (
+                  <ConnectionDetailPanel
+                    conn={conn}
+                    locale={locale}
+                    onReprobe={() => onReprobe(conn.id)}
+                    onDelete={() => { onDeleteConnection(conn.id); setExpandedConnId(null); }}
+                    onUpdate={(input) => onUpdateConnection(conn.id, input)}
+                  />
                 ) : null}
-              </button>
+              </div>
             ))}
           </div>
         </section>
@@ -736,8 +776,28 @@ function MachinePage({
       </div>
 
       <section className={connected ? "two-panel-grid" : "two-panel-grid blurred"}>
-        <InventoryPanel title={t.software} rows={softwareRows} selected={selected} onToggle={onToggle} commandLabel={t.installCommand} />
-        <InventoryPanel title={t.configs} rows={configRows} selected={selected} onToggle={onToggle} commandLabel={t.packageAlias} />
+        <InventoryPanel
+          title={t.software}
+          rows={softwareRows}
+          selected={selected}
+          onToggle={onToggle}
+          commandLabel={t.installCommand}
+          locale={locale}
+          panelKind="software"
+          authToken={authToken}
+          activeConnectionId={activeConnectionId}
+        />
+        <InventoryPanel
+          title={t.configs}
+          rows={configRows}
+          selected={selected}
+          onToggle={onToggle}
+          commandLabel={t.packageAlias}
+          locale={locale}
+          panelKind="config"
+          authToken={authToken}
+          activeConnectionId={activeConnectionId}
+        />
       </section>
     </div>
   );
@@ -1561,19 +1621,165 @@ function ProfileEditModal({
   );
 }
 
+function ConnectionDetailPanel({
+  conn,
+  locale,
+  onReprobe,
+  onDelete,
+  onUpdate
+}: {
+  conn: ConnectionProfile;
+  locale: Locale;
+  onReprobe: () => void;
+  onDelete: () => void;
+  onUpdate: (input: { label?: string; agentUrl?: string }) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(conn.label);
+  const [agentUrl, setAgentUrl] = useState(conn.agentUrl ?? "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const fieldLabels: Record<string, string> = {
+    host: "Host", port: "Port", username: "Username",
+    password: locale === "zh" ? "密码（已脱敏）" : "Password (masked)",
+    privateKeyPath: locale === "zh" ? "私钥路径" : "Private key path",
+    passphrase: locale === "zh" ? "密钥密码（已脱敏）" : "Passphrase (masked)",
+    domain: "Domain", contextName: locale === "zh" ? "Context 名称" : "Context name"
+  };
+
+  const statusColor: Record<string, string> = {
+    probed: "#065f46", ssh_ok: "#1d4ed8", validated: "#6b7280", ssh_failed: "#b42318", unreachable: "#b42318"
+  };
+
+  return (
+    <div className="conn-detail-panel">
+      <div className="conn-detail-header">
+        <div className="conn-detail-meta">
+          <span className="conn-detail-id">{conn.id}</span>
+          <span style={{ color: statusColor[conn.status], fontWeight: 700, fontSize: 13 }}>{conn.status}</span>
+          <span style={{ color: "#64748b", fontSize: 13 }}>{new Date(conn.updatedAt).toLocaleString()}</span>
+        </div>
+        <div className="conn-detail-actions">
+          <button className="secondary-action" type="button" onClick={onReprobe} title={locale === "zh" ? "重新探测" : "Reprobe"}>↻ {locale === "zh" ? "重新探测" : "Reprobe"}</button>
+          <button className="secondary-action" type="button" onClick={() => setEditing((v) => !v)}><Edit3 aria-hidden />{locale === "zh" ? "编辑" : "Edit"}</button>
+          {confirmDelete ? (
+            <>
+              <button className="ghost-action" style={{ color: "#b42318", fontWeight: 700 }} type="button" onClick={onDelete}>{locale === "zh" ? "确认删除" : "Confirm delete"}</button>
+              <button className="ghost-action" type="button" onClick={() => setConfirmDelete(false)}>{locale === "zh" ? "取消" : "Cancel"}</button>
+            </>
+          ) : (
+            <button className="ghost-action" style={{ color: "#b42318" }} type="button" onClick={() => setConfirmDelete(true)}><X aria-hidden />{locale === "zh" ? "删除" : "Delete"}</button>
+          )}
+        </div>
+      </div>
+
+      {/* 连接字段展示 */}
+      <div className="conn-detail-fields">
+        {Object.entries(conn.fields).map(([key, value]) => (
+          <div className="conn-field-row" key={key}>
+            <span>{fieldLabels[key] ?? key}</span>
+            <code>{value}</code>
+          </div>
+        ))}
+        {conn.agentUrl ? (
+          <div className="conn-field-row">
+            <span>Agent URL</span>
+            <code>{conn.agentUrl}</code>
+          </div>
+        ) : null}
+        {conn.sshError ? (
+          <div className="conn-field-row error">
+            <span>{locale === "zh" ? "错误" : "Error"}</span>
+            <code>{conn.sshError}</code>
+          </div>
+        ) : null}
+      </div>
+
+      {/* 编辑表单 */}
+      {editing ? (
+        <div className="conn-edit-form">
+          <label>
+            <span>{locale === "zh" ? "标签" : "Label"}</span>
+            <input value={label} onChange={(e) => setLabel(e.target.value)} />
+          </label>
+          <label>
+            <span>Agent URL</span>
+            <input value={agentUrl} onChange={(e) => setAgentUrl(e.target.value)} placeholder="http://127.0.0.1:4001" />
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="primary-action" type="button" onClick={() => { onUpdate({ label, agentUrl }); setEditing(false); }}>
+              {locale === "zh" ? "保存" : "Save"}
+            </button>
+            <button className="ghost-action" type="button" onClick={() => setEditing(false)}>{locale === "zh" ? "取消" : "Cancel"}</button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* probeSnapshot 摘要 */}
+      {conn.probeSnapshot ? (
+        <div className="conn-probe-summary">
+          <p className="eyebrow">{locale === "zh" ? "最近采集数据" : "Last probe data"} · {new Date(conn.probeSnapshot.collectedAt).toLocaleString()}</p>
+          <div className="conn-probe-grid">
+            <span>{locale === "zh" ? "主机名" : "Hostname"}: <strong>{conn.probeSnapshot.system.hostname}</strong></span>
+            <span>{locale === "zh" ? "系统" : "OS"}: <strong>{conn.probeSnapshot.system.platform} {conn.probeSnapshot.system.arch}</strong></span>
+            <span>CPU: <strong>{conn.probeSnapshot.system.cpu.cores} cores</strong></span>
+            <span>{locale === "zh" ? "内存" : "RAM"}: <strong>{conn.probeSnapshot.system.memory.totalGb} GB</strong></span>
+          </div>
+          <div className="conn-probe-software">
+            {conn.probeSnapshot.software.map((s) => (
+              <span key={s.name} className="comp-type-badge software">{s.name} {s.version}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function InventoryPanel({
   title,
   rows,
   selected,
   onToggle,
-  commandLabel
+  commandLabel,
+  locale,
+  panelKind,
+  authToken,
+  activeConnectionId
 }: {
   title: string;
   rows: Array<{ id: string; icon: LucideIcon; name: string; value: string; command: string }>;
   selected: Set<string>;
   onToggle: (id: string) => void;
   commandLabel: string;
+  locale: Locale;
+  panelKind: "software" | "config";
+  authToken: string;
+  activeConnectionId: string | null;
 }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [executingId, setExecutingId] = useState<string | null>(null);
+  const [taskResult, setTaskResult] = useState<ExecutionTask | null>(null);
+
+  async function handleInstall(row: { id: string; name: string; command: string }, dryRun: boolean) {
+    if (!authToken || !activeConnectionId) return;
+    setExecutingId(row.id);
+    try {
+      const result = await executeProfile(authToken, activeConnectionId, row.id, dryRun);
+      const unsubscribe = streamTask(result.taskId, (task) => {
+        setTaskResult(task);
+        if (task.status === "succeeded" || task.status === "failed") {
+          unsubscribe();
+          setExecutingId(null);
+        }
+      });
+    } catch {
+      setExecutingId(null);
+    }
+  }
+
+  const canExecute = Boolean(authToken && activeConnectionId);
+
   return (
     <section className="panel-large">
       <div className="panel-heading">
@@ -1583,16 +1789,123 @@ function InventoryPanel({
       <div className="inventory-list">
         {rows.map((row) => {
           const Icon = row.icon;
+          const isExpanded = expandedId === row.id;
           return (
-            <label className="inventory-item detailed" key={row.id}>
-              <input checked={selected.has(row.id)} onChange={() => onToggle(row.id)} type="checkbox" />
-              <Icon aria-hidden />
-              <span>
-                <strong>{row.name}</strong>
-                <small>{row.value}</small>
-                <code>{commandLabel}: {row.command}</code>
-              </span>
-            </label>
+            <div key={row.id} className="inventory-item-wrap">
+              <div className={`inventory-item detailed ${isExpanded ? "expanded" : ""}`}>
+                <input checked={selected.has(row.id)} onChange={() => onToggle(row.id)} type="checkbox" />
+                <Icon aria-hidden />
+                <span>
+                  <strong>{row.name}</strong>
+                  <small>{row.value}</small>
+                  <code>{commandLabel}: {row.command}</code>
+                </span>
+                <div className="inventory-item-actions">
+                  <button
+                    className="inv-action-btn"
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : row.id)}
+                    title={locale === "zh" ? "查看详情" : "View details"}
+                  >
+                    {isExpanded ? "▲" : "▼"}
+                  </button>
+                  {panelKind === "software" ? (
+                    <button
+                      className="inv-action-btn install"
+                      type="button"
+                      disabled={!canExecute || executingId === row.id}
+                      title={!canExecute ? (locale === "zh" ? "请先选择已连接的虚拟机" : "Select a connected VM first") : undefined}
+                      onClick={() => void handleInstall(row, true)}
+                    >
+                      {executingId === row.id ? "⏳" : "⚡"}
+                    </button>
+                  ) : (
+                    <button
+                      className="inv-action-btn apply"
+                      type="button"
+                      disabled={!canExecute || executingId === row.id}
+                      title={!canExecute ? (locale === "zh" ? "请先选择已连接的虚拟机" : "Select a connected VM first") : undefined}
+                      onClick={() => void handleInstall(row, true)}
+                    >
+                      {executingId === row.id ? "⏳" : "🔧"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {isExpanded ? (
+                <div className="inventory-detail">
+                  <div className="inv-detail-grid">
+                    <div className="inv-detail-row">
+                      <span>{locale === "zh" ? "名称" : "Name"}</span>
+                      <strong>{row.name}</strong>
+                    </div>
+                    <div className="inv-detail-row">
+                      <span>{locale === "zh" ? "详情" : "Details"}</span>
+                      <span>{row.value}</span>
+                    </div>
+                    <div className="inv-detail-row">
+                      <span>{locale === "zh" ? "命令" : "Command"}</span>
+                      <code>{row.command}</code>
+                    </div>
+                  </div>
+                  {panelKind === "software" ? (
+                    <div className="inv-detail-actions">
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        disabled={!canExecute}
+                        onClick={() => void handleInstall(row, true)}
+                      >
+                        ⚡ {locale === "zh" ? "预览安装（dry-run）" : "Preview install (dry-run)"}
+                      </button>
+                      <button
+                        className="execute-action"
+                        type="button"
+                        disabled={!canExecute}
+                        onClick={() => void handleInstall(row, false)}
+                      >
+                        {locale === "zh" ? "立即安装" : "Install now"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="inv-detail-actions">
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        disabled={!canExecute}
+                        onClick={() => void handleInstall(row, true)}
+                      >
+                        🔧 {locale === "zh" ? "预览应用（dry-run）" : "Preview apply (dry-run)"}
+                      </button>
+                      <button
+                        className="execute-action"
+                        type="button"
+                        disabled={!canExecute}
+                        onClick={() => void handleInstall(row, false)}
+                      >
+                        {locale === "zh" ? "立即应用" : "Apply now"}
+                      </button>
+                    </div>
+                  )}
+                  {taskResult && executingId === null ? (
+                    <div className="inv-task-result">
+                      <p style={{ fontWeight: 700, color: taskResult.status === "succeeded" ? "#065f46" : "#b42318", fontSize: 13 }}>
+                        {taskResult.status === "succeeded" ? "✓" : "✗"} {taskResult.dryRun ? (locale === "zh" ? "预览完成" : "Dry-run complete") : (locale === "zh" ? "执行完成" : "Execution complete")}
+                      </p>
+                      {taskResult.steps.map((step) => (
+                        <div key={step.id} style={{ fontSize: 12, marginTop: 4 }}>
+                          <span style={{ color: step.status === "succeeded" ? "#065f46" : step.status === "failed" ? "#b42318" : "#6b7280" }}>
+                            {step.status === "succeeded" ? "✓" : step.status === "failed" ? "✗" : "○"} {step.label}
+                          </span>
+                          {step.stdout ? <pre style={{ margin: "2px 0 0 16px", fontSize: 11, color: "#334155", background: "#f8fafc", padding: "4px 8px", borderRadius: 6 }}>{step.stdout.slice(0, 200)}</pre> : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           );
         })}
       </div>

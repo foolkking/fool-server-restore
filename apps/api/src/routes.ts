@@ -10,7 +10,7 @@ import { createUserProfile, listUserProfiles, getUserProfile, updateUserProfile 
 import { buildInstallTask, buildSnapshotDeployTask, executeTask, getTask, subscribeTask } from "./executor.js";
 import { listCatalogFromDatabase, listMigrationStrategies, readCatalogGuide } from "./database.js";
 import { runReadinessChecks } from "./readiness.js";
-import { readRuntimeDatabase } from "./runtime-store.js";
+import { readRuntimeDatabase, updateRuntimeDatabase } from "./runtime-store.js";
 import { listSnapshots, persistSnapshot } from "./snapshot-store.js";
 import { probeAgent, pingAgent } from "./probe.js";
 
@@ -215,6 +215,39 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
     const connections = await listUserConnections(user.id);
     return { connections };
+  });
+
+  // 删除连接档案
+  app.delete("/api/connections/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const deleted = await updateRuntimeDatabase((db) => {
+      const index = db.connections.findIndex((c) => c.id === id && c.userId === user.id);
+      if (index === -1) return false;
+      db.connections.splice(index, 1);
+      return true;
+    });
+    if (!deleted) { reply.code(404); return { error: "Connection not found." }; }
+    return { ok: true };
+  });
+
+  // 更新连接档案（标签、agentUrl）
+  app.patch("/api/connections/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { label?: string; agentUrl?: string };
+    const updated = await updateRuntimeDatabase((db) => {
+      const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+      if (!conn) return null;
+      if (body.label?.trim()) conn.label = body.label.trim().slice(0, 100);
+      if (body.agentUrl !== undefined) conn.agentUrl = body.agentUrl.trim() || undefined;
+      conn.updatedAt = new Date().toISOString();
+      return conn;
+    });
+    if (!updated) { reply.code(404); return { error: "Connection not found." }; }
+    return { connection: updated };
   });
 
   // ── 用户配置组合 CRUD ──────────────────────────────────────
