@@ -7,6 +7,7 @@ import { listCurrentUser } from "./catalog.js";
 import { getConfig } from "./config.js";
 import { createConnection, reprobeConnection, listUserConnections } from "./connections.js";
 import { createUserProfile, listUserProfiles, getUserProfile, updateUserProfile as updateProfile, deleteUserProfile, listAllPublicProfilesAsCatalog, createVmSnapshot } from "./profiles.js";
+import { buildInstallTask, buildSnapshotDeployTask, executeTask, getTask, subscribeTask } from "./executor.js";
 import { listCatalogFromDatabase, listMigrationStrategies, readCatalogGuide } from "./database.js";
 import { runReadinessChecks } from "./readiness.js";
 import { readRuntimeDatabase } from "./runtime-store.js";
@@ -295,6 +296,117 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       listAllPublicProfilesAsCatalog()
     ]);
     return { items: [...official, ...userUploaded] };
+  });
+
+  // ── 任务执行 ──────────────────────────────────────────────
+
+  // 对已连接机器执行配置安装/应用（dry-run 或真实执行）
+  app.post("/api/execute", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+
+    const body = (request.body ?? {}) as { connectionId?: string; profileId?: string; dryRun?: boolean };
+    if (!body.connectionId || !body.profileId) {
+      reply.code(400);
+      return { error: "connectionId and profileId are required." };
+    }
+
+    const db = await readRuntimeDatabase();
+    const connection = db.connections.find((c) => c.id === body.connectionId && c.userId === user.id);
+    if (!connection) { reply.code(404); return { error: "Connection not found." }; }
+
+    const profile = db.userProfiles.find((p) => p.id === body.profileId);
+    if (!profile) { reply.code(404); return { error: "Profile not found." }; }
+
+    const dryRun = body.dryRun !== false; // 默认 dry-run
+
+    let task;
+    if (profile.kind === "vm-snapshot") {
+      task = buildSnapshotDeployTask(user.id, connection, profile, dryRun);
+    } else {
+      task = buildInstallTask(user.id, connection, profile, dryRun);
+    }
+
+    // 异步执行，立即返回 taskId
+    void executeTask(task, connection);
+    return { taskId: task.id, dryRun, steps: task.steps.map((s) => ({ id: s.id, label: s.label, command: s.command, status: s.status })) };
+  });
+
+  // 获取任务状态
+  app.get("/api/tasks/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const task = getTask(id);
+    if (!task || task.userId !== user.id) { reply.code(404); return { error: "Task not found." }; }
+    return { task };
+  });
+
+  // SSE：实时推送任务日志
+  app.get("/api/tasks/:id/stream", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return; }
+    const { id } = request.params as { id: string };
+    const task = getTask(id);
+    if (!task || task.userId !== user.id) { reply.code(404); return; }
+
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "Access-Control-Allow-Origin": "*"
+    });
+
+    const send = (t: typeof task) => {
+      reply.raw.write(`data: ${JSON.stringify(t)}\n\n`);
+    };
+
+    // 立即发送当前状态
+    send(task);
+
+    const unsubscribe = subscribeTask(id, send);
+    request.raw.on("close", unsubscribe);
+  });
+
+  // 从当前连接的 probeSnapshot 提取热门组合草稿
+  app.get("/api/connections/:id/extract-combo", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    if (!conn.probeSnapshot) { reply.code(400); return { error: "No probe data. Please connect first." }; }
+
+    const snap = conn.probeSnapshot;
+    const components = [
+      ...snap.software.map((s) => ({
+        type: "software" as const,
+        label: `${s.name} ${s.version}`,
+        labelEn: `${s.name} ${s.version}`,
+        detail: s.source
+      })),
+      ...snap.configChecklist.map((c) => ({
+        type: "system-config" as const,
+        label: c.label,
+        labelEn: c.label,
+        detail: c.category
+      }))
+    ];
+
+    return {
+      draft: {
+        kind: "combo",
+        name: `${snap.system.hostname} 配置组合`,
+        nameEn: `${snap.system.hostname} combo`,
+        category: "runtime",
+        summary: `从 ${snap.system.hostname} 提取的配置组合，采集于 ${snap.collectedAt.slice(0, 10)}`,
+        summaryEn: `Combo extracted from ${snap.system.hostname} on ${snap.collectedAt.slice(0, 10)}`,
+        sensitivity: "review",
+        components,
+        installMode: "skip-existing"
+      }
+    };
   });
 
   app.post("/api/diff", async (request) => {

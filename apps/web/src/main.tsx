@@ -29,6 +29,8 @@ import {
   connectServer,
   createProfile,
   deleteProfile,
+  executeProfile,
+  extractCombo,
   fetchCatalog,
   fetchCatalogGuide,
   fetchConnections,
@@ -41,6 +43,7 @@ import {
   registerAccount,
   reprobeConnection,
   runScan,
+  streamTask,
   updateProfile,
   uploadVmSnapshot,
   type AgentProbeResult,
@@ -51,6 +54,7 @@ import {
   type ConnectionProfile,
   type CreateProfileInput,
   type CurrentUser,
+  type ExecutionTask,
   type MigrationStrategy,
   type ProfileComponent,
   type ScanResponse,
@@ -207,6 +211,7 @@ function App() {
   const [probing, setProbing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set(["software-node", "config-aliases"]));
   const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
+  const [activeTask, setActiveTask] = useState<ExecutionTask | null>(null);
   const t = text[locale];
 
   // 当前激活的连接档案（含 probeSnapshot）
@@ -426,6 +431,10 @@ function App() {
             onKind={setCatalogKind}
             onOpenGuide={async (id) => setGuide(await fetchCatalogGuide(id))}
             onToggle={toggleSelected}
+            authToken={authToken}
+            activeConnectionId={activeConnectionId}
+            activeTask={activeTask}
+            onTaskUpdate={setActiveTask}
           />
         ) : null}
 
@@ -452,6 +461,7 @@ function App() {
               setUserProfiles([]);
             }}
             onProfilesChange={(profiles) => setUserProfiles(profiles)}
+            activeConnectionId={activeConnectionId}
           />
         ) : null}
 
@@ -836,7 +846,11 @@ function MarketPage({
   kind,
   onKind,
   onOpenGuide,
-  onToggle
+  onToggle,
+  authToken,
+  activeConnectionId,
+  activeTask,
+  onTaskUpdate
 }: {
   t: typeof text.zh;
   locale: Locale;
@@ -846,12 +860,47 @@ function MarketPage({
   onKind: (kind: "software" | "combo") => void;
   onOpenGuide: (id: string) => void;
   onToggle: (id: string) => void;
+  authToken: string;
+  activeConnectionId: string | null;
+  activeTask: ExecutionTask | null;
+  onTaskUpdate: (task: ExecutionTask) => void;
 }) {
+  const [executingId, setExecutingId] = useState<string | null>(null);
+  const [taskError, setTaskError] = useState("");
+
+  async function handleExecute(itemId: string, dryRun: boolean) {
+    if (!authToken || !activeConnectionId) {
+      setTaskError(locale === "zh" ? "请先登录并选择已连接的虚拟机" : "Login and select a connected VM first");
+      return;
+    }
+    setExecutingId(itemId);
+    setTaskError("");
+    try {
+      const result = await executeProfile(authToken, activeConnectionId, itemId, dryRun);
+      const unsubscribe = streamTask(result.taskId, (task) => {
+        onTaskUpdate(task);
+        if (task.status === "succeeded" || task.status === "failed") {
+          unsubscribe();
+          setExecutingId(null);
+        }
+      });
+    } catch (err) {
+      setTaskError(err instanceof Error ? err.message : "Execution failed");
+      setExecutingId(null);
+    }
+  }
   const componentLabels = {
     software: locale === "zh" ? "软件" : "Software",
     "system-command": locale === "zh" ? "命令" : "Command",
     "system-config": locale === "zh" ? "配置" : "Config"
   };
+
+  const canExecute = Boolean(authToken && activeConnectionId);
+  const executeTooltip = !authToken
+    ? (locale === "zh" ? "请先登录" : "Login required")
+    : !activeConnectionId
+    ? (locale === "zh" ? "请先选择已连接的虚拟机" : "Select a connected VM first")
+    : undefined;
 
   return (
     <div className="store-content">
@@ -867,10 +916,18 @@ function MarketPage({
         </div>
       </div>
 
+      {taskError ? <p className="connection-error" style={{ marginBottom: 16 }}>{taskError}</p> : null}
+
+      {/* 任务执行日志面板 */}
+      {activeTask ? (
+        <TaskLogPanel task={activeTask} locale={locale} onClose={() => onTaskUpdate({ ...activeTask, status: "cancelled" })} />
+      ) : null}
+
       <div className="catalog-grid">
         {items.map((item) => {
           const Icon = categoryIcons[item.category];
           const isSelected = selected.has(item.id);
+          const isExecuting = executingId === item.id;
           return (
             <article className="catalog-card" key={item.id}>
               <div className={`catalog-art ${item.imageTone}`}>
@@ -888,17 +945,81 @@ function MarketPage({
                   <span>{item.sensitivity}</span>
                 </div>
                 <ComponentPreview components={getCatalogComponents(item)} labels={componentLabels} locale={locale} compact={item.kind === "software"} />
+                <div className="catalog-actions">
                   <button className={isSelected ? "selected-action" : "primary-action"} type="button" onClick={() => onToggle(item.id)}>
-                  <CheckCircle2 aria-hidden />
-                  {isSelected ? t.selected : t.addToVm}
+                    <CheckCircle2 aria-hidden />
+                    {isSelected ? t.selected : t.addToVm}
+                  </button>
+                  <button
+                    className="execute-action"
+                    type="button"
+                    disabled={!canExecute || isExecuting}
+                    title={executeTooltip}
+                    onClick={() => void handleExecute(item.id, true)}
+                  >
+                    {isExecuting ? "⏳" : item.kind === "software" ? "⚡" : "🚀"}
+                    {isExecuting
+                      ? (locale === "zh" ? "执行中…" : "Running…")
+                      : item.kind === "software"
+                      ? (locale === "zh" ? "安装" : "Install")
+                      : (locale === "zh" ? "应用" : "Apply")}
                   </button>
                   <button className="secondary-action" type="button" onClick={() => onOpenGuide(item.id)}>
                     MD
                   </button>
                 </div>
+              </div>
             </article>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function TaskLogPanel({ task, locale, onClose }: { task: ExecutionTask; locale: Locale; onClose: () => void }) {
+  const statusColor: Record<string, string> = {
+    succeeded: "#065f46", failed: "#b42318", running: "#1d4ed8", pending: "#6b7280", cancelled: "#6b7280", skipped: "#92400e"
+  };
+  const statusLabel: Record<string, { zh: string; en: string }> = {
+    succeeded: { zh: "成功", en: "OK" },
+    failed: { zh: "失败", en: "Failed" },
+    running: { zh: "执行中", en: "Running" },
+    pending: { zh: "等待", en: "Pending" },
+    skipped: { zh: "跳过", en: "Skipped" },
+    cancelled: { zh: "已取消", en: "Cancelled" }
+  };
+
+  return (
+    <div className="task-log-panel">
+      <div className="task-log-header">
+        <div>
+          <p className="eyebrow">{task.dryRun ? (locale === "zh" ? "预览模式（dry-run）" : "Dry-run preview") : (locale === "zh" ? "正在执行" : "Executing")}</p>
+          <h3 style={{ margin: 0, fontSize: 18 }}>{locale === "zh" ? "任务执行日志" : "Task execution log"}</h3>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: statusColor[task.status], fontWeight: 700, fontSize: 14 }}>
+            {locale === "zh" ? statusLabel[task.status]?.zh : statusLabel[task.status]?.en}
+          </span>
+          <button className="ghost-action icon-action" type="button" onClick={onClose} aria-label="Close"><X aria-hidden /></button>
+        </div>
+      </div>
+      {task.error ? <p className="connection-error" style={{ margin: "8px 0" }}>{task.error}</p> : null}
+      <div className="task-steps">
+        {task.steps.map((step) => (
+          <div key={step.id} className={`task-step status-${step.status}`}>
+            <div className="task-step-header">
+              <span className="task-step-status" style={{ color: statusColor[step.status] ?? "#6b7280" }}>
+                {step.status === "running" ? "⏳" : step.status === "succeeded" ? "✓" : step.status === "failed" ? "✗" : step.status === "skipped" ? "—" : "○"}
+              </span>
+              <span className="task-step-label">{step.label}</span>
+              {step.durationMs > 0 ? <span className="task-step-duration">{step.durationMs}ms</span> : null}
+            </div>
+            <code className="task-step-command">{step.command}</code>
+            {step.stdout ? <pre className="task-step-output">{step.stdout.slice(0, 500)}</pre> : null}
+            {step.stderr ? <pre className="task-step-output stderr">{step.stderr.slice(0, 200)}</pre> : null}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -976,7 +1097,8 @@ function MePage({
   onRegister,
   onUpdateProfile,
   onLogout,
-  onProfilesChange
+  onProfilesChange,
+  activeConnectionId
 }: {
   t: typeof text.zh;
   locale: Locale;
@@ -990,6 +1112,7 @@ function MePage({
   onUpdateProfile: (input: { name: string; defaultSshUser: string }) => Promise<void>;
   onLogout: () => void;
   onProfilesChange: (profiles: UserProfile[]) => void;
+  activeConnectionId: string | null;
 }) {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
@@ -1164,6 +1287,20 @@ function MePage({
               <UploadCloud aria-hidden />
               {showUploadForm ? (locale === "zh" ? "收起" : "Collapse") : (locale === "zh" ? "上传配置组合" : "Upload profile")}
             </button>
+            {activeConnectionId && authToken ? (
+              <button className="secondary-action" type="button" onClick={async () => {
+                try {
+                  const draft = await extractCombo(authToken, activeConnectionId);
+                  setUploadForm((prev) => ({ ...prev, ...draft, kind: "combo" } as CreateProfileInput));
+                  setShowUploadForm(true);
+                  setEditingProfileId(null);
+                } catch (err) {
+                  // 静默处理
+                }
+              }}>
+                {locale === "zh" ? "从当前配置提取" : "Extract from current VM"}
+              </button>
+            ) : null}
           </div>
 
           {/* 上传/编辑表单 */}

@@ -1343,3 +1343,139 @@ button:disabled {
 .connection-chip.status-probed {
   border-color: #6ee7b7;
 }
+
+/* ── 配置市场执行按钮 ─────────────────────────────────────── */
+
+.catalog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.catalog-actions > button {
+  flex: 1;
+  min-width: 0;
+}
+
+.execute-action {
+  align-items: center;
+  background: #1e3a5f;
+  border: 0;
+  border-radius: 12px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 14px;
+  transition: background 0.15s;
+}
+
+.execute-action:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.execute-action:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+/* ── 任务执行日志面板 ─────────────────────────────────────── */
+
+.task-log-panel {
+  background: #0f172a;
+  border-radius: 16px;
+  color: #e2e8f0;
+  margin-bottom: 24px;
+  padding: 20px;
+}
+
+.task-log-header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.task-log-header .eyebrow {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.task-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.task-step {
+  background: #1e293b;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.task-step-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.task-step-status {
+  flex-shrink: 0;
+  font-size: 16px;
+  width: 20px;
+}
+
+.task-step-label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.task-step-duration {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.task-step-command {
+  background: #0f172a;
+  border-radius: 6px;
+  color: #7dd3fc;
+  display: block;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  margin-bottom: 6px;
+  overflow: hidden;
+  padding: 6px 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-step-output {
+  background: #0f172a;
+  border-radius: 6px;
+  color: #a3e635;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  margin: 4px 0 0;
+  max-height: 120px;
+  overflow: auto;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+
+.task-step-output.stderr {
+  color: #fca5a5;
+}
+
+.task-step.status-succeeded .task-step-label { color: #86efac; }
+.task-step.status-failed .task-step-label { color: #fca5a5; }
+.task-step.status-running .task-step-label { color: #93c5fd; }
+.task-step.status-skipped { opacity: 0.5; }

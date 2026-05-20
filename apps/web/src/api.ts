@@ -462,3 +462,64 @@ export async function uploadVmSnapshot(token: string, connectionId: string, inpu
   const body = await readJsonOrThrow<{ profile: UserProfile }>(response, "Upload snapshot failed");
   return body.profile;
 }
+
+// ── 任务执行 ──────────────────────────────────────────────
+
+export interface TaskStep {
+  id: string;
+  label: string;
+  command: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  status: "pending" | "running" | "succeeded" | "failed" | "skipped";
+  durationMs: number;
+}
+
+export interface ExecutionTask {
+  id: string;
+  userId: string;
+  connectionId: string;
+  profileId: string;
+  kind: "install-software" | "apply-combo" | "deploy-snapshot";
+  status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+  steps: TaskStep[];
+  dryRun: boolean;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+
+export async function executeProfile(token: string, connectionId: string, profileId: string, dryRun = true): Promise<{ taskId: string; steps: TaskStep[] }> {
+  const response = await fetch("/api/execute", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ connectionId, profileId, dryRun })
+  });
+  return readJsonOrThrow<{ taskId: string; steps: TaskStep[] }>(response, "Execute failed");
+}
+
+export async function fetchTask(token: string, taskId: string): Promise<ExecutionTask> {
+  const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ task: ExecutionTask }>(response, "Fetch task failed");
+  return body.task;
+}
+
+export function streamTask(taskId: string, onUpdate: (task: ExecutionTask) => void): () => void {
+  const es = new EventSource(`/api/tasks/${encodeURIComponent(taskId)}/stream`);
+  es.onmessage = (event) => {
+    try { onUpdate(JSON.parse(event.data as string) as ExecutionTask); } catch { /* ignore */ }
+  };
+  return () => es.close();
+}
+
+export async function extractCombo(token: string, connectionId: string): Promise<Partial<CreateProfileInput>> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/extract-combo`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ draft: Partial<CreateProfileInput> }>(response, "Extract combo failed");
+  return body.draft;
+}
