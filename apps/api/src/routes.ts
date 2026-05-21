@@ -507,6 +507,14 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     return { task };
   });
 
+  // Queue snapshot — admin only (for monitoring concurrency)
+  app.get("/api/admin/queues", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { getQueueSnapshot } = await import("./task-queue.js");
+    return { queues: getQueueSnapshot() };
+  });
+
   // (SSE stream moved to bottom with query token auth support)
 
   // 从当前连接的 probeSnapshot 提取热门组合草稿

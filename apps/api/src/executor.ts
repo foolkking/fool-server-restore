@@ -9,6 +9,7 @@ import { decryptStoredFields } from "./connections.js";
 import { readUserKey } from "./key-store.js";
 import { executePlaybook, executeBatchPlaybooks, loadPlaybookFromCatalog, hasPlaybook, parsePlaybook, type BatchItemProgress, type BatchRunOptions } from "./engine/index.js";
 import type { TaskExecutionLog } from "./engine/types.js";
+import { enqueueTask, cancelQueuedTask, getQueuePosition, isConnectionBusy } from "./task-queue.js";
 
 // ── 任务数据结构 ──────────────────────────────────────────
 
@@ -38,7 +39,9 @@ export interface ExecutionTask {
   connectionId: string;
   profileId: string;
   kind: "install-software" | "apply-combo" | "deploy-snapshot" | "batch-install";
-  status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+  status: "queued" | "pending" | "running" | "succeeded" | "failed" | "cancelled";
+  /** 排队中时，前面还有几个任务（0 = 马上轮到） */
+  queuePosition?: number;
   steps: TaskStep[];
   items?: BatchItem[];
   dryRun: boolean;
@@ -86,60 +89,78 @@ export async function executeBatchCatalogTask(
 ): Promise<ExecutionTask> {
   if (!taskId) taskId = registerBatchTask(userId, connection.id, items, dryRun);
   const task = taskStore.get(taskId)!;
-  task.status = "running";
-  task.startedAt = new Date().toISOString();
-  notifySubscribers(task.id, task);
 
-  try {
-    await executeBatchPlaybooks(items, connection, {
-      dryRun,
-      isCancelled: () => cancelFlags.get(task.id) === true,
-      onItemProgress: (progress: BatchItemProgress) => {
-        if (!task.items) return;
-        const slot = task.items[progress.itemIndex];
-        if (slot) { slot.status = progress.status; slot.error = progress.error; }
-        notifySubscribers(task.id, task);
-      },
-      onTaskProgress: (itemIndex, log) => {
-        const existing = task.steps.find((s) => s.itemIndex === itemIndex && s.label === log.taskName);
-        if (existing) {
-          existing.status = mapStatus(log.status);
-          existing.stdout = log.result?.stdout || log.result?.msg || "";
-          existing.stderr = log.result?.stderr ?? "";
-          existing.durationMs = log.durationMs ?? 0;
-          existing.exitCode = log.result?.failed ? 1 : 0;
-        } else {
-          task.steps.push({
-            id: createId("step"),
-            label: log.taskName,
-            command: log.command || log.moduleName,
-            stdout: log.result?.stdout || log.result?.msg || "",
-            stderr: log.result?.stderr ?? "",
-            exitCode: log.result?.failed ? 1 : 0,
-            status: mapStatus(log.status),
-            durationMs: log.durationMs ?? 0,
-            itemIndex
-          });
-        }
-        notifySubscribers(task.id, task);
+  // Enqueue (per-connection FIFO). If another task is already running on this
+  // connection, this one will sit as "queued" until its turn.
+  const positionAhead = enqueueTask({
+    taskId: task.id,
+    userId,
+    connectionId: connection.id,
+    enqueuedAt: new Date().toISOString(),
+    onStart: () => {
+      task.status = "running";
+      task.queuePosition = undefined;
+      task.startedAt = new Date().toISOString();
+      notifySubscribers(task.id, task);
+    },
+    run: async () => {
+      try {
+        await executeBatchPlaybooks(items, connection, {
+          dryRun,
+          isCancelled: () => cancelFlags.get(task.id) === true,
+          onItemProgress: (progress: BatchItemProgress) => {
+            if (!task.items) return;
+            const slot = task.items[progress.itemIndex];
+            if (slot) { slot.status = progress.status; slot.error = progress.error; }
+            notifySubscribers(task.id, task);
+          },
+          onTaskProgress: (itemIndex, log) => {
+            const existing = task.steps.find((s) => s.itemIndex === itemIndex && s.label === log.taskName);
+            if (existing) {
+              existing.status = mapStatus(log.status);
+              existing.stdout = log.result?.stdout || log.result?.msg || "";
+              existing.stderr = log.result?.stderr ?? "";
+              existing.durationMs = log.durationMs ?? 0;
+              existing.exitCode = log.result?.failed ? 1 : 0;
+            } else {
+              task.steps.push({
+                id: createId("step"),
+                label: log.taskName,
+                command: log.command || log.moduleName,
+                stdout: log.result?.stdout || log.result?.msg || "",
+                stderr: log.result?.stderr ?? "",
+                exitCode: log.result?.failed ? 1 : 0,
+                status: mapStatus(log.status),
+                durationMs: log.durationMs ?? 0,
+                itemIndex
+              });
+            }
+            notifySubscribers(task.id, task);
+          }
+        });
+
+        const failed = task.items?.filter((i) => i.status === "failed").length ?? 0;
+        task.status = cancelFlags.get(task.id) ? "cancelled" : failed > 0 ? "failed" : "succeeded";
+        if (failed > 0) task.error = `${failed} of ${task.items?.length ?? 0} items failed`;
+      } catch (err) {
+        task.status = "failed";
+        task.error = err instanceof Error ? err.message : "Unknown error";
+      } finally {
+        cancelFlags.delete(task.id);
       }
-    });
 
-    const failed = task.items?.filter((i) => i.status === "failed").length ?? 0;
-    task.status = cancelFlags.get(task.id) ? "cancelled" : failed > 0 ? "failed" : "succeeded";
-    if (failed > 0) task.error = `${failed} of ${task.items?.length ?? 0} items failed`;
-  } catch (err) {
-    task.status = "failed";
-    task.error = err instanceof Error ? err.message : "Unknown error";
-  } finally {
-    cancelFlags.delete(task.id);
+      task.completedAt = new Date().toISOString();
+      notifySubscribers(task.id, task);
+      void persistTaskToHistory(task);
+    }
+  });
+
+  if (positionAhead > 0) {
+    task.status = "queued";
+    task.queuePosition = positionAhead;
+    notifySubscribers(task.id, task);
   }
 
-  task.completedAt = new Date().toISOString();
-  notifySubscribers(task.id, task);
-
-  // Persist to task history
-  void persistTaskToHistory(task);
   return task;
 }
 
@@ -164,52 +185,84 @@ export async function executePlaybookTask(
 ): Promise<ExecutionTask> {
   if (!taskId) taskId = registerBatchTask(userId, connection.id, [{ catalogId: "playbook", displayName: "Playbook" }], dryRun);
   const task = taskStore.get(taskId)!;
-  task.status = "running";
-  task.startedAt = new Date().toISOString();
-  notifySubscribers(task.id, task);
 
-  try {
-    const result = await executePlaybook(yamlText, connection, {
-      dryRun,
-      onProgress: (log) => {
-        const existing = task.steps.find((s) => s.label === log.taskName);
-        if (existing) {
-          existing.status = mapStatus(log.status);
-          existing.stdout = log.result?.stdout || log.result?.msg || "";
-          existing.stderr = log.result?.stderr ?? "";
-          existing.durationMs = log.durationMs ?? 0;
-        } else {
-          task.steps.push({
-            id: createId("step"),
-            label: log.taskName,
-            command: log.command || log.moduleName,
-            stdout: log.result?.stdout || log.result?.msg || "",
-            stderr: log.result?.stderr ?? "",
-            exitCode: log.result?.failed ? 1 : 0,
-            status: mapStatus(log.status),
-            durationMs: log.durationMs ?? 0,
-            itemIndex: 0
-          });
-        }
-        notifySubscribers(task.id, task);
+  const positionAhead = enqueueTask({
+    taskId: task.id,
+    userId,
+    connectionId: connection.id,
+    enqueuedAt: new Date().toISOString(),
+    onStart: () => {
+      task.status = "running";
+      task.queuePosition = undefined;
+      task.startedAt = new Date().toISOString();
+      notifySubscribers(task.id, task);
+    },
+    run: async () => {
+      try {
+        const result = await executePlaybook(yamlText, connection, {
+          dryRun,
+          onProgress: (log) => {
+            const existing = task.steps.find((s) => s.label === log.taskName);
+            if (existing) {
+              existing.status = mapStatus(log.status);
+              existing.stdout = log.result?.stdout || log.result?.msg || "";
+              existing.stderr = log.result?.stderr ?? "";
+              existing.durationMs = log.durationMs ?? 0;
+            } else {
+              task.steps.push({
+                id: createId("step"),
+                label: log.taskName,
+                command: log.command || log.moduleName,
+                stdout: log.result?.stdout || log.result?.msg || "",
+                stderr: log.result?.stderr ?? "",
+                exitCode: log.result?.failed ? 1 : 0,
+                status: mapStatus(log.status),
+                durationMs: log.durationMs ?? 0,
+                itemIndex: 0
+              });
+            }
+            notifySubscribers(task.id, task);
+          }
+        });
+        task.status = result.ok ? "succeeded" : "failed";
+        if (!result.ok) task.error = result.error;
+        if (task.items?.[0]) { task.items[0].status = result.ok ? "succeeded" : "failed"; task.items[0].error = result.error; }
+      } catch (err) {
+        task.status = "failed";
+        task.error = err instanceof Error ? err.message : "Unknown error";
+        if (task.items?.[0]) { task.items[0].status = "failed"; task.items[0].error = task.error; }
       }
-    });
-    task.status = result.ok ? "succeeded" : "failed";
-    if (!result.ok) task.error = result.error;
-    if (task.items?.[0]) { task.items[0].status = result.ok ? "succeeded" : "failed"; task.items[0].error = result.error; }
-  } catch (err) {
-    task.status = "failed";
-    task.error = err instanceof Error ? err.message : "Unknown error";
-    if (task.items?.[0]) { task.items[0].status = "failed"; task.items[0].error = task.error; }
+
+      task.completedAt = new Date().toISOString();
+      notifySubscribers(task.id, task);
+      void persistTaskToHistory(task);
+    }
+  });
+
+  if (positionAhead > 0) {
+    task.status = "queued";
+    task.queuePosition = positionAhead;
+    notifySubscribers(task.id, task);
   }
 
-  task.completedAt = new Date().toISOString();
-  notifySubscribers(task.id, task);
-  void persistTaskToHistory(task);
   return task;
 }
 
-export function cancelTask(taskId: string) { cancelFlags.set(taskId, true); }
+export function cancelTask(taskId: string) {
+  const task = taskStore.get(taskId);
+  if (task && task.status === "queued") {
+    // Remove from queue without ever running
+    if (cancelQueuedTask(task.connectionId, taskId)) {
+      task.status = "cancelled";
+      task.completedAt = new Date().toISOString();
+      notifySubscribers(taskId, task);
+      void persistTaskToHistory(task);
+      return;
+    }
+  }
+  // Otherwise let the running task observe the flag
+  cancelFlags.set(taskId, true);
+}
 export function getTask(taskId: string): ExecutionTask | undefined { return taskStore.get(taskId); }
 
 export function subscribeTask(taskId: string, cb: (task: ExecutionTask) => void): () => void {

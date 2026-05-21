@@ -44,16 +44,21 @@ export function TerminalPanel({
   }, [terminalLogs.length, activeTask?.steps?.length, expanded]);
 
   const statusIcon: Record<string, string> = {
-    succeeded: "✓", failed: "✗", running: "⏳", pending: "○", skipped: "—", cancelled: "✕"
+    succeeded: "✓", failed: "✗", running: "⏳", pending: "○", skipped: "—", cancelled: "✕", queued: "⌛"
   };
   const statusColor: Record<string, string> = {
-    succeeded: "#34d399", failed: "#f87171", running: "#60a5fa", pending: "#64748b", skipped: "#fbbf24", cancelled: "#94a3b8"
+    succeeded: "#34d399", failed: "#f87171", running: "#60a5fa", pending: "#64748b", skipped: "#fbbf24", cancelled: "#94a3b8", queued: "#a78bfa"
   };
 
   // Header text
   let headerText: string;
   if (activeTask) {
-    if (activeTask.kind === "batch-install" && activeTask.items) {
+    if (activeTask.status === "queued") {
+      const ahead = activeTask.queuePosition ?? 0;
+      headerText = locale === "zh"
+        ? `任务排队中 · 前面还有 ${ahead} 个任务`
+        : `Task queued · ${ahead} ahead`;
+    } else if (activeTask.kind === "batch-install" && activeTask.items) {
       const done = activeTask.items.filter((it) => it.status === "succeeded" || it.status === "failed" || it.status === "skipped").length;
       const total = activeTask.items.length;
       const statusStr = locale === "zh"

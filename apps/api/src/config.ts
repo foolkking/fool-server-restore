@@ -13,6 +13,10 @@ export interface AppConfig {
   serveWeb: boolean;
   webDistDir: string;
   sessionTtlHours: number;
+  /** Emails (lowercase) that should automatically receive admin role on registration */
+  adminEmails: string[];
+  /** Names (lowercase) that should automatically receive admin role on registration */
+  adminNames: string[];
 }
 
 export function getConfig(): AppConfig {
@@ -29,8 +33,16 @@ export function getConfig(): AppConfig {
     snapshotDir: resolveConfiguredPath(process.env.FOOL_SNAPSHOT_DIR, path.join(dataDir, "snapshots")),
     serveWeb: isEnabled(process.env.SERVE_WEB),
     webDistDir: resolveConfiguredPath(process.env.WEB_DIST_DIR, "apps/web/dist"),
-    sessionTtlHours: toPositiveNumber(process.env.SESSION_TTL_HOURS, 24)
+    sessionTtlHours: toPositiveNumber(process.env.SESSION_TTL_HOURS, 24),
+    adminEmails: parseList(process.env.ENVFORGE_ADMIN_EMAILS),
+    // Default: any user named "fool" (case-insensitive) is an admin.
+    adminNames: parseList(process.env.ENVFORGE_ADMIN_NAMES ?? "fool")
   };
+}
+
+function parseList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
 
 function loadEnvFile(): void {

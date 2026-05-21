@@ -573,7 +573,14 @@ export function MePage({
           <div className="readonly-profile">
             <InfoPair label={locale === "zh" ? "昵称" : "Display name"} value={displayName} />
             <InfoPair label={locale === "zh" ? "邮箱" : "Email"} value={authUser?.email ?? ""} />
-            <InfoPair label={locale === "zh" ? "角色" : "Role"} value={authUser?.role ?? "user"} />
+            <InfoPair
+              label={locale === "zh" ? "角色" : "Role"}
+              value={
+                authUser?.role === "admin"
+                  ? (locale === "zh" ? "🛡️ 系统管理员" : "🛡️ Admin")
+                  : (locale === "zh" ? "普通用户" : "User")
+              }
+            />
             <InfoPair label={locale === "zh" ? "资料可见性" : "Profile visibility"} value={locale === "zh" ? "仅自己可见" : "Private"} />
           </div>
         </section>

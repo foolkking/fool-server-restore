@@ -540,7 +540,9 @@ export interface ExecutionTask {
   connectionId: string;
   profileId: string;
   kind: "install-software" | "apply-combo" | "deploy-snapshot" | "batch-install";
-  status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+  status: "queued" | "pending" | "running" | "succeeded" | "failed" | "cancelled";
+  /** Number of tasks ahead of this one in the per-connection queue. Only set when status="queued". */
+  queuePosition?: number;
   steps: TaskStep[];
   /** 仅 batch-install 任务才有 */
   items?: BatchItem[];
