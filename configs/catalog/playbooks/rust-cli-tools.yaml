@@ -1,0 +1,22 @@
+# Playbook: 现代 Rust CLI 工具
+name: Install modern Rust-based CLI tools
+hosts: all
+
+tasks:
+  - name: Install via apt (where available)
+    module: package
+    args:
+      name:
+        - bat
+        - fd-find
+        - ripgrep
+        - exa
+        - zoxide
+        - fzf
+        - tldr
+      state: present
+
+  - name: Verify tools
+    module: shell
+    args:
+      cmd: "bat --version && rg --version && fd --version | head -1"

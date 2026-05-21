@@ -1,0 +1,27 @@
+# Playbook: SonarQube 代码质量
+name: Install SonarQube via Docker
+hosts: all
+
+tasks:
+  - name: Ensure Docker is installed
+    module: shell
+    args:
+      cmd: "command -v docker || (echo 'Docker required' && exit 1)"
+
+  - name: Increase vm.max_map_count for SonarQube
+    module: lineinfile
+    args:
+      path: /etc/sysctl.conf
+      line: "vm.max_map_count=524288"
+      create: true
+
+  - name: Apply sysctl
+    module: shell
+    args:
+      cmd: "sudo sysctl -w vm.max_map_count=524288"
+
+  - name: Run SonarQube container
+    module: shell
+    args:
+      cmd: "sudo docker run -d --name sonarqube -p 9000:9000 -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true sonarqube:lts-community"
+      creates: /var/lib/docker/containers/sonarqube

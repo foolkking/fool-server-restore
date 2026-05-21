@@ -1,0 +1,34 @@
+# Playbook: Jenkins CI/CD
+name: Install Jenkins CI/CD server
+hosts: all
+
+tasks:
+  - name: Install Java (required by Jenkins)
+    module: package
+    args:
+      name:
+        - openjdk-17-jre
+        - curl
+      state: present
+
+  - name: Add Jenkins repository
+    module: shell
+    args:
+      cmd: |
+        curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+        echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list
+        sudo apt-get update -qq
+      creates: /etc/apt/sources.list.d/jenkins.list
+
+  - name: Install Jenkins
+    module: package
+    args:
+      name: jenkins
+      state: present
+
+  - name: Enable Jenkins
+    module: service
+    args:
+      name: jenkins
+      enabled: true
+      state: started

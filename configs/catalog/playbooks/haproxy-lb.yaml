@@ -1,0 +1,22 @@
+# Playbook: HAProxy 负载均衡
+name: Install HAProxy load balancer
+hosts: all
+
+tasks:
+  - name: Install HAProxy
+    module: package
+    args:
+      name: haproxy
+      state: present
+
+  - name: Enable HAProxy
+    module: service
+    args:
+      name: haproxy
+      enabled: true
+      state: started
+
+  - name: Verify HAProxy
+    module: shell
+    args:
+      cmd: "haproxy -v"

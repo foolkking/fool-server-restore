@@ -1,0 +1,27 @@
+# Playbook: firewalld 动态防火墙
+name: Install firewalld dynamic firewall
+hosts: all
+
+tasks:
+  - name: Install firewalld
+    module: package
+    args:
+      name: firewalld
+      state: present
+
+  - name: Enable firewalld
+    module: service
+    args:
+      name: firewalld
+      enabled: true
+      state: started
+
+  - name: Allow SSH service
+    module: shell
+    args:
+      cmd: "sudo firewall-cmd --permanent --add-service=ssh && sudo firewall-cmd --reload"
+
+  - name: Verify firewalld
+    module: shell
+    args:
+      cmd: "sudo firewall-cmd --state"

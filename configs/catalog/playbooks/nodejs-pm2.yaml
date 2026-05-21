@@ -1,0 +1,26 @@
+# Playbook: PM2 Node.js 进程管理器
+name: Install PM2 Node.js process manager
+hosts: all
+
+tasks:
+  - name: Ensure Node.js is installed
+    module: shell
+    args:
+      cmd: "command -v npm || (echo 'Node.js/npm required' && exit 1)"
+
+  - name: Install PM2 globally
+    module: shell
+    args:
+      cmd: "sudo npm install -g pm2"
+      creates: /usr/lib/node_modules/pm2
+
+  - name: Setup PM2 startup
+    module: shell
+    args:
+      cmd: "sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u $USER --hp $HOME"
+    ignore_errors: true
+
+  - name: Verify PM2
+    module: shell
+    args:
+      cmd: "pm2 --version"

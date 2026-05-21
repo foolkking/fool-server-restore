@@ -1,0 +1,23 @@
+# Playbook: GitLab Runner
+name: Install GitLab Runner CI agent
+hosts: all
+
+tasks:
+  - name: Add GitLab Runner repository
+    module: shell
+    args:
+      cmd: "curl -L 'https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh' | sudo bash"
+      creates: /etc/apt/sources.list.d/runner_gitlab-runner.list
+
+  - name: Install gitlab-runner
+    module: package
+    args:
+      name: gitlab-runner
+      state: present
+
+  - name: Enable gitlab-runner
+    module: service
+    args:
+      name: gitlab-runner
+      enabled: true
+      state: started

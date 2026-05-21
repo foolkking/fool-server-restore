@@ -931,6 +931,146 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       guidePath: "configs/catalog/software/fish-shell.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
       components: [{ type: "software", label: "fish", labelEn: "Fish", detail: "apt" }]
+    },
+    {
+      id: "jenkins-ci", kind: "software", name: "Jenkins CI/CD", nameEn: "Jenkins CI/CD server",
+      category: "developer", summary: "经典 CI/CD 服务器，含 Java 17。", summaryEn: "Classic CI/CD server with Java 17.",
+      rating: 4.5, installs: "7.3k", imageTone: "blue", sensitivity: "review",
+      assets: ["jenkins", "java"], guidePath: "configs/catalog/software/jenkins-ci.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
+      components: [{ type: "software", label: "jenkins", labelEn: "Jenkins", detail: "apt" }]
+    },
+    {
+      id: "gitlab-runner", kind: "software", name: "GitLab Runner", nameEn: "GitLab CI runner",
+      category: "developer", summary: "GitLab CI 执行代理。", summaryEn: "GitLab CI executor agent.",
+      rating: 4.6, installs: "4.4k", imageTone: "orange", sensitivity: "review",
+      assets: ["gitlab-runner"], guidePath: "configs/catalog/software/gitlab-runner.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [{ type: "software", label: "gitlab-runner", labelEn: "GitLab Runner", detail: "apt" }]
+    },
+    {
+      id: "vault-secrets", kind: "software", name: "HashiCorp Vault", nameEn: "HashiCorp Vault secrets",
+      category: "security", summary: "密钥/凭据管理系统。", summaryEn: "Secrets and credentials management.",
+      rating: 4.7, installs: "3.8k", imageTone: "indigo", sensitivity: "privileged",
+      assets: ["vault"], guidePath: "configs/catalog/software/vault-secrets.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [{ type: "software", label: "vault", labelEn: "Vault", detail: "apt" }]
+    },
+    {
+      id: "terraform-iac", kind: "software", name: "Terraform IaC", nameEn: "Terraform infrastructure",
+      category: "developer", summary: "基础设施即代码工具。", summaryEn: "Infrastructure as Code tool.",
+      rating: 4.8, installs: "8.2k", imageTone: "indigo", sensitivity: "review",
+      assets: ["terraform"], guidePath: "configs/catalog/software/terraform-iac.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [{ type: "software", label: "terraform", labelEn: "Terraform", detail: "apt" }]
+    },
+    {
+      id: "kubernetes-tools", kind: "software", name: "Kubernetes 工具集", nameEn: "Kubernetes tools",
+      category: "container", summary: "kubectl + Helm 容器编排工具。", summaryEn: "kubectl + Helm orchestration tools.",
+      rating: 4.8, installs: "9.5k", imageTone: "blue", sensitivity: "review",
+      assets: ["kubectl", "helm"], guidePath: "configs/catalog/software/kubernetes-tools.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [
+        { type: "software", label: "kubectl", labelEn: "kubectl", detail: "apt" },
+        { type: "system-command", label: "Helm", labelEn: "Helm", detail: "curl script" }
+      ]
+    },
+    {
+      id: "loki-logging", kind: "software", name: "Grafana Loki 日志", nameEn: "Grafana Loki logs",
+      category: "service", summary: "Loki + Promtail 日志聚合。", summaryEn: "Loki + Promtail log aggregation.",
+      rating: 4.6, installs: "3.6k", imageTone: "amber", sensitivity: "review",
+      assets: ["loki", "promtail"], guidePath: "configs/catalog/software/loki-logging.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
+      components: [{ type: "software", label: "loki", labelEn: "Loki", detail: "apt" }]
+    },
+    {
+      id: "openvpn-server", kind: "software", name: "OpenVPN 服务器", nameEn: "OpenVPN server",
+      category: "network", summary: "经典 SSL VPN 服务器。", summaryEn: "Classic SSL VPN server.",
+      rating: 4.4, installs: "5.2k", imageTone: "indigo", sensitivity: "privileged",
+      assets: ["openvpn", "easy-rsa"], guidePath: "configs/catalog/software/openvpn-server.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [{ type: "software", label: "openvpn", labelEn: "OpenVPN", detail: "apt" }]
+    },
+    {
+      id: "haproxy-lb", kind: "software", name: "HAProxy 负载均衡", nameEn: "HAProxy load balancer",
+      category: "network", summary: "高性能 TCP/HTTP 负载均衡。", summaryEn: "High-performance TCP/HTTP load balancer.",
+      rating: 4.7, installs: "5.7k", imageTone: "cyan", sensitivity: "review",
+      assets: ["haproxy"], guidePath: "configs/catalog/software/haproxy-lb.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
+      components: [{ type: "software", label: "haproxy", labelEn: "HAProxy", detail: "apt" }]
+    },
+    {
+      id: "sonarqube", kind: "software", name: "SonarQube 代码质量", nameEn: "SonarQube code quality",
+      category: "developer", summary: "代码质量和漏洞检查（Docker 部署）。", summaryEn: "Code quality and vuln scanner (Docker).",
+      rating: 4.5, installs: "3.1k", imageTone: "blue", sensitivity: "review",
+      assets: ["sonarqube", "docker"], guidePath: "configs/catalog/software/sonarqube.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [{ type: "system-command", label: "SonarQube 容器", labelEn: "SonarQube container", detail: "docker run" }]
+    },
+    {
+      id: "rust-cli-tools", kind: "software", name: "现代 CLI 工具集", nameEn: "Modern CLI tools",
+      category: "developer", summary: "bat、ripgrep、fd、exa、zoxide、fzf、tldr 等现代工具。", summaryEn: "bat, ripgrep, fd, exa, zoxide, fzf, tldr.",
+      rating: 4.9, installs: "11.2k", imageTone: "orange", sensitivity: "safe",
+      assets: ["bat", "ripgrep", "fd", "exa", "zoxide", "fzf", "tldr"],
+      guidePath: "configs/catalog/software/rust-cli-tools.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [
+        { type: "software", label: "bat", labelEn: "bat", detail: "apt" },
+        { type: "software", label: "ripgrep", labelEn: "ripgrep", detail: "apt" },
+        { type: "software", label: "fd-find", labelEn: "fd", detail: "apt" }
+      ]
+    },
+    {
+      id: "memcached", kind: "software", name: "Memcached 缓存", nameEn: "Memcached cache",
+      category: "database", summary: "高性能内存缓存系统。", summaryEn: "High-performance in-memory cache.",
+      rating: 4.5, installs: "4.3k", imageTone: "yellow", sensitivity: "review",
+      assets: ["memcached"], guidePath: "configs/catalog/software/memcached.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
+      components: [{ type: "software", label: "memcached", labelEn: "Memcached", detail: "apt" }]
+    },
+    {
+      id: "flutter-sdk", kind: "software", name: "Flutter SDK", nameEn: "Flutter SDK",
+      category: "developer", summary: "Google 跨平台 UI 框架。", summaryEn: "Google cross-platform UI framework.",
+      rating: 4.7, installs: "4.1k", imageTone: "blue", sensitivity: "safe",
+      assets: ["flutter", "dart"], guidePath: "configs/catalog/software/flutter-sdk.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [{ type: "system-command", label: "克隆 Flutter", labelEn: "Clone Flutter", detail: "git clone" }]
+    },
+    {
+      id: "nodejs-pm2", kind: "software", name: "PM2 进程管理", nameEn: "PM2 process manager",
+      category: "service", summary: "Node.js 应用进程管理器。", summaryEn: "Node.js application process manager.",
+      rating: 4.8, installs: "6.7k", imageTone: "emerald", sensitivity: "safe",
+      assets: ["pm2"], guidePath: "configs/catalog/software/nodejs-pm2.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [{ type: "system-command", label: "npm install -g pm2", labelEn: "Install PM2", detail: "npm" }]
+    },
+    {
+      id: "openresty", kind: "software", name: "OpenResty (Nginx+Lua)", nameEn: "OpenResty (Nginx+Lua)",
+      category: "network", summary: "Nginx + Lua 高性能 Web 平台。", summaryEn: "Nginx + Lua high-performance web platform.",
+      rating: 4.6, installs: "3.4k", imageTone: "red", sensitivity: "review",
+      assets: ["openresty", "nginx", "lua"], guidePath: "configs/catalog/software/openresty.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [{ type: "software", label: "openresty", labelEn: "OpenResty", detail: "apt" }]
+    },
+    {
+      id: "nethogs-bandwidth", kind: "software", name: "网络流量监控", nameEn: "Network bandwidth tools",
+      category: "network", summary: "nethogs、iftop、vnstat、tcpdump、nmap 等网络工具。", summaryEn: "nethogs, iftop, vnstat, tcpdump, nmap.",
+      rating: 4.7, installs: "7.6k", imageTone: "cyan", sensitivity: "safe",
+      assets: ["nethogs", "iftop", "vnstat", "tcpdump", "nmap"],
+      guidePath: "configs/catalog/software/nethogs-bandwidth.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [
+        { type: "software", label: "nethogs", labelEn: "nethogs", detail: "apt" },
+        { type: "software", label: "vnstat", labelEn: "vnstat", detail: "apt" }
+      ]
+    },
+    {
+      id: "firewalld", kind: "software", name: "firewalld 防火墙", nameEn: "firewalld dynamic firewall",
+      category: "security", summary: "动态防火墙管理器，UFW 替代品。", summaryEn: "Dynamic firewall, UFW alternative.",
+      rating: 4.5, installs: "3.9k", imageTone: "red", sensitivity: "privileged",
+      assets: ["firewalld"], guidePath: "configs/catalog/software/firewalld.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [{ type: "software", label: "firewalld", labelEn: "firewalld", detail: "apt" }]
     }
   ];
 }

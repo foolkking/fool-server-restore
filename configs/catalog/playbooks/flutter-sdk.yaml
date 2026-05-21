@@ -1,0 +1,34 @@
+# Playbook: Flutter SDK
+name: Install Flutter SDK
+hosts: all
+
+tasks:
+  - name: Install dependencies
+    module: package
+    args:
+      name:
+        - git
+        - curl
+        - unzip
+        - xz-utils
+        - libglu1-mesa
+      state: present
+
+  - name: Clone Flutter SDK
+    module: shell
+    args:
+      cmd: "git clone https://github.com/flutter/flutter.git -b stable /opt/flutter"
+      creates: /opt/flutter
+
+  - name: Add Flutter to PATH
+    module: lineinfile
+    args:
+      path: /etc/profile.d/flutter.sh
+      line: 'export PATH=$PATH:/opt/flutter/bin'
+      create: true
+
+  - name: Verify Flutter
+    module: shell
+    args:
+      cmd: "/opt/flutter/bin/flutter --version || true"
+    ignore_errors: true

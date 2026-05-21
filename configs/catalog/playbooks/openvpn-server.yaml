@@ -1,0 +1,31 @@
+# Playbook: OpenVPN 服务器
+name: Install OpenVPN server
+hosts: all
+
+tasks:
+  - name: Install OpenVPN
+    module: package
+    args:
+      name:
+        - openvpn
+        - easy-rsa
+        - iptables
+      state: present
+
+  - name: Enable IP forwarding
+    module: lineinfile
+    args:
+      path: /etc/sysctl.conf
+      regexp: "^#?net.ipv4.ip_forward"
+      line: "net.ipv4.ip_forward = 1"
+      create: true
+
+  - name: Apply sysctl
+    module: shell
+    args:
+      cmd: "sudo sysctl -p"
+
+  - name: Verify OpenVPN
+    module: shell
+    args:
+      cmd: "openvpn --version | head -1"

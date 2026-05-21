@@ -1,0 +1,39 @@
+# Playbook: Grafana Loki 日志聚合
+name: Install Grafana Loki log aggregation
+hosts: all
+
+tasks:
+  - name: Install Loki via apt repo (Grafana repo)
+    module: package
+    args:
+      name:
+        - apt-transport-https
+        - software-properties-common
+        - wget
+        - gnupg
+      state: present
+
+  - name: Add Grafana repository
+    module: shell
+    args:
+      cmd: |
+        sudo mkdir -p /etc/apt/keyrings
+        wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+        echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+        sudo apt-get update -qq
+      creates: /etc/apt/sources.list.d/grafana.list
+
+  - name: Install Loki and Promtail
+    module: package
+    args:
+      name:
+        - loki
+        - promtail
+      state: present
+
+  - name: Enable Loki
+    module: service
+    args:
+      name: loki
+      enabled: true
+      state: started

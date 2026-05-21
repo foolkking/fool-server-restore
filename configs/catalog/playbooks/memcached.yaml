@@ -1,0 +1,24 @@
+# Playbook: Memcached 内存缓存
+name: Install Memcached in-memory cache
+hosts: all
+
+tasks:
+  - name: Install Memcached
+    module: package
+    args:
+      name:
+        - memcached
+        - libmemcached-tools
+      state: present
+
+  - name: Enable Memcached
+    module: service
+    args:
+      name: memcached
+      enabled: true
+      state: started
+
+  - name: Verify Memcached
+    module: shell
+    args:
+      cmd: "memcached --version"

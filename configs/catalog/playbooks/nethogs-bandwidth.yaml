@@ -1,0 +1,30 @@
+# Playbook: 网络流量监控工具
+name: Install network monitoring tools
+hosts: all
+
+tasks:
+  - name: Install network tools
+    module: package
+    args:
+      name:
+        - nethogs
+        - iftop
+        - vnstat
+        - bmon
+        - tcpdump
+        - mtr
+        - nmap
+      state: present
+
+  - name: Enable vnstat
+    module: service
+    args:
+      name: vnstat
+      enabled: true
+      state: started
+
+  - name: Verify nethogs
+    module: shell
+    args:
+      cmd: "nethogs -V"
+    ignore_errors: true

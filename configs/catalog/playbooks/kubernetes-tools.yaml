@@ -1,0 +1,40 @@
+# Playbook: Kubernetes 工具集 (kubectl + helm)
+name: Install kubectl and Helm
+hosts: all
+
+tasks:
+  - name: Install prerequisites
+    module: package
+    args:
+      name:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg
+      state: present
+
+  - name: Add Kubernetes repository
+    module: shell
+    args:
+      cmd: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        sudo apt-get update -qq
+      creates: /etc/apt/sources.list.d/kubernetes.list
+
+  - name: Install kubectl
+    module: package
+    args:
+      name: kubectl
+      state: present
+
+  - name: Install Helm
+    module: shell
+    args:
+      cmd: "curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
+      creates: /usr/local/bin/helm
+
+  - name: Verify kubectl and Helm
+    module: shell
+    args:
+      cmd: "kubectl version --client && helm version"
