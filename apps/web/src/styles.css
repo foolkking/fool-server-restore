@@ -2922,13 +2922,21 @@ button:disabled {
 .playbook-sidebar-header {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
   margin-bottom: 14px;
 }
 
 .playbook-sidebar-header h2 {
+  flex: 1 1 100%;
   font-size: 16px;
   margin: 0;
+}
+
+.playbook-sidebar-header .primary-action,
+.playbook-sidebar-header .conn-btn {
+  white-space: nowrap;
 }
 
 .playbook-list {
