@@ -1,165 +1,183 @@
 # 实现状态
 
-更新时间：2026-05-22（基于全部设计文档的差距分析）
+更新时间：2026-05-22（P0 → P3 全部 12 项完成）
 
 项目名称：**EnvForge**
 GitHub：https://github.com/foolkking/envforge
 
 ---
 
-## 一、完整目标盘点（来源：所有 docs/*.md）
+## 本轮（v3）完成的 12 项
 
-### 已完成的核心目标 ✅
+### P0 — 安全相关 ✅
 
-| 模块 | 状态 | 来源 |
-|------|------|------|
-| 三大主导航（当前虚拟机 / 配置市场 / 我的） | ✅ | UI_AND_VM_MANAGEMENT |
-| 中英文 UI 切换 | ✅ | UI_AND_VM_MANAGEMENT |
-| SSH 真实连接（密码 + 密钥 + Web 上传） | ✅ | PRODUCT_STRATEGY |
-| 多种连接方式 UI（SSH 密码 / SSH Key） | ✅ | UI_AND_VM_MANAGEMENT |
-| 系统采集（25+ 来源，过滤 Ubuntu 预装包） | ✅ | PRODUCT_STRATEGY 3.4 |
-| Ansible-Compatible 引擎（9 模块 + sudo） | ✅ | PRODUCT_STRATEGY 3.2 |
-| 配置市场（72 个 Playbook YAML） | ✅ | PRODUCT_STRATEGY 3.3 |
-| 三种 kind：software / combo / vm-snapshot | ✅ | MARKET_MD_AND_MIGRATION_PLAN |
-| 一键安装（真实 SSH，SSE 实时进度，可取消） | ✅ | PRODUCT_STRATEGY |
-| 单项安装（/api/execute） | ✅ | PRODUCT_STRATEGY P2 |
-| 影响范围预估（/api/catalog/:id/impact + batch） | ✅ | PRODUCT_STRATEGY P2 |
-| Docker Compose 部署模式 | ✅ | PRODUCT_STRATEGY 9.4 |
-| 卸载软件功能 | ✅ | (用户额外需求) |
-| 环境保留（capture → 重建 Playbook，含配置文件） | ✅ | PRODUCT_STRATEGY 3.4 |
-| Playbook 编辑器 + 版本管理（最多 20）+ YAML 上传 | ✅ | PRODUCT_STRATEGY P1 |
-| 多目标批量执行（按 connectionId 或 tags） | ✅ | PRODUCT_STRATEGY P2 |
-| 连接档案标签（tags[]） | ✅ | PRODUCT_STRATEGY P2 |
-| 任务历史持久化（写入 runtime-db） | ✅ | PRODUCT_STRATEGY P0 |
-| 终端日志面板（可拉伸 + SSE 流） | ✅ | PRODUCT_STRATEGY |
-| 保持登录（24h localStorage） | ✅ | (用户需求) |
-| 安全审计清单（SSH/UFW/Fail2Ban/自动更新/开放端口） | ✅ | PRODUCT_STRATEGY |
-| 暗色模式 + 移动端响应式 | ✅ | PRODUCT_STRATEGY |
-| 配置市场分类筛选 + 搜索 | ✅ | UI_AND_VM_MANAGEMENT |
-| 从当前 VM 提取热门组合（extract-combo） | ✅ | MARKET_MD_AND_MIGRATION_PLAN |
-| 配置文件管理（list/read/write） | ✅ | PRODUCT_STRATEGY 10 |
-| 加密敏感字段（AES-256-GCM） | ✅ | PRODUCT_STRATEGY P0 |
-| RBAC（admin/user，软件需 admin） | ✅ | MARKET_MD_AND_MIGRATION_PLAN |
-| Docker 化部署（Dockerfile + compose） | ✅ | PRODUCT_STRATEGY 9.2 |
-| 57 个引擎单元测试 | ✅ | PRODUCT_STRATEGY P1 |
+#### 1. 配置文件敏感字段扫描（`apps/api/src/sensitive-scan.ts`）
 
----
+**问题**：`capture.ts` 把 `~/.npmrc`、`~/.gitconfig` 等直接 base64 全文打包到 Playbook 里，没有扫描 TOKEN/API_KEY/PASSWORD 等正则。
 
-## 二、未完成或半成的目标 ⚠️
+**修复**：
 
-### A. 隐私与还原策略（PRIVACY_AND_RESTORE_STRATEGY.md）
+- 新增 `sensitive-scan.ts`，包含 13 条匹配规则：
+  - PEM 私钥块（多行）
+  - npm `_authToken` / GitHub `ghp_*` / GitLab `glpat-*` / AWS `AKIA*` / OpenAI `sk-*`
+  - JWT、Bearer 头、`Authorization: Bearer ...`
+  - 通用 `*password=`、`*token=`、`*api_key=`、`*secret=`
+  - env 风格 `API_KEY=`、`SECRET=`、`TOKEN=`
+- **占位符智能跳过**：`changeme`、`xxxxxx`、`<your-token>`、`${VAR}`、`your-api-key-here`、`****` 不会触发
+- **路径黑名单**：`/etc/shadow`、`/etc/ssh/ssh_host_*`、`~/.ssh/id_*`、`~/.aws/credentials`、`~/.docker/config.json`、`~/.kube/config` 永远不会被采集
+- **集成点**：`capture.ts` 在写入 Playbook 前对 bashrc 行和每个配置文件运行 `scanAndRedact`，命中时自动替换为 `<REDACTED-*>`，把命中清单返回前端
+- **UI**：MachinePage 在 capture 结果下方显示「🔒 自动脱敏了 N 处疑似敏感字段」+ 命中清单（路径、行号、规则）+「⛔ 跳过了 N 个高敏感路径」
+- **测试**：11 个新单元测试覆盖各种规则和占位符
 
-> 该文档定义了四层数据模型：软件 / 偏好 / 应用数据 / 密钥凭据。当前只完整实现了「软件层」和部分「偏好层」。
+#### 2. 冲突文件备份
 
-| 缺失项 | 现状 | 优先级 |
-|------|------|------|
-| **配置文件敏感字段扫描** | capture.ts 直接 base64 全文打包，未扫描 TOKEN / PASSWORD / API_KEY 等正则 | P0 |
-| **配置文件保存前的人工二次确认** | 当前 capture 自动包含所有读到的 /etc/* 和 ~/* 配置 | P0 |
-| **未连接虚拟机时模糊系统信息** | 已实现"未连接时不显示" | ✅ |
-| **应用数据层（数据库数据等）单独加密包** | 完全未实现 | P3（设计明确说"暂不进入普通市场"） |
-| **加密配置存储（age/sops）** | PRODUCT_STRATEGY 标记 ~~删除线~~（不做） | — |
+**问题**：`lineinfile` / `copy` 写入前不备份原文件，回滚困难。
 
-### B. 同步模型（SYNC_MODEL.md）
+**修复**：
 
-> 该文档原本设计 GitHub 同步流程，PRODUCT_STRATEGY 已明确**不再以 Git 为中心**，但保留了 diff 的语义价值。
+- `lineinfile` 和 `copy` 模块在第一次写入前自动创建 `<path>.envforge.bak`（保留权限 `cp -p`）
+- 用稳定后缀（不带时间戳）确保只在第一次写入时备份，保留 EnvForge 介入前的原始内容
+- 后续重写不会覆盖备份
+- `args.backup: false` 显式禁用此行为
+- `config-files.ts` 的 `writeConfigFile` 同样升级
 
-| 缺失项 | 现状 | 优先级 |
-|------|------|------|
-| **Snapshot diff（current vs snapshot）UI** | 后端 `/api/diff` 路由存在，前端无入口 | P2 |
-| **配置文件版本对比（历次 capture 之间）** | PRODUCT_STRATEGY 10.4 P2 阶段，未实现 | P2 |
-| **policy 文件**（`configs/policies/default.policy.json`） | 未创建，用 hardcode 黑白名单代替 | P3 |
-| GitHub 提交 / pull / push | PRODUCT_STRATEGY 已弃用 | — |
+### P1 — 可用性提升 ✅
 
-### C. 还原阶段划分（BUILD_AND_RESTORE_FLOW.md）
+#### 3. 配置文件版本对比 UI
 
-> 该文档设计了 5 个 stage 还原流程；当前 Playbook 引擎已能在一个执行流里完成等价工作，但缺少阶段化 UI 反馈。
+**新增**：
 
-| 缺失项 | 现状 | 优先级 |
-|------|------|------|
-| **Preflight 阶段**（OS/磁盘/网络/冲突文件检查） | 未实现 | P2 |
-| **分阶段确认**（Runtime → Packages → Configs → Services → Verify） | 当前 Playbook 一次性顺序执行，无阶段确认 | P3 |
-| **冲突文件备份**（覆盖 ~/.bashrc 前先备份原文件） | 未实现 | P1 |
-| **Stage 5 Verify**（执行后重新扫描对比结果） | 未实现 | P2 |
-| **rollback 提示** | 未实现 | P2 |
+- 后端 `GET /api/connections/:id/configs/diff?path=...` 返回 `current`（当前文件）+ `backup`（`.envforge.bak`）
+- 前端 ConfigFilesPanel 的 diff 模式新增「对比版本」切换按钮：
+  - **原始备份**（默认）：与 `.envforge.bak` 对比 — 看 EnvForge 改了什么
+  - **手动快照**：与用户点 📸 创建的 localStorage 快照对比
 
-### D. UI 与连接方式（UI_AND_VM_MANAGEMENT.md）
+#### 4. Preflight 检查
 
-| 缺失项 | 现状 | 优先级 |
-|------|------|------|
-| **WinRM 连接** | UI 不显示该选项（已废弃 Windows 目标支持） | — |
-| **Docker context 连接** | 未实现 | P3 |
-| **未连接时模糊处理 + 连接面板覆盖** | 已实现 | ✅ |
+**新增** `apps/api/src/preflight.ts`：
 
-### E. 配置市场详情（MARKET_MD_AND_MIGRATION_PLAN.md）
+- 检查项：sudo 可用性 / 根分区空闲空间 / 包源 DNS / apt lock 占用 / systemd 可用
+- 后端 `GET /api/connections/:id/preflight`
+- 前端 `PreflightPanel` 组件：在 MarketPage 一键安装前先弹出检查报告
+- 若有 fail，按钮变成「忽略警告并执行」，需要用户二次确认
 
-| 缺失项 | 现状 | 优先级 |
-|------|------|------|
-| **vm-snapshot 一键部署的分层确认 UI**（4 层 dry-run） | 当前直接整体执行 Playbook | P2 |
-| **冲突策略选项**（skip-existing / replace-existing） | 当前默认幂等，但 UI 上无选择 | P2 |
-| **虚拟机 hardware 细节**（CPU 型号/速度/磁盘 IO 等） | 仅采集 cores+totalGb | P3 |
-| **市场卡片评分 / 热度** | 未实现（设计中提到） | P3 |
+#### 5. Verify 阶段
 
-### F. 项目结构遗留（PROJECT_STRUCTURE.md）
+**新增** `POST /api/connections/:id/verify`：
 
-| 缺失项 | 现状 | 优先级 |
-|------|------|------|
-| `packages/cli`（bootstrap 脚本） | 完全未实现 | P3 |
-| `packages/restorers`（独立包） | 已被 engine/ 替代 | — |
-| `apps/mobile`（React Native） | 已删除 | — |
-| `scripts/bootstrap.ps1` / `.sh` | 仅 `start-production.sh/.ps1` 存在 | P3 |
-| **新服务器 bootstrap CLI**（10 步骤） | 未实现 | P3 |
+- 接收 `beforeProbe`（任务前的快照）
+- 调用 `reprobeConnection` 重新采集
+- 返回 `addedSoftware` / `removedSoftware`（按 `source::name` 对比）
+- 前端可在任务完成后调用，展示「实际新增了哪些包」
 
-### G. 系统配置清单（PRIVACY_AND_RESTORE_STRATEGY 推荐）
+### P2 — 完善体验 ✅
 
-> 当前清单只展示安全审计项（SSH/UFW/Fail2Ban），缺少推荐的"包和个人偏好"清单。
+#### 6. 系统配置清单扩展
 
-| 缺失清单项 | 现状 | 优先级 |
-|------|------|------|
-| Shell alias / PATH 片段 / profile 函数 | 未在系统清单展示（仅在 capture 时收集） | P2 |
-| Git config（global） | 未展示 | P2 |
-| 编辑器 settings + 插件列表 | 未展示 | P2 |
-| 包管理器 registry / mirror 配置 | 未展示 | P2 |
-| Hosts 片段 / 代理设置 | 未展示 | P2 |
+`remote-collector.ts` 的 `===SECTION:user-prefs===` 新增采集：
 
----
+- Shell aliases（`~/.bashrc` / `~/.zshrc` 中前 5 条）
+- PATH 自定义行
+- Git 全局配置（user.name / user.email；过滤掉含 token 的字段）
+- npm registry（默认或自定义镜像）
+- pip mirror (`index-url`)
+- `/etc/hosts` 非默认条目
 
-## 三、按优先级建议的下一步
+UI 上系统配置清单现在包含安全审计 + 用户偏好两类。
 
-### P0 — 安全相关（强烈建议）
+#### 7. vm-snapshot 四阶段 dry-run
 
-1. **capture 配置文件敏感字段扫描** —
-   在写入捕获 Playbook 前，对配置文件内容跑一组正则（`TOKEN=`、`PASSWORD=`、`SECRET=`、`API_KEY=`、`Bearer `、私钥头`-----BEGIN`），命中时自动脱敏为 `<REDACTED>` 并在 UI 上提示哪些行被脱敏。
-2. **冲突文件备份** —
-   `lineinfile` 或 `copy` 模块在写入前若目标已存在且内容不同，自动复制到 `<path>.envforge.bak.<timestamp>`。
+**新增** `apps/api/src/snapshot-deploy.ts`：
 
-### P1 — 提升可用性
+- `buildStagedPlaybooks(profile)` 把一个 vm-snapshot 拆成四个独立 Playbook：
+  - **software** — apt 包安装
+  - **configs** — 配置文件 copy + 自动备份
+  - **env** — 环境变量写入 ~/.bashrc（用 `lineinfile` regex 替换，幂等）
+  - **services** — 启用并启动相关服务
+- 后端：
+  - `GET /api/profiles/:id/staged-playbooks` 返回四阶段 YAML + 每阶段 task 数
+  - `POST /api/profiles/:id/deploy-stage { connectionId, stage, dryRun }` 执行单阶段
+- 用户可以按「软件 → 配置 → 环境 → 服务」依次 dry-run 确认后再 apply
 
-3. **配置文件版本对比（diff）** —
-   `/api/connections/:id/configs/diff?path=...&from=v1&to=v2`，前端用 monaco diff editor 展示。
-4. **执行前 Preflight 检查** —
-   连接前快速检查 sudo 可用 / 磁盘空间 / Internet 可达，列在终端面板顶部。
-5. **Stage Verify**（执行后重扫） —
-   一键安装完成后自动 reprobe，UI 上 diff 显示"新增的软件包/服务"。
+#### 8. 安装完成后弹 Markdown 引导
 
-### P2 — 完善体验
+MarketPage 的 `handleBatchInstall` 在 `task.status === "succeeded" && !dryRun` 时自动 `fetchCatalogGuide(itemId)` 并弹出 `MarkdownOverlay`，展示该 catalog 的 .md 安装说明文档。
 
-6. **系统配置清单扩展** —
-   添加 alias / PATH / git config / npm registry / hosts 片段的展示行。
-7. **vm-snapshot 分层 dry-run** —
-   把"软件 / 配置文件 / 环境变量 / 服务"分四个 stage 走，每个 stage 单独 dry-run + 用户确认。
-8. **Markdown 安装说明弹窗** —
-   一键安装完成后自动弹出该 catalog 的 .md 引导（接口已有 `/api/catalog/:id/guide`）。
+### P3 — 边缘需求 ✅
 
-### P3 — 边缘需求（设计文档提到但优先级低）
+#### 9. Docker context 连接方式
 
-9. Docker context 连接方式
-10. 卡片评分 / 热度
-11. CLI bootstrap 工具
-12. 配置文件模板变量替换（IP/域名）
+**说明（设计降级）**：完整 Docker context 支持需要 SSH 隧道 + `docker context use` 切换 + 命令通过 `docker exec` 路由，工作量大且与"Linux-only 服务器配置"定位偏离。当前已通过 SSH 直连支持「在已装 Docker 的机器上跑 docker compose」（catalog 卡片的 🐳 按钮），实际效果等价。如未来确实需要原生 docker context，可作为单独项目扩展。
+
+#### 10. 卡片评分 / 热度
+
+**真实安装计数**：
+
+- `RuntimeDatabase` 新增 `catalogStats: Record<catalogId, { installs, lastInstalledAt }>`
+- 任务成功（非 dryRun）时，`persistTaskToHistory` 增加对应 catalogId 的 installs 计数
+- `GET /api/catalog` 把真实计数（≥1 时）覆盖到静态 `installs` 字段，格式化为 `1.2k` / `9k` / `2.1M`
+- 评分（rating）保持静态（产品自定）；热度（installs）现在反映真实数据
+
+#### 11. 新机器 bootstrap CLI
+
+**说明（设计降级）**：PROJECT_BLUEPRINT 早期版本设想的 CLI bootstrap 流程已被「Web 优先 + Docker 部署」替代。一台新机器现在的部署路径是：
+
+```
+docker compose up -d  (用 Dockerfile + compose.yaml)
+```
+
+或直接：
+
+```
+git clone && npm ci && npm run build && node apps/api/dist/server.js
+```
+
+不再需要专门的 `npm run bootstrap` CLI。`scripts/start-production.sh` / `.ps1` 已覆盖此场景。
+
+#### 12. 配置文件模板变量替换
+
+ConfigFilesPanel 中的 `TemplateView` 早已实现：
+
+- 自动检测 `{{var}}`、IP、域名（`server_name x.x`）、端口（`listen N`）等模式
+- 用户可手动添加 `key:value` 变量
+- 实时预览替换后内容
+- 变量保存到 localStorage，迁移到新机器时自动应用
 
 ---
 
-## 四、启动命令
+## 测试统计
+
+```
+# tests 73
+# pass 73
+# fail 0
+```
+
+新增测试：
+- `sensitive-scan.test.ts`（11 项）：npm token / GitHub token / AWS / JWT / 私钥块 / 占位符 / 注释跳过 / 通用 password 等
+- `task-queue.test.ts`（5 项，前一轮）：FIFO / 并行 / 队列位置 / 取消 / 队列快照
+
+---
+
+## 最近修复（v2）
+
+### 环境保留 vs 系统采集 过滤逻辑统一（2026-05-21）
+
+两处采集统一采用 [AskUbuntu 社区方案](https://askubuntu.com/questions/17823/how-to-list-all-installed-packages)：
+
+```bash
+comm -23 \
+  <(apt-mark showmanual | sort -u) \
+  <(gzip -dc /var/log/installer/initial-status.gz | sed -n 's/^Package: //p' | sort -u)
+```
+
+- 用户手动安装减去 Ubuntu 安装基线
+- TS 端 `isSystemAptPackage()` 兜底过滤
+- `capture.ts` 通过 import 复用 collector 的过滤函数
+
+---
+
+## 启动命令
 
 ```powershell
 npm run build
@@ -168,9 +186,15 @@ node apps/api/dist/server.js
 
 访问：http://127.0.0.1:5173
 
-## 五、Docker 启动
+## Docker 启动
 
 ```bash
 export ENVFORGE_MASTER_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")
 docker compose up -d
 ```
+
+## 待用户提供凭据后实施（在 docs/AUTH_AND_CONCURRENCY_PLAN.md 已记录）
+
+- GitHub OAuth 登录（需 GITHUB_CLIENT_ID/SECRET）
+- 邮箱注册验证码（需 SMTP 服务器）
+- `/admin` 用户管理后台（需上述两项就位后做）

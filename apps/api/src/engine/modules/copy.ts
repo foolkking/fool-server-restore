@@ -71,8 +71,15 @@ export const copyModule: AnsibleModule<CopyArgs> = {
       return { changed: true, msg: `[dry-run] Would write ${args.content.length} bytes to ${dest}` };
     }
 
-    if (args.backup && exists) {
-      await executor.exec(sudo ? `sudo cp ${dest} ${dest}.bak` : `cp ${dest} ${dest}.bak`);
+    // Auto-backup before overwrite (stable .envforge.bak suffix; only writes once).
+    if (args.backup !== false && exists) {
+      const bakPath = `${dest}.envforge.bak`;
+      const checkBakCmd = sudo ? `sudo test -f ${bakPath} && echo yes` : `test -f ${bakPath} && echo yes`;
+      const { exitCode: bakExists } = await executor.exec(checkBakCmd);
+      if (bakExists !== 0) {
+        const cpCmd = sudo ? `sudo cp -p ${dest} ${bakPath}` : `cp -p ${dest} ${bakPath}`;
+        await executor.exec(cpCmd);
+      }
     }
 
     // Write content

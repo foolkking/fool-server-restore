@@ -258,12 +258,19 @@ export async function writeConfigFile(
   try {
     const needsSudo = filePath.startsWith("/etc/") || filePath.startsWith("/usr/") || filePath.startsWith("/var/");
 
-    // Backup if requested
+    // Backup if requested — uses stable .envforge.bak suffix, only writes if not already there.
     if (backup) {
-      const backupCmd = needsSudo
-        ? `sudo cp "${filePath}" "${filePath}.bak" 2>/dev/null || true`
-        : `cp "${filePath}" "${filePath}.bak" 2>/dev/null || true`;
-      await execOnClient(client, backupCmd);
+      const bakPath = `${filePath}.envforge.bak`;
+      const checkCmd = needsSudo
+        ? `sudo test -f "${bakPath}" && echo yes`
+        : `test -f "${bakPath}" && echo yes`;
+      const { exitCode: bakExists } = await execOnClient(client, checkCmd);
+      if (bakExists !== 0) {
+        const backupCmd = needsSudo
+          ? `sudo cp -p "${filePath}" "${bakPath}" 2>/dev/null || true`
+          : `cp -p "${filePath}" "${bakPath}" 2>/dev/null || true`;
+        await execOnClient(client, backupCmd);
+      }
     }
 
     // Write content using base64 to avoid escaping issues
@@ -280,6 +287,27 @@ export async function writeConfigFile(
     return { success: true, message: `Written ${content.length} bytes to ${filePath}` };
   } finally {
     client.end();
+  }
+}
+
+/**
+ * Read the current file and the EnvForge backup side-by-side so the UI can show a diff
+ * between "before EnvForge first wrote" and "current state".
+ */
+export async function readConfigFileWithBackup(
+  connection: StoredConnection,
+  filePath: string
+): Promise<{
+  current: ConfigFileContent;
+  backup?: ConfigFileContent & { backupPath: string };
+}> {
+  const current = await readConfigFile(connection, filePath);
+  const bakPath = `${filePath}.envforge.bak`;
+  try {
+    const backup = await readConfigFile(connection, bakPath);
+    return { current, backup: { ...backup, backupPath: bakPath } };
+  } catch {
+    return { current };
   }
 }
 

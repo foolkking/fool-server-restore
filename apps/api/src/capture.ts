@@ -17,6 +17,7 @@
 
 import type { SshExecutor } from "./engine/types.js";
 import { isSystemAptPackage, isSystemService } from "./collectors/remote-collector.js";
+import { scanAndRedact, isPathBlacklisted, type RedactionHit } from "./sensitive-scan.js";
 import yaml from "yaml";
 
 export interface CaptureResult {
@@ -32,6 +33,10 @@ export interface CaptureResult {
     diskInfo?: string;
     uptimeInfo?: string;
   };
+  /** Redaction hits across all captured config files */
+  redactions: RedactionHit[];
+  /** Paths skipped due to absolute blacklist (e.g. private keys, /etc/shadow) */
+  skippedPaths: string[];
 }
 
 export async function captureEnvironment(executor: SshExecutor): Promise<CaptureResult> {
@@ -46,6 +51,8 @@ export async function captureEnvironment(executor: SshExecutor): Promise<Capture
     diskInfo: undefined,
     uptimeInfo: undefined
   };
+  const allRedactions: RedactionHit[] = [];
+  const skippedPaths: string[] = [];
 
   // 1. 已安装的 apt 包：用户手动安装减去 Ubuntu 基线（initial-status.gz）
   //    fallback：没有 initial-status.gz 时用 apt-mark showmanual + TS 过滤
@@ -78,14 +85,25 @@ rm -rf "$TMPD" 2>/dev/null
       .filter((s) => s && !isSystemService(s));
   } catch { /* ignore */ }
 
-  // 3. ~/.bashrc 中的非默认行
+  // 3. ~/.bashrc 中的非默认行（也跑敏感扫描，防止 export TOKEN=... 进 Playbook）
   try {
     const { stdout } = await executor.exec(
       "grep -E '^(export |alias |source )' ~/.bashrc 2>/dev/null || true"
     );
-    summary.bashrcLines = stdout.trim().split("\n")
+    const rawLines = stdout.trim().split("\n")
       .map((l) => l.trim())
       .filter((l) => l && !l.startsWith("#"));
+    // Scan each line individually
+    const cleaned: string[] = [];
+    for (let i = 0; i < rawLines.length; i++) {
+      const { redactedContent, hits } = scanAndRedact("~/.bashrc", rawLines[i]);
+      cleaned.push(redactedContent);
+      // Adjust line numbers (each hit is on virtual line 1; remap to source index+1)
+      for (const h of hits) {
+        allRedactions.push({ ...h, line: i + 1 });
+      }
+    }
+    summary.bashrcLines = cleaned;
   } catch { /* ignore */ }
 
   // 4. npm 全局包
@@ -122,15 +140,24 @@ rm -rf "$TMPD" 2>/dev/null
     "~/.bashrc", "~/.profile", "~/.gitconfig", "~/.tmux.conf", "~/.npmrc", "~/.ssh/config"
   ];
   const configContents: Array<{ path: string; content: string }> = [];
+
   for (const cfgPath of configPaths) {
+    // Hard-block dangerous paths even if they appear in the list
+    if (isPathBlacklisted(cfgPath)) {
+      skippedPaths.push(cfgPath);
+      continue;
+    }
     try {
       const cmd = cfgPath.startsWith("~")
         ? `cat ${cfgPath} 2>/dev/null`
         : `sudo cat ${cfgPath} 2>/dev/null`;
       const { stdout, exitCode } = await executor.exec(cmd);
       if (exitCode === 0 && stdout.trim().length > 0 && stdout.length < 50000) {
-        configContents.push({ path: cfgPath, content: stdout });
+        // Run sensitive-field scanner; never push raw content with detected secrets
+        const { redactedContent, hits } = scanAndRedact(cfgPath, stdout);
+        configContents.push({ path: cfgPath, content: redactedContent });
         summary.configFiles.push(cfgPath);
+        allRedactions.push(...hits);
       }
     } catch { /* ignore */ }
   }
@@ -150,7 +177,7 @@ rm -rf "$TMPD" 2>/dev/null
   } catch { /* ignore */ }
 
   const playbookYaml = generatePlaybook(summary, configContents);
-  return { playbookYaml, summary };
+  return { playbookYaml, summary, redactions: allRedactions, skippedPaths };
 }
 
 function generatePlaybook(

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { FileText, FolderOpen, Save, X, Edit3, Eye, GitCompare, Variable } from "lucide-react";
-import { fetchConfigFiles, readRemoteConfigFile, writeRemoteConfigFile, type ConfigFileInfo, type ConfigFileContent } from "../api";
+import { fetchConfigFiles, readRemoteConfigFile, writeRemoteConfigFile, fetchConfigFileDiff, type ConfigFileInfo, type ConfigFileContent } from "../api";
 import type { Locale } from "../lib/types";
 
 type ViewMode = "view" | "edit" | "diff" | "template";
@@ -33,6 +33,10 @@ export function ConfigFilesPanel({
   const [templateVars, setTemplateVars] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem("envforge_template_vars") ?? "{}"); } catch { return {}; }
   });
+  // Server-side .envforge.bak content for diff (lazy-loaded when entering diff mode)
+  const [bakContent, setBakContent] = useState<string | null>(null);
+  const [bakLoading, setBakLoading] = useState(false);
+  const [diffSource, setDiffSource] = useState<"snapshot" | "envforge-bak">("envforge-bak");
 
   useEffect(() => { loadFiles(); }, [connectionId]);
 
@@ -100,6 +104,19 @@ export function ConfigFilesPanel({
     setTemplateVars(vars);
     localStorage.setItem("envforge_template_vars", JSON.stringify(vars));
   }
+
+  // When entering diff mode, lazily fetch the server-side .envforge.bak
+  useEffect(() => {
+    if (viewMode !== "diff" || !activeFile) return;
+    let cancelled = false;
+    setBakLoading(true);
+    setBakContent(null);
+    fetchConfigFileDiff(authToken, connectionId, activeFile.path)
+      .then((res) => { if (!cancelled) setBakContent(res.backup?.content ?? null); })
+      .catch(() => { if (!cancelled) setBakContent(null); })
+      .finally(() => { if (!cancelled) setBakLoading(false); });
+    return () => { cancelled = true; };
+  }, [viewMode, activeFile?.path, authToken, connectionId]);
 
   const snapshotKey = activeFile ? `${connectionId}::${activeFile.path}` : "";
   const hasSnapshot = Boolean(snapshots[snapshotKey]);
@@ -207,8 +224,17 @@ export function ConfigFilesPanel({
               ) : viewMode === "diff" ? (
                 <DiffView
                   locale={locale}
-                  oldContent={snapshots[snapshotKey] ?? ""}
+                  diffSource={diffSource}
+                  onChangeSource={setDiffSource}
+                  oldContent={
+                    diffSource === "snapshot"
+                      ? (snapshots[snapshotKey] ?? "")
+                      : (bakContent ?? "")
+                  }
                   newContent={activeFile.content}
+                  hasManualSnapshot={hasSnapshot}
+                  hasEnvforgeBak={bakContent !== null}
+                  bakLoading={bakLoading}
                 />
               ) : (
                 <TemplateView
@@ -233,7 +259,25 @@ export function ConfigFilesPanel({
 
 // ── Diff View ──
 
-function DiffView({ locale, oldContent, newContent }: { locale: Locale; oldContent: string; newContent: string }) {
+function DiffView({
+  locale,
+  oldContent,
+  newContent,
+  diffSource,
+  onChangeSource,
+  hasManualSnapshot,
+  hasEnvforgeBak,
+  bakLoading
+}: {
+  locale: Locale;
+  oldContent: string;
+  newContent: string;
+  diffSource: "snapshot" | "envforge-bak";
+  onChangeSource: (s: "snapshot" | "envforge-bak") => void;
+  hasManualSnapshot: boolean;
+  hasEnvforgeBak: boolean;
+  bakLoading: boolean;
+}) {
   const diffLines = useMemo(() => computeDiff(oldContent, newContent), [oldContent, newContent]);
 
   const stats = useMemo(() => {
@@ -248,6 +292,31 @@ function DiffView({ locale, oldContent, newContent }: { locale: Locale; oldConte
 
   return (
     <div className="config-diff">
+      <div className="config-diff-source">
+        <span className="config-diff-source-label">
+          {locale === "zh" ? "对比版本：" : "Compare against:"}
+        </span>
+        <button
+          type="button"
+          className={`conn-btn ${diffSource === "envforge-bak" ? "conn-btn-primary" : "conn-btn-ghost"}`}
+          onClick={() => onChangeSource("envforge-bak")}
+          disabled={bakLoading}
+          title={locale === "zh" ? "EnvForge 第一次写入前自动备份的版本" : "Auto-backup made before first EnvForge write"}
+        >
+          {locale === "zh" ? "原始备份" : "Original backup"}
+          {bakLoading ? " ⏳" : !hasEnvforgeBak ? " · ∅" : ""}
+        </button>
+        <button
+          type="button"
+          className={`conn-btn ${diffSource === "snapshot" ? "conn-btn-primary" : "conn-btn-ghost"}`}
+          onClick={() => onChangeSource("snapshot")}
+          disabled={!hasManualSnapshot}
+          title={locale === "zh" ? "手动点击 📸 保存的快照" : "Manual snapshot taken with 📸"}
+        >
+          {locale === "zh" ? "手动快照" : "Manual snapshot"}
+          {!hasManualSnapshot ? " · ∅" : ""}
+        </button>
+      </div>
       <div className="config-diff-stats">
         <span className="diff-stat-added">+{stats.added}</span>
         <span className="diff-stat-removed">-{stats.removed}</span>

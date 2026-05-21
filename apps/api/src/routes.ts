@@ -13,7 +13,7 @@ import { runReadinessChecks } from "./readiness.js";
 import { readRuntimeDatabase, updateRuntimeDatabase, createId } from "./runtime-store.js";
 import { listSnapshots, persistSnapshot } from "./snapshot-store.js";
 import { probeAgent, pingAgent } from "./probe.js";
-import { listConfigFiles, readConfigFile, writeConfigFile } from "./config-files.js";
+import { listConfigFiles, readConfigFile, writeConfigFile, readConfigFileWithBackup } from "./config-files.js";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/health", async () => ({
@@ -106,9 +106,17 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/catalog", async () => {
-    return {
-      items: await listCatalogFromDatabase()
-    };
+    const [items, db] = await Promise.all([listCatalogFromDatabase(), readRuntimeDatabase()]);
+    const stats = db.catalogStats ?? {};
+    // Overlay real install counts onto static catalog items so cards show live data.
+    const enriched = items.map((item) => {
+      const real = stats[item.id]?.installs ?? 0;
+      if (real > 0) {
+        return { ...item, installs: formatInstallCount(real), realInstalls: real };
+      }
+      return item;
+    });
+    return { items: enriched };
   });
 
   app.get("/api/catalog/:id/guide", async (request, reply) => {
@@ -497,6 +505,60 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // ── vm-snapshot 四阶段部署 ────────────────────────────────
+
+  app.get("/api/profiles/:id/staged-playbooks", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const profile = await getUserProfile(user, id);
+    if (!profile) { reply.code(404); return { error: "Profile not found." }; }
+    if (profile.kind !== "vm-snapshot") {
+      reply.code(400);
+      return { error: "Staged deployment is only supported for vm-snapshot profiles." };
+    }
+    const { buildStagedPlaybooks } = await import("./snapshot-deploy.js");
+    return { stages: buildStagedPlaybooks(profile) };
+  });
+
+  app.post("/api/profiles/:id/deploy-stage", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as {
+      connectionId?: string;
+      stage?: "software" | "configs" | "env" | "services";
+      dryRun?: boolean;
+    };
+    if (!body.connectionId || !body.stage) {
+      reply.code(400);
+      return { error: "connectionId and stage are required." };
+    }
+    const profile = await getUserProfile(user, id);
+    if (!profile || profile.kind !== "vm-snapshot") {
+      reply.code(404);
+      return { error: "vm-snapshot profile not found." };
+    }
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === body.connectionId && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+
+    const { buildStagedPlaybooks } = await import("./snapshot-deploy.js");
+    const stages = buildStagedPlaybooks(profile);
+    const yamlText = stages[body.stage];
+    const dryRun = body.dryRun !== false;
+    const { registerBatchTask, executePlaybookTask, getTask: gt } = await import("./executor.js");
+    const taskId = registerBatchTask(
+      user.id,
+      conn.id,
+      [{ catalogId: `${profile.id}-${body.stage}`, displayName: `${profile.name} · ${body.stage}` }],
+      dryRun
+    );
+    void executePlaybookTask(user.id, conn, yamlText, dryRun, taskId);
+    const task = gt(taskId);
+    return { taskId, dryRun, stage: body.stage, steps: task?.steps ?? [] };
+  });
+
   // 获取任务状态
   app.get("/api/tasks/:id", async (request, reply) => {
     const user = await getUserByToken(readBearerToken(request.headers.authorization));
@@ -619,38 +681,75 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     try {
       const { captureEnvironment } = await import("./capture.js");
       const { Ssh2Executor } = await import("./engine/ssh-executor.js");
-      // Connect SSH
-      const { Client: SshClient } = await import("ssh2");
-      const { decryptStoredFields } = await import("./connections.js");
-      const { readUserKey } = await import("./key-store.js");
-      const decrypted = decryptStoredFields(conn.fields);
-      const client = await new Promise<InstanceType<typeof SshClient>>((resolve, reject) => {
-        const c = new SshClient();
-        const timer = setTimeout(() => { c.destroy(); reject(new Error("SSH timeout")); }, 10000);
-        c.on("ready", () => { clearTimeout(timer); resolve(c); });
-        c.on("error", (err: Error) => { clearTimeout(timer); reject(err); });
-        const cfg: Record<string, unknown> = { host: decrypted.host, port: parseInt(decrypted.port ?? "22", 10) || 22, username: decrypted.username, readyTimeout: 10000 };
-        if (conn.method === "ssh-key") {
-          const keyId = decrypted._keyId;
-          if (keyId) {
-            readUserKey(user.id, keyId).then((pk) => { cfg.privateKey = Buffer.from(pk, "utf8"); if (decrypted._rawPassphrase) cfg.passphrase = decrypted._rawPassphrase; c.connect(cfg as any); }).catch(reject);
-          } else if (decrypted.privateKeyPath) {
-            import("node:fs/promises").then((fsm) => fsm.readFile(decrypted.privateKeyPath, "utf8")).then((pk) => { cfg.privateKey = pk; c.connect(cfg as any); }).catch(reject);
-          } else { clearTimeout(timer); reject(new Error("No SSH key")); }
-        } else {
-          cfg.password = decrypted._rawPassword;
-          if (!cfg.password) { clearTimeout(timer); reject(new Error("No password")); return; }
-          c.connect(cfg as any);
-        }
-      });
+      const client = await connectSshForUser(conn, user.id);
       const executor = new Ssh2Executor(client);
       try {
         const result = await captureEnvironment(executor);
-        return { playbookYaml: result.playbookYaml, summary: result.summary, connectionId: id, capturedAt: new Date().toISOString() };
+        return {
+          playbookYaml: result.playbookYaml,
+          summary: result.summary,
+          redactions: result.redactions,
+          skippedPaths: result.skippedPaths,
+          connectionId: id,
+          capturedAt: new Date().toISOString()
+        };
       } finally { client.end(); }
     } catch (err) {
       reply.code(500);
       return { error: err instanceof Error ? err.message : "Capture failed" };
+    }
+  });
+
+  // Preflight: read-only checks before running a Playbook
+  app.get("/api/connections/:id/preflight", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try {
+      const { runPreflight } = await import("./preflight.js");
+      const { Ssh2Executor } = await import("./engine/ssh-executor.js");
+      const client = await connectSshForUser(conn, user.id);
+      const executor = new Ssh2Executor(client);
+      try {
+        const report = await runPreflight(executor);
+        return { report };
+      } finally { client.end(); }
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Preflight failed" };
+    }
+  });
+
+  // Verify: re-probe target after a task completes; meant to be paired with task-history diff
+  app.post("/api/connections/:id/verify", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { beforeProbe?: unknown };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try {
+      const { reprobeConnection } = await import("./connections.js");
+      const updated = await reprobeConnection(id, user.id);
+      const beforeSoftware = (body.beforeProbe as { software?: Array<{ name: string; version: string; source: string }> } | undefined)?.software ?? [];
+      const afterSoftware = updated?.probeSnapshot?.software ?? [];
+      const beforeKeys = new Set(beforeSoftware.map((s) => `${s.source}::${s.name}`));
+      const afterKeys = new Set(afterSoftware.map((s) => `${s.source}::${s.name}`));
+      const added = afterSoftware.filter((s) => !beforeKeys.has(`${s.source}::${s.name}`));
+      const removed = beforeSoftware.filter((s) => !afterKeys.has(`${s.source}::${s.name}`));
+      return {
+        verifiedAt: new Date().toISOString(),
+        addedSoftware: added,
+        removedSoftware: removed,
+        connection: updated
+      };
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Verify failed" };
     }
   });
 
@@ -871,9 +970,77 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     try { return await writeConfigFile(conn, body.path, body.content, body.backup !== false); }
     catch (err) { reply.code(500); return { error: err instanceof Error ? err.message : "Failed" }; }
   });
+
+  // Diff: current file vs the .envforge.bak created on first write
+  app.get("/api/connections/:id/configs/diff", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const { path: filePath } = request.query as { path?: string };
+    if (!filePath) { reply.code(400); return { error: "path query parameter is required." }; }
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try { return await readConfigFileWithBackup(conn, filePath); }
+    catch (err) { reply.code(500); return { error: err instanceof Error ? err.message : "Failed" }; }
+  });
 }
 
 function readBearerToken(header: string | undefined): string | undefined {
   if (!header?.startsWith("Bearer ")) return undefined;
   return header.slice("Bearer ".length).trim();
+}
+
+/** Open an SSH connection for the given stored connection profile (handles password / key). */
+async function connectSshForUser(
+  conn: { method: string; userId: string; fields: Record<string, string> },
+  userId: string
+): Promise<import("ssh2").Client> {
+  const { Client: SshClient } = await import("ssh2");
+  const { decryptStoredFields } = await import("./connections.js");
+  const { readUserKey } = await import("./key-store.js");
+  const decrypted = decryptStoredFields(conn.fields);
+  return new Promise<import("ssh2").Client>((resolve, reject) => {
+    const c = new SshClient();
+    const timer = setTimeout(() => { c.destroy(); reject(new Error("SSH timeout")); }, 10000);
+    c.on("ready", () => { clearTimeout(timer); resolve(c); });
+    c.on("error", (err: Error) => { clearTimeout(timer); reject(err); });
+    const cfg: Record<string, unknown> = {
+      host: decrypted.host,
+      port: parseInt(decrypted.port ?? "22", 10) || 22,
+      username: decrypted.username,
+      readyTimeout: 10000
+    };
+    if (conn.method === "ssh-key") {
+      const keyId = decrypted._keyId;
+      if (keyId) {
+        readUserKey(userId, keyId).then((pk) => {
+          cfg.privateKey = Buffer.from(pk, "utf8");
+          if (decrypted._rawPassphrase) cfg.passphrase = decrypted._rawPassphrase;
+          c.connect(cfg as any);
+        }).catch((err: Error) => { clearTimeout(timer); reject(err); });
+      } else if (decrypted.privateKeyPath) {
+        import("node:fs/promises").then((fsm) => fsm.readFile(decrypted.privateKeyPath, "utf8")).then((pk) => {
+          cfg.privateKey = pk;
+          c.connect(cfg as any);
+        }).catch((err: Error) => { clearTimeout(timer); reject(err); });
+      } else {
+        clearTimeout(timer);
+        reject(new Error("No SSH key configured"));
+      }
+    } else {
+      cfg.password = decrypted._rawPassword;
+      if (!cfg.password) { clearTimeout(timer); reject(new Error("No password")); return; }
+      c.connect(cfg as any);
+    }
+  });
+}
+
+
+/** Format raw install count for display (e.g. 1234 → "1.2k"). */
+function formatInstallCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
+  if (n < 1000000) return `${Math.round(n / 1000)}k`;
+  return `${(n / 1000000).toFixed(1)}M`;
 }

@@ -164,6 +164,25 @@ dpkg -l unattended-upgrades 2>/dev/null | grep -q "^ii" && echo "auto-updates-en
 # Open ports (listening)
 ss -tlnp 2>/dev/null | grep LISTEN | awk '{print $4}' | sed 's/.*://' | sort -un | tr '\n' ',' || echo "none"
 
+echo "===SECTION:user-prefs==="
+# Shell aliases (top 5)
+grep -E '^alias ' ~/.bashrc ~/.zshrc 2>/dev/null | head -5
+echo "---"
+# PATH additions (lines that touch PATH)
+grep -E '^(export PATH|PATH=)' ~/.bashrc ~/.zshrc ~/.profile 2>/dev/null | head -3
+echo "---"
+# Git global config (non-secret keys only)
+git config --global --list 2>/dev/null | grep -vE '(token|password|credential)' | head -10
+echo "---"
+# npm registry
+npm config get registry 2>/dev/null
+echo "---"
+# pip mirror (just the index-url line, no creds)
+grep -E '^index-url' ~/.config/pip/pip.conf /etc/pip.conf 2>/dev/null | head -1
+echo "---"
+# /etc/hosts non-default entries
+grep -vE '^(127\.|::1|#|$)' /etc/hosts 2>/dev/null | head -5
+
 echo "===SECTION:end==="
 `;
 
@@ -548,6 +567,84 @@ function parseFullOutput(raw: string, host: string, _latencyMs: number): FullSys
     id: "services", label: `服务: ${counts.runningServices} 运行中 / ${counts.enabledServices} 已启用`,
     category: "service", status: "healthy", lastChanged: today
   });
+
+  // ── User preferences (alias / PATH / git / npm / pip / hosts) ──
+  // Section is delimited by "---" between groups, in this order:
+  //   1. aliases  2. PATH lines  3. git config  4. npm registry  5. pip index-url  6. hosts
+  const prefsRaw = sections["user-prefs"] ?? "";
+  const prefGroups = prefsRaw.split(/^---\s*$/m).map((g) => g.trim());
+  const [aliasGroup, pathGroup, gitGroup, npmGroup, pipGroup, hostsGroup] = prefGroups;
+
+  const aliasLines = (aliasGroup ?? "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("==="));
+  if (aliasLines.length > 0) {
+    configChecklist.push({
+      id: "shell-alias",
+      label: `Shell alias: ${aliasLines.length} 条（${aliasLines[0].slice(6, 50)}…）`,
+      category: "runtime",
+      status: "healthy",
+      lastChanged: today
+    });
+  }
+
+  const pathLines = (pathGroup ?? "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("==="));
+  if (pathLines.length > 0) {
+    configChecklist.push({
+      id: "shell-path",
+      label: `PATH 自定义: ${pathLines.length} 行`,
+      category: "runtime",
+      status: "healthy",
+      lastChanged: today
+    });
+  }
+
+  const gitLines = (gitGroup ?? "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("==="));
+  const gitUserName = gitLines.find((l) => l.startsWith("user.name="));
+  const gitUserEmail = gitLines.find((l) => l.startsWith("user.email="));
+  if (gitUserName || gitUserEmail) {
+    const userName = gitUserName?.split("=")[1] ?? "?";
+    const userEmail = gitUserEmail?.split("=")[1] ?? "?";
+    configChecklist.push({
+      id: "git-config",
+      label: `Git 全局配置: ${userName} <${userEmail}>`,
+      category: "runtime",
+      status: "healthy",
+      lastChanged: today
+    });
+  }
+
+  const npmRegistry = (npmGroup ?? "").trim().split("\n").find((l) => l.startsWith("http"));
+  if (npmRegistry) {
+    const isDefault = /^https:\/\/registry\.npmjs\.org\/?$/.test(npmRegistry);
+    configChecklist.push({
+      id: "npm-registry",
+      label: `npm registry: ${isDefault ? "默认" : npmRegistry}`,
+      category: "runtime",
+      status: "healthy",
+      lastChanged: today
+    });
+  }
+
+  const pipIndex = (pipGroup ?? "").trim();
+  if (pipIndex && pipIndex.startsWith("index-url")) {
+    configChecklist.push({
+      id: "pip-mirror",
+      label: `pip 镜像: ${pipIndex.replace(/^index-url\s*=\s*/, "").trim()}`,
+      category: "runtime",
+      status: "healthy",
+      lastChanged: today
+    });
+  }
+
+  const hostsLines = (hostsGroup ?? "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("==="));
+  if (hostsLines.length > 0) {
+    configChecklist.push({
+      id: "hosts",
+      label: `/etc/hosts 自定义: ${hostsLines.length} 条`,
+      category: "network",
+      status: "healthy",
+      lastChanged: today
+    });
+  }
 
   return {
     agentId: `ssh:${host}`,

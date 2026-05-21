@@ -144,6 +144,8 @@ export interface RuntimeDatabase {
   tasks?: StoredTaskHistory[];
   /** 用户保存的 Playbook（含版本历史） */
   playbooks?: StoredPlaybook[];
+  /** Catalog item install counter (catalogId → real install count) */
+  catalogStats?: Record<string, { installs: number; lastInstalledAt: string }>;
 }
 
 /** 用户保存的 Playbook（支持版本历史） */

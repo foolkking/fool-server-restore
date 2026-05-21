@@ -611,6 +611,39 @@ export function MachinePage({
             </div>
           </div>
           <pre className="capture-yaml-preview">{captureResult.playbookYaml.slice(0, 1200)}{captureResult.playbookYaml.length > 1200 ? "\n# ... (truncated, download for full)" : ""}</pre>
+
+          {/* Sensitive-field redaction notice */}
+          {captureResult.redactions && captureResult.redactions.length > 0 ? (
+            <div className="redaction-notice">
+              <p className="redaction-title">
+                🔒 {locale === "zh"
+                  ? `自动脱敏了 ${captureResult.redactions.length} 处疑似敏感字段（不会写入 Playbook）`
+                  : `Redacted ${captureResult.redactions.length} suspected secrets (not written to Playbook)`}
+              </p>
+              <ul className="redaction-list">
+                {captureResult.redactions.slice(0, 8).map((r, idx) => (
+                  <li key={idx}>
+                    <code>{r.path}:{r.line}</code> · <span className="redaction-rule">{r.rule}</span>
+                  </li>
+                ))}
+                {captureResult.redactions.length > 8 ? (
+                  <li className="redaction-more">+{captureResult.redactions.length - 8} {locale === "zh" ? "条更多" : "more"}</li>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
+          {captureResult.skippedPaths && captureResult.skippedPaths.length > 0 ? (
+            <div className="redaction-notice redaction-notice-info">
+              <p className="redaction-title">
+                ⛔ {locale === "zh"
+                  ? `跳过了 ${captureResult.skippedPaths.length} 个高敏感路径（私钥/凭据等）`
+                  : `Skipped ${captureResult.skippedPaths.length} high-sensitivity paths (keys/credentials)`}
+              </p>
+              <ul className="redaction-list">
+                {captureResult.skippedPaths.map((p) => <li key={p}><code>{p}</code></li>)}
+              </ul>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

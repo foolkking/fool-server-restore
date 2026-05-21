@@ -5,14 +5,20 @@ import {
   executeProfile,
   fetchBatchImpact,
   fetchDockerCompose,
+  fetchCatalogGuide,
+  runPreflightCheck,
   streamTask,
   type BatchImpactResult,
+  type CatalogGuide,
   type CatalogItem,
-  type ExecutionTask
+  type ExecutionTask,
+  type PreflightReport
 } from "../api";
 import type { Locale } from "../lib/types";
 import { categoryIcons } from "../lib/types";
 import { ComponentPreview, getCatalogComponents } from "../components/ComponentPreview";
+import { PreflightPanel } from "../components/PreflightPanel";
+import { MarkdownOverlay } from "../components/MarkdownOverlay";
 
 const text = {
   zh: {
@@ -60,6 +66,9 @@ export function MarketPage({
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [dockerComposeId, setDockerComposeId] = useState<string | null>(null);
   const [dockerComposeContent, setDockerComposeContent] = useState("");
+  const [preflightReport, setPreflightReport] = useState<PreflightReport | null>(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
+  const [postInstallGuide, setPostInstallGuide] = useState<CatalogGuide | null>(null);
 
   // Auto-fetch impact when selection changes (debounced)
   useEffect(() => {
@@ -146,12 +155,35 @@ export function MarketPage({
           if (task.status === "failed" && task.error) {
             setTaskError(task.error);
           }
+          // On success, surface the post-install Markdown guide for the *first* installed item
+          if (task.status === "succeeded" && selectedItems[0] && !dryRun) {
+            void fetchCatalogGuide(selectedItems[0].id)
+              .then((g) => setPostInstallGuide(g))
+              .catch(() => { /* no guide is fine */ });
+          }
         }
       }, authToken);
     } catch (err) {
       setTaskError(err instanceof Error ? err.message : "Batch execute failed");
       setBatchInstalling(false);
       setBatchProgress(null);
+    }
+  }
+
+  async function handlePreflightThenInstall() {
+    if (!authToken || !activeConnectionId) {
+      setTaskError(locale === "zh" ? "请先登录并选择已连接的虚拟机" : "Login and select a connected VM first");
+      return;
+    }
+    setPreflightLoading(true);
+    setPreflightReport(null);
+    try {
+      const report = await runPreflightCheck(authToken, activeConnectionId);
+      setPreflightReport(report);
+    } catch (err) {
+      setTaskError(err instanceof Error ? err.message : "Preflight failed");
+    } finally {
+      setPreflightLoading(false);
     }
   }
 
@@ -245,7 +277,7 @@ export function MarketPage({
             type="button"
             disabled={!canExecute || selected.size === 0 || batchInstalling}
             title={!canExecute ? executeTooltip : selected.size === 0 ? (locale === "zh" ? "请先勾选要安装的配置" : "Select items first") : undefined}
-            onClick={() => void handleBatchInstall(false)}
+            onClick={() => void handlePreflightThenInstall()}
           >
             {batchInstalling ? <span className="spinning">↻</span> : null}
             {batchInstalling
@@ -322,6 +354,21 @@ export function MarketPage({
             </>
           ) : null}
         </div>
+      ) : null}
+
+      {/* 执行前检查 */}
+      {(preflightLoading || preflightReport) ? (
+        <PreflightPanel
+          report={preflightReport}
+          loading={preflightLoading}
+          locale={locale}
+          onClose={() => { setPreflightReport(null); }}
+          onProceed={() => {
+            setPreflightReport(null);
+            void handleBatchInstall(false);
+          }}
+          proceedDisabled={batchInstalling}
+        />
       ) : null}
 
       <div className="catalog-grid">
@@ -436,6 +483,15 @@ export function MarketPage({
             </pre>
           </div>
         </div>
+      ) : null}
+
+      {/* 安装完成后弹出 Markdown 引导 */}
+      {postInstallGuide ? (
+        <MarkdownOverlay
+          guide={postInstallGuide}
+          locale={locale}
+          onClose={() => setPostInstallGuide(null)}
+        />
       ) : null}
     </div>
   );

@@ -129,9 +129,19 @@ export const lineinfileModule: AnsibleModule<LineInFileArgs> = {
       return { changed: true, msg: `[dry-run] Would update ${path}` };
     }
 
-    // Backup if requested
-    if (args.backup && exists) {
-      await executor.exec(sudo ? `sudo cp ${path} ${path}.bak` : `cp ${path} ${path}.bak`);
+    // Auto-backup before write — using a stable .envforge.bak suffix.
+    // Only backup once: if .envforge.bak already exists, leave it (preserves the
+    // pre-EnvForge original file). args.backup=false explicitly disables this.
+    if (args.backup !== false && exists) {
+      const bakPath = `${path}.envforge.bak`;
+      const checkBakCmd = sudo
+        ? `sudo test -f ${bakPath} && echo yes`
+        : `test -f ${bakPath} && echo yes`;
+      const { exitCode: bakExists } = await executor.exec(checkBakCmd);
+      if (bakExists !== 0) {
+        const cpCmd = sudo ? `sudo cp -p ${path} ${bakPath}` : `cp -p ${path} ${bakPath}`;
+        await executor.exec(cpCmd);
+      }
     }
 
     // Write new content using sudo tee for system paths, or direct SFTP for user paths

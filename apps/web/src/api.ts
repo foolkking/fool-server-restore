@@ -621,6 +621,13 @@ export async function deleteSshKey(token: string, keyId: string): Promise<void> 
 
 // ── 环境保留 ──────────────────────────────────────────────
 
+export interface RedactionHit {
+  path: string;
+  line: number;
+  rule: string;
+  preview: string;
+}
+
 export interface CaptureResult {
   playbookYaml: string;
   summary: {
@@ -630,9 +637,12 @@ export interface CaptureResult {
     npmGlobals: string[];
     pipGlobals: string[];
     dockerContainers: string[];
+    configFiles: string[];
     diskInfo?: string;
     uptimeInfo?: string;
   };
+  redactions?: RedactionHit[];
+  skippedPaths?: string[];
   connectionId: string;
   capturedAt: string;
 }
@@ -909,6 +919,17 @@ export async function writeRemoteConfigFile(token: string, connectionId: string,
   return readJsonOrThrow<{ success: boolean; message: string }>(response, "Write config file failed");
 }
 
+export async function fetchConfigFileDiff(
+  token: string,
+  connectionId: string,
+  path: string
+): Promise<{ current: ConfigFileContent; backup?: ConfigFileContent & { backupPath: string } }> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/configs/diff?path=${encodeURIComponent(path)}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow(response, "Diff failed");
+}
+
 
 // ── 软件卸载 ──────────────────────────────────────────────
 
@@ -919,4 +940,47 @@ export async function uninstallPackages(token: string, connectionId: string, pac
     body: JSON.stringify({ packages, source, dryRun })
   });
   return readJsonOrThrow<{ taskId: string; dryRun: boolean; packages: string[] }>(response, "Uninstall failed");
+}
+
+// ── Preflight & Verify ───────────────────────────────────
+
+export interface PreflightCheck {
+  id: string;
+  label: string;
+  status: "pass" | "warn" | "fail" | "skipped";
+  detail: string;
+}
+
+export interface PreflightReport {
+  ranAt: string;
+  durationMs: number;
+  checks: PreflightCheck[];
+  summary: { pass: number; warn: number; fail: number };
+}
+
+export async function runPreflightCheck(token: string, connectionId: string): Promise<PreflightReport> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/preflight`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const data = await readJsonOrThrow<{ report: PreflightReport }>(response, "Preflight failed");
+  return data.report;
+}
+
+export interface VerifyResult {
+  verifiedAt: string;
+  addedSoftware: Array<{ name: string; version: string; source: string }>;
+  removedSoftware: Array<{ name: string; version: string; source: string }>;
+}
+
+export async function verifyAfterTask(
+  token: string,
+  connectionId: string,
+  beforeProbe: { software?: Array<{ name: string; version: string; source: string }> }
+): Promise<VerifyResult> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/verify`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ beforeProbe })
+  });
+  return readJsonOrThrow<VerifyResult>(response, "Verify failed");
 }

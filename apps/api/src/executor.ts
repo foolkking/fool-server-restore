@@ -345,6 +345,19 @@ async function persistTaskToHistory(task: ExecutionTask): Promise<void> {
       });
       // Keep only last 200 tasks
       if (db.tasks.length > 200) db.tasks = db.tasks.slice(0, 200);
+
+      // Increment catalog install counters for any successfully-installed catalog items.
+      if (task.status === "succeeded" && !task.dryRun && task.items) {
+        if (!db.catalogStats) db.catalogStats = {};
+        for (const item of task.items) {
+          if (item.status !== "succeeded") continue;
+          if (!item.catalogId || item.catalogId === "playbook" || item.catalogId === "uninstall") continue;
+          const existing = db.catalogStats[item.catalogId] ?? { installs: 0, lastInstalledAt: "" };
+          existing.installs += 1;
+          existing.lastInstalledAt = task.completedAt ?? new Date().toISOString();
+          db.catalogStats[item.catalogId] = existing;
+        }
+      }
     });
   } catch { /* ignore persistence errors */ }
 }
