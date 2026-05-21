@@ -2934,44 +2934,88 @@ button:disabled {
 .playbook-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   overflow-y: auto;
+  padding: 4px 0;
 }
 
 .playbook-list-item {
+  align-items: center;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
   cursor: pointer;
-  display: grid;
-  gap: 3px;
-  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  margin: 0 4px;
+  padding: 8px 10px 8px 8px;
   text-align: left;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 .playbook-list-item:hover {
-  background: #ffffff;
-  border-color: #e2e8f0;
+  background: #f1f5f9;
 }
 
 .playbook-list-item.active {
   background: #ecfdf5;
-  border-color: #0f766e;
+  border-left-color: #0f766e;
+}
+
+.playbook-list-icon {
+  color: #94a3b8;
+  flex-shrink: 0;
+  height: 16px;
+  width: 16px;
+}
+
+.playbook-list-item.active .playbook-list-icon {
+  color: #0f766e;
+}
+
+.playbook-list-body {
+  flex: 1;
+  min-width: 0;
 }
 
 .playbook-list-name {
   color: #0f172a;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.playbook-list-item.active .playbook-list-name {
+  color: #064e3b;
+  font-weight: 600;
+}
+
 .playbook-list-meta {
   color: #94a3b8;
   font-size: 11px;
+  margin-top: 2px;
+}
+
+.playbook-list-badge {
+  background: #f1f5f9;
+  border-radius: 999px;
+  color: #475569;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 2px 7px;
+  text-transform: uppercase;
+}
+
+.playbook-list-item.active .playbook-list-badge {
+  background: #d1fae5;
+  color: #065f46;
 }
 
 .playbook-editor-area {
@@ -4037,12 +4081,41 @@ button:disabled {
 
   .playbook-list-item:hover {
     background: #334155;
-    border-color: #475569;
   }
 
   .playbook-list-item.active {
-    background: #172554;
-    border-color: #3b82f6;
+    background: #1e3a5f;
+    border-left-color: #3b82f6;
+  }
+
+  .playbook-list-icon {
+    color: #64748b;
+  }
+
+  .playbook-list-item.active .playbook-list-icon {
+    color: #60a5fa;
+  }
+
+  .playbook-list-name {
+    color: #e2e8f0;
+  }
+
+  .playbook-list-item.active .playbook-list-name {
+    color: #dbeafe;
+  }
+
+  .playbook-list-meta {
+    color: #64748b;
+  }
+
+  .playbook-list-badge {
+    background: #334155;
+    color: #cbd5e1;
+  }
+
+  .playbook-list-item.active .playbook-list-badge {
+    background: #1e40af;
+    color: #dbeafe;
   }
 
   .playbook-name-input,

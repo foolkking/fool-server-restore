@@ -561,7 +561,6 @@ export function MachinePage({
           {capturing ? <span className="spinning">↻</span> : "📦"}
           {capturing ? (locale === "zh" ? "采集中…" : "Capturing…") : (locale === "zh" ? "环境保留（生成重建 Playbook）" : "Capture & Generate Rebuild Playbook")}
         </button>
-        <span className="privacy-note"><span aria-hidden>🔒</span>{t.privacyNote}</span>
       </div>
 
       {captureResult ? (

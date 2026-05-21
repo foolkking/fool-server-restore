@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { X, FileText } from "lucide-react";
 import {
   createPlaybook,
   deletePlaybook,
@@ -228,10 +228,14 @@ export function PlaybookPage({
                 className={`playbook-list-item ${selectedId === pb.id ? "active" : ""}`}
                 onClick={() => void handleSelect(pb.id)}
               >
-                <div className="playbook-list-name">{pb.name}</div>
-                <div className="playbook-list-meta">
-                  v{pb.version} · {new Date(pb.updatedAt).toLocaleDateString()}
+                <FileText className="playbook-list-icon" aria-hidden />
+                <div className="playbook-list-body">
+                  <div className="playbook-list-name">{pb.name}</div>
+                  <div className="playbook-list-meta">
+                    {new Date(pb.updatedAt).toLocaleDateString()}
+                  </div>
                 </div>
+                <span className="playbook-list-badge">v{pb.version}</span>
               </button>
             ))}
           </div>
