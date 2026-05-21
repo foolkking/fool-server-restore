@@ -1,0 +1,39 @@
+# Playbook: Swap 交换空间配置
+name: Configure swap space (2GB)
+hosts: all
+
+tasks:
+  - name: Create 2GB swap file
+    module: shell
+    args:
+      cmd: |
+        sudo fallocate -l 2G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+      creates: /swapfile
+
+  - name: Add swap to fstab for persistence
+    module: lineinfile
+    args:
+      path: /etc/fstab
+      line: "/swapfile none swap sw 0 0"
+      create: true
+
+  - name: Set swappiness to 10
+    module: lineinfile
+    args:
+      path: /etc/sysctl.conf
+      regexp: "^vm.swappiness"
+      line: "vm.swappiness=10"
+      create: true
+
+  - name: Apply sysctl
+    module: shell
+    args:
+      cmd: "sudo sysctl -p"
+
+  - name: Verify swap
+    module: shell
+    args:
+      cmd: "free -h | grep Swap"

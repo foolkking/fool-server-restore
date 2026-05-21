@@ -422,6 +422,218 @@ function getNewSoftwareCatalog(): CatalogItem[] {
         { type: "system-command", label: "启动 Grafana", labelEn: "start Grafana", detail: "sudo systemctl enable grafana-server" },
         { type: "system-command", label: "启动服务", labelEn: "start service", detail: "sudo systemctl start grafana-server" }
       ]
+    },
+    {
+      id: "mongodb",
+      kind: "software",
+      name: "MongoDB 文档数据库",
+      nameEn: "MongoDB document database",
+      category: "database",
+      summary: "MongoDB 7.0 社区版，NoSQL 文档数据库。",
+      summaryEn: "MongoDB 7.0 Community Edition, NoSQL document database.",
+      rating: 4.6,
+      installs: "5.2k",
+      imageTone: "emerald",
+      sensitivity: "review",
+      assets: ["mongodb", "mongosh"],
+      guidePath: "configs/catalog/software/mongodb.md",
+      guideAuthor: "admin",
+      installMode: "skip-existing",
+      deployModes: ["system", "docker"],
+      components: [
+        { type: "software", label: "mongodb-org", labelEn: "MongoDB", detail: "apt" }
+      ]
+    },
+    {
+      id: "rabbitmq",
+      kind: "software",
+      name: "RabbitMQ 消息队列",
+      nameEn: "RabbitMQ message broker",
+      category: "service",
+      summary: "RabbitMQ 消息代理，支持 AMQP 协议，含管理面板。",
+      summaryEn: "RabbitMQ message broker with AMQP support and management UI.",
+      rating: 4.5,
+      installs: "3.8k",
+      imageTone: "orange",
+      sensitivity: "review",
+      assets: ["rabbitmq", "erlang", "management-ui"],
+      guidePath: "configs/catalog/software/rabbitmq.md",
+      guideAuthor: "admin",
+      installMode: "skip-existing",
+      deployModes: ["system", "docker"],
+      components: [
+        { type: "software", label: "rabbitmq-server", labelEn: "RabbitMQ", detail: "apt" }
+      ]
+    },
+    {
+      id: "wireguard-vpn",
+      kind: "software",
+      name: "WireGuard VPN",
+      nameEn: "WireGuard VPN server",
+      category: "network",
+      summary: "WireGuard 高性能 VPN，内核级加密隧道。",
+      summaryEn: "WireGuard high-performance VPN with kernel-level encryption.",
+      rating: 4.9,
+      installs: "7.1k",
+      imageTone: "indigo",
+      sensitivity: "privileged",
+      assets: ["wireguard", "wg-tools", "ip-forward"],
+      guidePath: "configs/catalog/software/wireguard-vpn.md",
+      guideAuthor: "admin",
+      installMode: "skip-existing",
+      deployModes: ["system"],
+      components: [
+        { type: "software", label: "wireguard", labelEn: "WireGuard", detail: "apt" }
+      ]
+    },
+    {
+      id: "netdata-monitoring",
+      kind: "software",
+      name: "Netdata 实时监控",
+      nameEn: "Netdata real-time monitoring",
+      category: "service",
+      summary: "Netdata 实时系统监控面板，零配置开箱即用。",
+      summaryEn: "Netdata real-time monitoring dashboard, zero-config out of the box.",
+      rating: 4.7,
+      installs: "6.3k",
+      imageTone: "emerald",
+      sensitivity: "safe",
+      assets: ["netdata", "dashboard", "alerts"],
+      guidePath: "configs/catalog/software/netdata-monitoring.md",
+      guideAuthor: "admin",
+      installMode: "skip-existing",
+      deployModes: ["system"],
+      components: [
+        { type: "system-command", label: "安装 Netdata", labelEn: "Install Netdata", detail: "curl script" }
+      ]
+    },
+    {
+      id: "minio-storage",
+      kind: "software",
+      name: "MinIO 对象存储",
+      nameEn: "MinIO S3-compatible storage",
+      category: "service",
+      summary: "MinIO S3 兼容对象存储，适合自托管文件/备份。",
+      summaryEn: "MinIO S3-compatible object storage for self-hosted files and backups.",
+      rating: 4.6,
+      installs: "4.1k",
+      imageTone: "red",
+      sensitivity: "review",
+      assets: ["minio", "s3-api", "console"],
+      guidePath: "configs/catalog/software/minio-storage.md",
+      guideAuthor: "admin",
+      installMode: "skip-existing",
+      deployModes: ["system", "docker"],
+      components: [
+        { type: "system-command", label: "安装 MinIO", labelEn: "Install MinIO", detail: "binary download" }
+      ]
+    },
+    {
+      id: "traefik-proxy",
+      kind: "software",
+      name: "Traefik 反向代理",
+      nameEn: "Traefik reverse proxy",
+      category: "network",
+      summary: "Traefik 现代反向代理，自动 SSL 证书，支持 Docker 服务发现。",
+      summaryEn: "Traefik modern reverse proxy with auto-SSL and Docker service discovery.",
+      rating: 4.7,
+      installs: "5.5k",
+      imageTone: "cyan",
+      sensitivity: "review",
+      assets: ["traefik", "auto-ssl", "dashboard"],
+      guidePath: "configs/catalog/software/traefik-proxy.md",
+      guideAuthor: "admin",
+      installMode: "skip-existing",
+      deployModes: ["system", "docker"],
+      components: [
+        { type: "system-command", label: "安装 Traefik", labelEn: "Install Traefik", detail: "binary download" }
+      ]
+    },
+    {
+      id: "elasticsearch",
+      kind: "software",
+      name: "Elasticsearch 搜索引擎",
+      nameEn: "Elasticsearch search engine",
+      category: "database",
+      summary: "Elasticsearch 8.x 分布式搜索和分析引擎。",
+      summaryEn: "Elasticsearch 8.x distributed search and analytics engine.",
+      rating: 4.5,
+      installs: "4.8k",
+      imageTone: "yellow",
+      sensitivity: "review",
+      assets: ["elasticsearch", "rest-api"],
+      guidePath: "configs/catalog/software/elasticsearch.md",
+      guideAuthor: "admin",
+      installMode: "skip-existing",
+      deployModes: ["system", "docker"],
+      components: [
+        { type: "software", label: "elasticsearch", labelEn: "Elasticsearch", detail: "apt" }
+      ]
+    },
+    {
+      id: "cockpit-panel",
+      kind: "software",
+      name: "Cockpit Web 管理面板",
+      nameEn: "Cockpit web management panel",
+      category: "service",
+      summary: "Cockpit 浏览器管理面板，可视化管理服务器。",
+      summaryEn: "Cockpit browser-based server management panel.",
+      rating: 4.4,
+      installs: "3.2k",
+      imageTone: "blue",
+      sensitivity: "safe",
+      assets: ["cockpit", "web-ui", "storage"],
+      guidePath: "configs/catalog/software/cockpit-panel.md",
+      guideAuthor: "admin",
+      installMode: "skip-existing",
+      deployModes: ["system"],
+      components: [
+        { type: "software", label: "cockpit", labelEn: "Cockpit", detail: "apt" }
+      ]
+    },
+    {
+      id: "htop-tools",
+      kind: "software",
+      name: "系统监控工具集",
+      nameEn: "System monitoring tools",
+      category: "developer",
+      summary: "htop、btop、iotop、ncdu 等系统诊断和监控工具。",
+      summaryEn: "htop, btop, iotop, ncdu and other system diagnostic tools.",
+      rating: 4.8,
+      installs: "9.7k",
+      imageTone: "slate",
+      sensitivity: "safe",
+      assets: ["htop", "btop", "iotop", "ncdu", "sysstat"],
+      guidePath: "configs/catalog/software/htop-tools.md",
+      guideAuthor: "admin",
+      installMode: "skip-existing",
+      deployModes: ["system"],
+      components: [
+        { type: "software", label: "htop", labelEn: "htop", detail: "apt" },
+        { type: "software", label: "btop", labelEn: "btop", detail: "apt" },
+        { type: "software", label: "ncdu", labelEn: "ncdu", detail: "apt" }
+      ]
+    },
+    {
+      id: "swap-config",
+      kind: "software",
+      name: "Swap 交换空间",
+      nameEn: "Swap space configuration",
+      category: "service",
+      summary: "配置 2GB swap 交换空间，适合小内存 VPS。",
+      summaryEn: "Configure 2GB swap space, ideal for low-memory VPS.",
+      rating: 4.3,
+      installs: "6.8k",
+      imageTone: "slate",
+      sensitivity: "safe",
+      assets: ["swap", "sysctl"],
+      guidePath: "configs/catalog/software/swap-config.md",
+      guideAuthor: "admin",
+      installMode: "skip-existing",
+      deployModes: ["system"],
+      components: [
+        { type: "system-command", label: "创建 Swap", labelEn: "Create swap", detail: "fallocate + mkswap" }
+      ]
     }
   ];
 }

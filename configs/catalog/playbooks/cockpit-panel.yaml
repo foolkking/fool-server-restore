@@ -1,0 +1,26 @@
+# Playbook: Cockpit Web 管理面板
+name: Install Cockpit web-based server management
+hosts: all
+
+tasks:
+  - name: Install Cockpit
+    module: package
+    args:
+      name:
+        - cockpit
+        - cockpit-storaged
+        - cockpit-networkmanager
+      state: present
+
+  - name: Enable and start Cockpit
+    module: service
+    args:
+      name: cockpit.socket
+      enabled: true
+      state: started
+
+  - name: Verify Cockpit (port 9090)
+    module: shell
+    args:
+      cmd: "systemctl is-active cockpit.socket && echo 'Cockpit available at https://your-ip:9090'"
+    ignore_errors: true

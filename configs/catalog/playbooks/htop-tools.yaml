@@ -1,0 +1,25 @@
+# Playbook: 系统监控工具集
+name: Install system monitoring and diagnostic tools
+hosts: all
+
+tasks:
+  - name: Install monitoring tools
+    module: package
+    args:
+      name:
+        - htop
+        - btop
+        - iotop
+        - iftop
+        - ncdu
+        - duf
+        - net-tools
+        - sysstat
+        - lsof
+        - strace
+      state: present
+
+  - name: Verify htop
+    module: shell
+    args:
+      cmd: "htop --version"

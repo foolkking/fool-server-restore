@@ -1,0 +1,65 @@
+# Playbook: Traefik 反向代理
+name: Install Traefik reverse proxy with auto-SSL
+hosts: all
+
+tasks:
+  - name: Download Traefik binary
+    module: shell
+    args:
+      cmd: |
+        TRAEFIK_VERSION=$(curl -s https://api.github.com/repos/traefik/traefik/releases/latest | grep tag_name | cut -d'"' -f4)
+        curl -fsSL "https://github.com/traefik/traefik/releases/download/${TRAEFIK_VERSION}/traefik_${TRAEFIK_VERSION}_linux_amd64.tar.gz" -o /tmp/traefik.tar.gz
+        sudo tar -xzf /tmp/traefik.tar.gz -C /usr/local/bin traefik
+        sudo chmod +x /usr/local/bin/traefik
+        rm -f /tmp/traefik.tar.gz
+      creates: /usr/local/bin/traefik
+
+  - name: Create Traefik config directory
+    module: file
+    args:
+      path: /etc/traefik
+      state: directory
+
+  - name: Create basic Traefik config
+    module: copy
+    args:
+      dest: /etc/traefik/traefik.yml
+      content: |
+        entryPoints:
+          web:
+            address: ":80"
+          websecure:
+            address: ":443"
+        api:
+          dashboard: true
+          insecure: true
+        providers:
+          file:
+            directory: /etc/traefik/conf.d
+
+  - name: Create Traefik systemd service
+    module: copy
+    args:
+      dest: /etc/systemd/system/traefik.service
+      content: |
+        [Unit]
+        Description=Traefik Reverse Proxy
+        After=network.target
+
+        [Service]
+        Type=simple
+        ExecStart=/usr/local/bin/traefik --configFile=/etc/traefik/traefik.yml
+        Restart=always
+
+        [Install]
+        WantedBy=multi-user.target
+
+  - name: Enable and start Traefik
+    module: shell
+    args:
+      cmd: "sudo systemctl daemon-reload && sudo systemctl enable traefik && sudo systemctl start traefik"
+
+  - name: Verify Traefik
+    module: shell
+    args:
+      cmd: "traefik version"

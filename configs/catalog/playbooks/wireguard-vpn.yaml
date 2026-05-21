@@ -1,0 +1,40 @@
+# Playbook: WireGuard VPN
+name: Install WireGuard VPN server
+hosts: all
+
+tasks:
+  - name: Install WireGuard
+    module: package
+    args:
+      name:
+        - wireguard
+        - wireguard-tools
+      state: present
+
+  - name: Enable IP forwarding
+    module: lineinfile
+    args:
+      path: /etc/sysctl.conf
+      regexp: "^#?net.ipv4.ip_forward"
+      line: "net.ipv4.ip_forward = 1"
+      create: true
+
+  - name: Apply sysctl changes
+    module: shell
+    args:
+      cmd: "sudo sysctl -p"
+
+  - name: Generate server keys if not exist
+    module: shell
+    args:
+      cmd: |
+        sudo mkdir -p /etc/wireguard
+        cd /etc/wireguard
+        umask 077
+        wg genkey | sudo tee privatekey | wg pubkey | sudo tee publickey
+      creates: /etc/wireguard/privatekey
+
+  - name: Verify WireGuard installation
+    module: shell
+    args:
+      cmd: "wg --version"

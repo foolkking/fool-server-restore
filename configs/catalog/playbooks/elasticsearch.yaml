@@ -1,0 +1,41 @@
+# Playbook: Elasticsearch 搜索引擎
+name: Install Elasticsearch
+hosts: all
+
+tasks:
+  - name: Install prerequisites
+    module: package
+    args:
+      name:
+        - apt-transport-https
+        - gnupg
+        - curl
+      state: present
+
+  - name: Add Elasticsearch GPG key and repository
+    module: shell
+    args:
+      cmd: |
+        curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg --yes
+        echo "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
+        sudo apt-get update -qq
+      creates: /etc/apt/sources.list.d/elastic-8.x.list
+
+  - name: Install Elasticsearch
+    module: package
+    args:
+      name: elasticsearch
+      state: present
+
+  - name: Enable and start Elasticsearch
+    module: service
+    args:
+      name: elasticsearch
+      enabled: true
+      state: started
+
+  - name: Verify Elasticsearch
+    module: shell
+    args:
+      cmd: "curl -s http://localhost:9200 | head -5 && echo 'Elasticsearch OK'"
+    ignore_errors: true

@@ -1,0 +1,40 @@
+# Playbook: MongoDB 文档数据库
+name: Install MongoDB Community Edition
+hosts: all
+
+tasks:
+  - name: Install prerequisites
+    module: package
+    args:
+      name:
+        - gnupg
+        - curl
+      state: present
+
+  - name: Add MongoDB GPG key and repository
+    module: shell
+    args:
+      cmd: |
+        curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg --yes
+        echo "deb [signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] http://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+        sudo apt-get update -qq
+      creates: /etc/apt/sources.list.d/mongodb-org-7.0.list
+
+  - name: Install MongoDB
+    module: package
+    args:
+      name: mongodb-org
+      state: present
+
+  - name: Enable and start MongoDB
+    module: service
+    args:
+      name: mongod
+      enabled: true
+      state: started
+
+  - name: Verify MongoDB is running
+    module: shell
+    args:
+      cmd: "mongosh --eval 'db.runCommand({ping:1})' --quiet && echo 'MongoDB OK'"
+    ignore_errors: true

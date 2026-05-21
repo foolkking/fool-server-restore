@@ -1,0 +1,23 @@
+# Playbook: Netdata 实时监控
+name: Install Netdata real-time monitoring
+hosts: all
+
+tasks:
+  - name: Install Netdata via official script
+    module: shell
+    args:
+      cmd: "curl -fsSL https://get.netdata.cloud/kickstart.sh | bash -s -- --dont-wait --no-updates"
+      creates: /usr/sbin/netdata
+
+  - name: Enable Netdata service
+    module: service
+    args:
+      name: netdata
+      enabled: true
+      state: started
+
+  - name: Verify Netdata is running (port 19999)
+    module: shell
+    args:
+      cmd: "curl -s http://localhost:19999/api/v1/info | head -c 100 && echo ' Netdata OK'"
+    ignore_errors: true

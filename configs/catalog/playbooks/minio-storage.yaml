@@ -1,0 +1,48 @@
+# Playbook: MinIO 对象存储
+name: Install MinIO S3-compatible object storage
+hosts: all
+
+tasks:
+  - name: Download MinIO server binary
+    module: shell
+    args:
+      cmd: |
+        curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /tmp/minio
+        sudo install /tmp/minio /usr/local/bin/minio
+        rm -f /tmp/minio
+      creates: /usr/local/bin/minio
+
+  - name: Create MinIO data directory
+    module: file
+    args:
+      path: /opt/minio/data
+      state: directory
+
+  - name: Create MinIO systemd service
+    module: copy
+    args:
+      dest: /etc/systemd/system/minio.service
+      content: |
+        [Unit]
+        Description=MinIO Object Storage
+        After=network.target
+
+        [Service]
+        Type=simple
+        User=root
+        ExecStart=/usr/local/bin/minio server /opt/minio/data --console-address ":9001"
+        Restart=always
+
+        [Install]
+        WantedBy=multi-user.target
+
+  - name: Enable and start MinIO
+    module: shell
+    args:
+      cmd: "sudo systemctl daemon-reload && sudo systemctl enable minio && sudo systemctl start minio"
+
+  - name: Verify MinIO is running
+    module: shell
+    args:
+      cmd: "curl -s http://localhost:9000/minio/health/live && echo ' MinIO OK'"
+    ignore_errors: true

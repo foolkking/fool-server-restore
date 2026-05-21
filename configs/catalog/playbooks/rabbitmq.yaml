@@ -1,0 +1,31 @@
+# Playbook: RabbitMQ 消息队列
+name: Install RabbitMQ message broker
+hosts: all
+
+tasks:
+  - name: Install Erlang and RabbitMQ
+    module: package
+    args:
+      name:
+        - erlang-base
+        - rabbitmq-server
+      state: present
+
+  - name: Enable RabbitMQ service
+    module: service
+    args:
+      name: rabbitmq-server
+      enabled: true
+      state: started
+
+  - name: Enable RabbitMQ management plugin
+    module: shell
+    args:
+      cmd: "sudo rabbitmq-plugins enable rabbitmq_management"
+      creates: /etc/rabbitmq/enabled_plugins
+
+  - name: Verify RabbitMQ is running
+    module: shell
+    args:
+      cmd: "sudo rabbitmqctl status | head -5 && echo 'RabbitMQ OK'"
+    ignore_errors: true
