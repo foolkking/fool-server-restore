@@ -146,6 +146,14 @@ export interface RuntimeDatabase {
   playbooks?: StoredPlaybook[];
   /** Catalog item install counter (catalogId → real install count) */
   catalogStats?: Record<string, { installs: number; lastInstalledAt: string }>;
+  /** Scheduled Playbook runs (cron-style) */
+  schedules?: StoredSchedule[];
+  /** Drift detection baselines + history */
+  driftBaselines?: StoredDriftBaseline[];
+  /** Webhook subscriptions for task events */
+  webhooks?: StoredWebhook[];
+  /** API tokens for CI/CD integration */
+  apiTokens?: StoredApiToken[];
 }
 
 /** 用户保存的 Playbook（支持版本历史） */
@@ -170,6 +178,89 @@ export interface StoredPlaybook {
   sourceId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Cron-style scheduled Playbook run */
+export interface StoredSchedule {
+  id: string;
+  userId: string;
+  /** Display name */
+  name: string;
+  /** Source: a saved playbook id, OR a catalog id; pick one */
+  playbookId?: string;
+  catalogId?: string;
+  /** Target connections (any of) — when both are empty, fall back to all user connections */
+  connectionIds: string[];
+  /** Target connections matched by tags */
+  tags: string[];
+  /** Cron expression (5-field, UTC). Examples: "0 3 * * *" daily 03:00 UTC. */
+  cron: string;
+  /** Whether to actually execute or only dry-run */
+  dryRun: boolean;
+  /** Disabled schedules don't fire */
+  enabled: boolean;
+  /** When the next fire time was last computed */
+  nextRunAt?: string;
+  /** Last fired at (regardless of success) */
+  lastRunAt?: string;
+  /** Last result summary */
+  lastStatus?: "succeeded" | "failed" | "partial" | "skipped";
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Drift baseline — snapshot of user-managed software for nightly diff */
+export interface StoredDriftBaseline {
+  id: string;
+  userId: string;
+  connectionId: string;
+  /** ISO timestamp this baseline was captured */
+  capturedAt: string;
+  /** A compact representation: software name|source key set */
+  softwareKeys: string[];
+  /** Last drift report (if any) */
+  lastReport?: {
+    checkedAt: string;
+    addedSoftware: Array<{ name: string; version: string; source: string }>;
+    removedSoftware: Array<{ name: string; version: string; source: string }>;
+  };
+}
+
+/** Webhook subscription — fires on task events */
+export interface StoredWebhook {
+  id: string;
+  userId: string;
+  /** Display label */
+  label: string;
+  /** HTTPS URL to POST event JSON to */
+  url: string;
+  /** Optional shared secret added as X-EnvForge-Signature: sha256=<hmac> */
+  secret?: string;
+  /** Event types this hook subscribes to */
+  events: Array<"task.completed" | "task.failed" | "drift.detected" | "schedule.fired">;
+  enabled: boolean;
+  createdAt: string;
+  /** Last delivery attempt */
+  lastDeliveryAt?: string;
+  lastDeliveryStatus?: "success" | "failed";
+  lastDeliveryError?: string;
+}
+
+/** API token for CI/CD integration (separate from session tokens) */
+export interface StoredApiToken {
+  id: string;
+  userId: string;
+  /** User-friendly label (e.g. "GitHub Actions prod") */
+  label: string;
+  /** SHA-256 hash of the actual token; raw token is shown to user once */
+  tokenHash: string;
+  /** First 8 chars of the raw token, for UI display */
+  tokenPrefix: string;
+  createdAt: string;
+  /** ISO timestamp of last use */
+  lastUsedAt?: string;
+  /** Optional expiry (null = never expires) */
+  expiresAt?: string;
 }
 
 /** 任务历史记录 */

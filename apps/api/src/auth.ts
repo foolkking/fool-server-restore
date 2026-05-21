@@ -99,6 +99,23 @@ export async function loginUser(input: { email?: string; password?: string }): P
 export async function getUserByToken(token?: string): Promise<StoredUser | undefined> {
   if (!token) return undefined;
   const database = await readRuntimeDatabase();
+
+  // Path 1: API token (CI/CD integration). These start with "envf_".
+  if (token.startsWith("envf_")) {
+    const { createHash } = await import("node:crypto");
+    const hash = createHash("sha256").update(token).digest("hex");
+    const apiToken = (database.apiTokens ?? []).find((t) => t.tokenHash === hash);
+    if (!apiToken) return undefined;
+    if (apiToken.expiresAt && new Date(apiToken.expiresAt).getTime() <= Date.now()) return undefined;
+    // Update last-used (best-effort, non-blocking)
+    void updateRuntimeDatabase((db) => {
+      const t = (db.apiTokens ?? []).find((x) => x.id === apiToken.id);
+      if (t) t.lastUsedAt = new Date().toISOString();
+    });
+    return database.users.find((user) => user.id === apiToken.userId);
+  }
+
+  // Path 2: session token (web login)
   const session = database.sessions.find((candidate) => candidate.token === token);
   if (!session || new Date(session.expiresAt).getTime() <= Date.now()) return undefined;
   return database.users.find((user) => user.id === session.userId);

@@ -101,6 +101,8 @@ export async function testSshConnection(
       port,
       username,
       readyTimeout: CONNECT_TIMEOUT_MS,
+      keepaliveInterval: 30000,
+      keepaliveCountMax: 3,
       ...(auth.type === "password"
         ? { password: auth.password }
         : { privateKey, passphrase: auth.passphrase })
@@ -168,6 +170,8 @@ export async function testSshConnectionWithContent(
       port,
       username,
       readyTimeout: CONNECT_TIMEOUT_MS,
+      keepaliveInterval: 30000,
+      keepaliveCountMax: 3,
       privateKey: Buffer.from(privateKeyContent, "utf8"),
       ...(passphrase ? { passphrase } : {})
     };

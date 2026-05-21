@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { getConfig } from "./config.js";
 import { registerRoutes } from "./routes.js";
 import { registerStaticWeb } from "./static-web.js";
+import { startScheduler } from "./scheduler.js";
 
 const config = getConfig();
 
@@ -27,6 +28,9 @@ try {
   if (config.serveWeb) {
     app.log.info(`Serving Web UI from ${config.webDistDir}`);
   }
+  // Start the cron-style scheduler (idempotent).
+  startScheduler();
+  app.log.info("Scheduler started");
 } catch (error) {
   app.log.error(error);
   process.exit(1);

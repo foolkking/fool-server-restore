@@ -984,6 +984,295 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     try { return await readConfigFileWithBackup(conn, filePath); }
     catch (err) { reply.code(500); return { error: err instanceof Error ? err.message : "Failed" }; }
   });
+
+  // ── Schedules (cron) ────────────────────────────────────
+
+  app.get("/api/schedules", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const db = await readRuntimeDatabase();
+    return { schedules: (db.schedules ?? []).filter((s) => s.userId === user.id) };
+  });
+
+  app.post("/api/schedules", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { validateScheduleInput } = await import("./scheduler.js");
+    const { nextRunAfter } = await import("./cron.js");
+    const body = (request.body ?? {}) as Partial<import("./runtime-store.js").StoredSchedule>;
+    const err = validateScheduleInput(body);
+    if (err) { reply.code(400); return { error: err }; }
+    const now = new Date();
+    const next = nextRunAfter(body.cron!, now);
+    const created = await updateRuntimeDatabase((db) => {
+      if (!db.schedules) db.schedules = [];
+      const sch: import("./runtime-store.js").StoredSchedule = {
+        id: createId("sched"),
+        userId: user.id,
+        name: body.name!.trim(),
+        playbookId: body.playbookId,
+        catalogId: body.catalogId,
+        connectionIds: body.connectionIds ?? [],
+        tags: body.tags ?? [],
+        cron: body.cron!.trim(),
+        dryRun: body.dryRun ?? false,
+        enabled: body.enabled ?? true,
+        nextRunAt: next ? next.toISOString() : undefined,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      };
+      db.schedules.push(sch);
+      return sch;
+    });
+    return { schedule: created };
+  });
+
+  app.patch("/api/schedules/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as Partial<import("./runtime-store.js").StoredSchedule>;
+    const { validateCron, nextRunAfter } = await import("./cron.js");
+    if (body.cron !== undefined) {
+      const cronErr = validateCron(body.cron);
+      if (cronErr) { reply.code(400); return { error: cronErr }; }
+    }
+    const updated = await updateRuntimeDatabase((db) => {
+      const sch = (db.schedules ?? []).find((s) => s.id === id && s.userId === user.id);
+      if (!sch) return null;
+      if (body.name !== undefined) sch.name = body.name.trim();
+      if (body.cron !== undefined) {
+        sch.cron = body.cron.trim();
+        const next = nextRunAfter(sch.cron, new Date());
+        sch.nextRunAt = next ? next.toISOString() : undefined;
+      }
+      if (body.connectionIds !== undefined) sch.connectionIds = body.connectionIds;
+      if (body.tags !== undefined) sch.tags = body.tags;
+      if (body.dryRun !== undefined) sch.dryRun = body.dryRun;
+      if (body.enabled !== undefined) sch.enabled = body.enabled;
+      sch.updatedAt = new Date().toISOString();
+      return sch;
+    });
+    if (!updated) { reply.code(404); return { error: "Schedule not found." }; }
+    return { schedule: updated };
+  });
+
+  app.delete("/api/schedules/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const removed = await updateRuntimeDatabase((db) => {
+      const before = db.schedules?.length ?? 0;
+      db.schedules = (db.schedules ?? []).filter((s) => !(s.id === id && s.userId === user.id));
+      return before !== (db.schedules?.length ?? 0);
+    });
+    if (!removed) { reply.code(404); return { error: "Schedule not found." }; }
+    return { ok: true };
+  });
+
+  // ── Drift detection ─────────────────────────────────────
+
+  app.post("/api/connections/:id/drift/baseline", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try {
+      const { setBaseline } = await import("./drift.js");
+      const baseline = await setBaseline(user.id, conn);
+      return { baseline };
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Failed to set baseline" };
+    }
+  });
+
+  app.get("/api/connections/:id/drift", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try {
+      const { runDriftCheck } = await import("./drift.js");
+      const report = await runDriftCheck(user.id, conn);
+      if (!report) { reply.code(400); return { error: "No baseline set for this connection. Set one first." }; }
+      return { report };
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Drift check failed" };
+    }
+  });
+
+  // ── Webhooks ────────────────────────────────────────────
+
+  app.get("/api/webhooks", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const db = await readRuntimeDatabase();
+    return { webhooks: (db.webhooks ?? []).filter((w) => w.userId === user.id) };
+  });
+
+  app.post("/api/webhooks", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as Partial<import("./runtime-store.js").StoredWebhook>;
+    if (!body.label?.trim() || !body.url?.trim()) {
+      reply.code(400); return { error: "label and url are required." };
+    }
+    try {
+      const u = new URL(body.url);
+      if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("Only http(s) URLs allowed");
+    } catch {
+      reply.code(400); return { error: "Invalid URL." };
+    }
+    const events = (body.events ?? ["task.completed", "task.failed", "drift.detected", "schedule.fired"])
+      .filter((e): e is "task.completed" | "task.failed" | "drift.detected" | "schedule.fired" =>
+        ["task.completed", "task.failed", "drift.detected", "schedule.fired"].includes(e));
+    const created = await updateRuntimeDatabase((db) => {
+      if (!db.webhooks) db.webhooks = [];
+      const hook: import("./runtime-store.js").StoredWebhook = {
+        id: createId("hook"),
+        userId: user.id,
+        label: body.label!.trim(),
+        url: body.url!.trim(),
+        secret: body.secret?.trim() || undefined,
+        events,
+        enabled: body.enabled ?? true,
+        createdAt: new Date().toISOString()
+      };
+      db.webhooks.push(hook);
+      return hook;
+    });
+    return { webhook: created };
+  });
+
+  app.patch("/api/webhooks/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as Partial<import("./runtime-store.js").StoredWebhook>;
+    const updated = await updateRuntimeDatabase((db) => {
+      const hook = (db.webhooks ?? []).find((w) => w.id === id && w.userId === user.id);
+      if (!hook) return null;
+      if (body.label !== undefined) hook.label = body.label.trim();
+      if (body.url !== undefined) hook.url = body.url.trim();
+      if (body.secret !== undefined) hook.secret = body.secret.trim() || undefined;
+      if (body.events !== undefined) hook.events = body.events;
+      if (body.enabled !== undefined) hook.enabled = body.enabled;
+      return hook;
+    });
+    if (!updated) { reply.code(404); return { error: "Webhook not found." }; }
+    return { webhook: updated };
+  });
+
+  app.delete("/api/webhooks/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const removed = await updateRuntimeDatabase((db) => {
+      const before = db.webhooks?.length ?? 0;
+      db.webhooks = (db.webhooks ?? []).filter((w) => !(w.id === id && w.userId === user.id));
+      return before !== (db.webhooks?.length ?? 0);
+    });
+    if (!removed) { reply.code(404); return { error: "Webhook not found." }; }
+    return { ok: true };
+  });
+
+  app.post("/api/webhooks/:id/test", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const hook = (db.webhooks ?? []).find((w) => w.id === id && w.userId === user.id);
+    if (!hook) { reply.code(404); return { error: "Webhook not found." }; }
+    const { fireWebhooks } = await import("./webhooks.js");
+    // Pick one event the hook is subscribed to (fall back to task.completed)
+    const evtType = hook.events[0] ?? "task.completed";
+    await fireWebhooks(user.id, evtType, { test: true, message: "EnvForge webhook test" });
+    // Re-read to surface delivery status
+    const after = (await readRuntimeDatabase()).webhooks?.find((w) => w.id === id);
+    return { delivered: after?.lastDeliveryStatus, error: after?.lastDeliveryError };
+  });
+
+  // ── Module documentation (for editor + onboarding) ──────
+
+  app.get("/api/modules/docs", async () => {
+    const { MODULE_DOCS } = await import("./engine/module-docs.js");
+    return { modules: MODULE_DOCS };
+  });
+
+  // ── API tokens ──────────────────────────────────────────
+
+  app.get("/api/tokens", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const db = await readRuntimeDatabase();
+    return {
+      tokens: (db.apiTokens ?? [])
+        .filter((t) => t.userId === user.id)
+        .map((t) => ({
+          id: t.id,
+          label: t.label,
+          tokenPrefix: t.tokenPrefix,
+          createdAt: t.createdAt,
+          lastUsedAt: t.lastUsedAt,
+          expiresAt: t.expiresAt
+        }))
+    };
+  });
+
+  app.post("/api/tokens", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as { label?: string; expiresInDays?: number };
+    if (!body.label?.trim()) { reply.code(400); return { error: "label is required." }; }
+    const { randomBytes, createHash } = await import("node:crypto");
+    const raw = `envf_${randomBytes(24).toString("base64url")}`;
+    const tokenHash = createHash("sha256").update(raw).digest("hex");
+    const expiresAt = body.expiresInDays && body.expiresInDays > 0
+      ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000).toISOString()
+      : undefined;
+    const created = await updateRuntimeDatabase((db) => {
+      if (!db.apiTokens) db.apiTokens = [];
+      const tok: import("./runtime-store.js").StoredApiToken = {
+        id: createId("token"),
+        userId: user.id,
+        label: body.label!.trim(),
+        tokenHash,
+        tokenPrefix: raw.slice(0, 12),
+        createdAt: new Date().toISOString(),
+        expiresAt
+      };
+      db.apiTokens.push(tok);
+      return tok;
+    });
+    // Return the raw token ONCE
+    return {
+      token: raw,
+      id: created.id,
+      label: created.label,
+      tokenPrefix: created.tokenPrefix,
+      createdAt: created.createdAt,
+      expiresAt: created.expiresAt
+    };
+  });
+
+  app.delete("/api/tokens/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const removed = await updateRuntimeDatabase((db) => {
+      const before = db.apiTokens?.length ?? 0;
+      db.apiTokens = (db.apiTokens ?? []).filter((t) => !(t.id === id && t.userId === user.id));
+      return before !== (db.apiTokens?.length ?? 0);
+    });
+    if (!removed) { reply.code(404); return { error: "Token not found." }; }
+    return { ok: true };
+  });
 }
 
 function readBearerToken(header: string | undefined): string | undefined {
@@ -1009,7 +1298,9 @@ async function connectSshForUser(
       host: decrypted.host,
       port: parseInt(decrypted.port ?? "22", 10) || 22,
       username: decrypted.username,
-      readyTimeout: 10000
+      readyTimeout: 10000,
+      keepaliveInterval: 30000,
+      keepaliveCountMax: 3
     };
     if (conn.method === "ssh-key") {
       const keyId = decrypted._keyId;

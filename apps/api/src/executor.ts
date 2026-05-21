@@ -360,4 +360,24 @@ async function persistTaskToHistory(task: ExecutionTask): Promise<void> {
       }
     });
   } catch { /* ignore persistence errors */ }
+
+  // Fire webhooks (best-effort, non-blocking from caller's perspective).
+  try {
+    const { fireWebhooks } = await import("./webhooks.js");
+    const eventType = task.status === "succeeded" ? "task.completed" : task.status === "failed" ? "task.failed" : null;
+    if (eventType) {
+      await fireWebhooks(task.userId, eventType, {
+        taskId: task.id,
+        connectionId: task.connectionId,
+        kind: task.kind,
+        status: task.status,
+        dryRun: task.dryRun,
+        durationMs: task.completedAt && task.startedAt
+          ? new Date(task.completedAt).getTime() - new Date(task.startedAt).getTime()
+          : undefined,
+        items: task.items?.map((i) => ({ catalogId: i.catalogId, status: i.status })) ?? undefined,
+        error: task.error
+      });
+    }
+  } catch { /* webhooks are best-effort */ }
 }

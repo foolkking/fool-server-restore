@@ -33,8 +33,12 @@ import { MachinePage } from "./pages/MachinePage";
 import { MarketPage } from "./pages/MarketPage";
 import { MePage } from "./pages/MePage";
 import { PlaybookPage } from "./pages/PlaybookPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { fetchPlaybooks, type StoredPlaybook } from "./api";
 import { TerminalPanel } from "./components/TerminalPanel";
-import { MarkdownOverlay } from "./components/MarkdownOverlay";import "./styles.css";
+import { MarkdownOverlay } from "./components/MarkdownOverlay";
+import { OnboardingWizard } from "./components/OnboardingWizard";
+import "./styles.css";
 
 type ConnectionMethod = "ssh-password" | "ssh-key";
 
@@ -42,6 +46,8 @@ function App() {
   const [locale, setLocale] = useState<Locale>("zh");
   const [page, setPage] = useState<Page>("machine");
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [userPlaybooks, setUserPlaybooks] = useState<StoredPlaybook[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [strategies, setStrategies] = useState<MigrationStrategy[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [guide, setGuide] = useState<CatalogGuide | null>(null);
@@ -103,6 +109,9 @@ function App() {
     if (catalogResult.status === "fulfilled") setCatalog(catalogResult.value);
     if (userResult.status === "fulfilled") setCurrentUser(userResult.value);
     setStrategies(strategyResult);
+    if (token) {
+      void fetchPlaybooks(token).then(setUserPlaybooks).catch(() => setUserPlaybooks([]));
+    }
 
     const activeToken = token ?? authToken;
     if (activeToken) {
@@ -241,6 +250,7 @@ function App() {
   function handleAuthSuccess(result: { token: string; user: AuthUser }) {
     setAuthToken(result.token);
     setAuthUser(result.user);
+    setShowOnboarding(localStorage.getItem("envforge_onboarded") !== "1");
     localStorage.setItem("envforge_token", result.token);
     localStorage.setItem("envforge_user", JSON.stringify(result.user));
     void load(result.token);
@@ -423,7 +433,20 @@ function App() {
           />
         ) : null}
 
+        {page === "settings" && authUser && authToken ? (
+          <SettingsPage
+            locale={locale}
+            authToken={authToken}
+            connections={connections}
+            playbooks={userPlaybooks}
+            catalog={catalog}
+          />
+        ) : page === "settings" ? (
+          <p className="empty-hint">{locale === "zh" ? "请先登录以使用高级设置。" : "Login to access settings."}</p>
+        ) : null}
+
         {guide ? <MarkdownOverlay guide={guide} locale={locale} onClose={() => setGuide(null)} /> : null}
+        {showOnboarding ? <OnboardingWizard locale={locale} onClose={() => setShowOnboarding(false)} /> : null}
       </section>
 
       {connected ? (

@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 export type Locale = "zh" | "en";
-export type Page = "machine" | "market" | "me" | "playbooks";
+export type Page = "machine" | "market" | "me" | "playbooks" | "settings";
 export type ConnectionMethod = "ssh-password" | "ssh-key";
 
 export const text = {
@@ -17,6 +17,7 @@ export const text = {
     market: "配置市场",
     me: "我的空间",
     playbooks: "Playbook",
+    settings: "高级设置",
     search: "搜索可加入虚拟机的软件、配置、系统策略",
     filter: "筛选",
     connectTitle: "连接至远程服务器",
@@ -57,6 +58,7 @@ export const text = {
     market: "Config Market",
     me: "My Space",
     playbooks: "Playbooks",
+    settings: "Settings",
     search: "Search software, configs, and system policies",
     filter: "Filter",
     connectTitle: "Connect remote server",
@@ -98,6 +100,7 @@ export const navItems: Array<{ id: Page; icon: LucideIcon }> = [
   { id: "machine", icon: MonitorCog },
   { id: "market", icon: PackagePlus },
   { id: "playbooks", icon: Server },
+  { id: "settings", icon: Settings2 },
   { id: "me", icon: UserRound }
 ];
 

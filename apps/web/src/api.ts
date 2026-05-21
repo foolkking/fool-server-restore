@@ -984,3 +984,185 @@ export async function verifyAfterTask(
   });
   return readJsonOrThrow<VerifyResult>(response, "Verify failed");
 }
+
+
+// ── Schedules (cron) ─────────────────────────────────────
+
+export interface Schedule {
+  id: string;
+  userId: string;
+  name: string;
+  playbookId?: string;
+  catalogId?: string;
+  connectionIds: string[];
+  tags: string[];
+  cron: string;
+  dryRun: boolean;
+  enabled: boolean;
+  nextRunAt?: string;
+  lastRunAt?: string;
+  lastStatus?: "succeeded" | "failed" | "partial" | "skipped";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchSchedules(token: string): Promise<Schedule[]> {
+  const r = await fetch("/api/schedules", { headers: { "Authorization": `Bearer ${token}` } });
+  return (await readJsonOrThrow<{ schedules: Schedule[] }>(r, "Fetch schedules failed")).schedules;
+}
+
+export async function createSchedule(token: string, input: Partial<Schedule>): Promise<Schedule> {
+  const r = await fetch("/api/schedules", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return (await readJsonOrThrow<{ schedule: Schedule }>(r, "Create schedule failed")).schedule;
+}
+
+export async function updateSchedule(token: string, id: string, input: Partial<Schedule>): Promise<Schedule> {
+  const r = await fetch(`/api/schedules/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return (await readJsonOrThrow<{ schedule: Schedule }>(r, "Update schedule failed")).schedule;
+}
+
+export async function deleteSchedule(token: string, id: string): Promise<void> {
+  const r = await fetch(`/api/schedules/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow(r, "Delete schedule failed");
+}
+
+// ── Drift detection ──────────────────────────────────────
+
+export interface DriftReport {
+  baselineCapturedAt: string;
+  checkedAt: string;
+  addedSoftware: Array<{ name: string; version: string; source: string }>;
+  removedSoftware: Array<{ name: string; version: string; source: string }>;
+  hasDrift: boolean;
+}
+
+export async function setDriftBaseline(token: string, connectionId: string): Promise<{ id: string; capturedAt: string }> {
+  const r = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/drift/baseline`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const data = await readJsonOrThrow<{ baseline: { id: string; capturedAt: string } }>(r, "Baseline failed");
+  return data.baseline;
+}
+
+export async function runDriftCheck(token: string, connectionId: string): Promise<DriftReport> {
+  const r = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/drift`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const data = await readJsonOrThrow<{ report: DriftReport }>(r, "Drift check failed");
+  return data.report;
+}
+
+// ── Webhooks ─────────────────────────────────────────────
+
+export interface Webhook {
+  id: string;
+  userId: string;
+  label: string;
+  url: string;
+  secret?: string;
+  events: Array<"task.completed" | "task.failed" | "drift.detected" | "schedule.fired">;
+  enabled: boolean;
+  createdAt: string;
+  lastDeliveryAt?: string;
+  lastDeliveryStatus?: "success" | "failed";
+  lastDeliveryError?: string;
+}
+
+export async function fetchWebhooks(token: string): Promise<Webhook[]> {
+  const r = await fetch("/api/webhooks", { headers: { "Authorization": `Bearer ${token}` } });
+  return (await readJsonOrThrow<{ webhooks: Webhook[] }>(r, "Fetch webhooks failed")).webhooks;
+}
+
+export async function createWebhook(token: string, input: Partial<Webhook>): Promise<Webhook> {
+  const r = await fetch("/api/webhooks", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return (await readJsonOrThrow<{ webhook: Webhook }>(r, "Create webhook failed")).webhook;
+}
+
+export async function deleteWebhook(token: string, id: string): Promise<void> {
+  const r = await fetch(`/api/webhooks/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow(r, "Delete webhook failed");
+}
+
+export async function testWebhook(token: string, id: string): Promise<{ delivered: string; error?: string }> {
+  const r = await fetch(`/api/webhooks/${encodeURIComponent(id)}/test`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Test webhook failed");
+}
+
+// ── API tokens ───────────────────────────────────────────
+
+export interface ApiTokenInfo {
+  id: string;
+  label: string;
+  tokenPrefix: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  expiresAt?: string;
+}
+
+export async function fetchApiTokens(token: string): Promise<ApiTokenInfo[]> {
+  const r = await fetch("/api/tokens", { headers: { "Authorization": `Bearer ${token}` } });
+  return (await readJsonOrThrow<{ tokens: ApiTokenInfo[] }>(r, "Fetch tokens failed")).tokens;
+}
+
+export async function createApiToken(token: string, label: string, expiresInDays?: number): Promise<{ token: string; id: string; label: string; tokenPrefix: string }> {
+  const r = await fetch("/api/tokens", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ label, expiresInDays })
+  });
+  return readJsonOrThrow(r, "Create token failed");
+}
+
+export async function deleteApiToken(token: string, id: string): Promise<void> {
+  const r = await fetch(`/api/tokens/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow(r, "Delete token failed");
+}
+
+// ── Module docs ──────────────────────────────────────────
+
+export interface ModuleArgSpec {
+  name: string;
+  type: string;
+  required: boolean;
+  default?: string;
+  description?: string;
+}
+
+export interface ModuleDoc {
+  name: string;
+  summary: string;
+  category: string;
+  args: ModuleArgSpec[];
+  example: string;
+  notes?: string;
+}
+
+export async function fetchModuleDocs(): Promise<ModuleDoc[]> {
+  const r = await fetch("/api/modules/docs");
+  return (await readJsonOrThrow<{ modules: ModuleDoc[] }>(r, "Fetch module docs failed")).modules;
+}

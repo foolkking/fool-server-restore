@@ -326,7 +326,7 @@ async function connectForConfig(connection: StoredConnection): Promise<Client> {
     const port = parseInt(decrypted.port ?? "22", 10) || 22;
     const username = decrypted.username;
 
-    const cfg: Record<string, unknown> = { host, port, username, readyTimeout: 10000 };
+    const cfg: Record<string, unknown> = { host, port, username, readyTimeout: 10000, keepaliveInterval: 30000, keepaliveCountMax: 3 };
 
     if (connection.method === "ssh-key") {
       const keyId = decrypted._keyId;

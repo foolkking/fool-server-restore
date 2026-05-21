@@ -20,6 +20,10 @@ import { ufwModule } from "./modules/ufw.js";
 import { userModule } from "./modules/user.js";
 import { fileModule } from "./modules/file.js";
 import { templateModule } from "./modules/template.js";
+import { cronModule } from "./modules/cron.js";
+import { systemdUnitModule } from "./modules/systemd_unit.js";
+import { sysctlModule } from "./modules/sysctl.js";
+import { acmeModule } from "./modules/acme.js";
 import { classifyError } from "./errors.js";
 
 const REGISTRY: Record<string, AnsibleModule<any>> = {
@@ -35,7 +39,11 @@ const REGISTRY: Record<string, AnsibleModule<any>> = {
   ufw: ufwModule,
   user: userModule,
   file: fileModule,
-  template: templateModule
+  template: templateModule,
+  cron: cronModule,
+  systemd_unit: systemdUnitModule,
+  sysctl: sysctlModule,
+  acme: acmeModule
 };
 
 export interface RunOptions {
