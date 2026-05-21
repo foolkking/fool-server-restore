@@ -1,18 +1,22 @@
 /**
  * capture.ts — 从已连接 VM 反向生成 Ansible-Compatible Playbook
  *
- * 采集内容（只读，不修改目标系统）：
- * 1. 已安装的 apt/dpkg 包（非系统基础包）
- * 2. 启用的 systemctl 服务
+ * 采集策略（与 remote-collector.ts 保持一致）：
+ * 1. apt 包：apt-mark showmanual 减去 /var/log/installer/initial-status.gz 的基线
+ *    （来自 AskUbuntu 社区最佳实践：comm -23 manual base）
+ *    + TypeScript 端 isSystemAptPackage() 二次过滤防止漏网
+ * 2. 启用的 systemctl 服务（过滤系统服务）
  * 3. ~/.bashrc 中的非默认行（alias、export）
  * 4. 已安装的 npm 全局包
  * 5. 已安装的 pip 全局包
  * 6. Docker 容器（如果有 Docker）
+ * 7. 关键配置文件
  *
  * 输出：标准 Ansible Playbook YAML，可直接被 EnvForge 或 ansible-playbook 执行
  */
 
 import type { SshExecutor } from "./engine/types.js";
+import { isSystemAptPackage, isSystemService } from "./collectors/remote-collector.js";
 
 export interface CaptureResult {
   playbookYaml: string;
@@ -29,39 +33,6 @@ export interface CaptureResult {
   };
 }
 
-/** 系统基础包黑名单（不需要还原的包） */
-const SYSTEM_PACKAGES_BLACKLIST = new Set([
-  "adduser", "apt", "apt-utils", "base-files", "base-passwd", "bash", "bsdutils",
-  "coreutils", "dash", "debconf", "debianutils", "diffutils", "dpkg", "e2fsprogs",
-  "findutils", "gcc-12-base", "gpgv", "grep", "gzip", "hostname", "init-system-helpers",
-  "libacl1", "libapt-pkg6.0", "libattr1", "libaudit1", "libblkid1", "libbz2-1.0",
-  "libc-bin", "libc6", "libcap-ng0", "libcom-err2", "libcrypt1", "libdb5.3",
-  "libdebconfclient0", "libext2fs2", "libffi8", "libgcc-s1", "libgcrypt20",
-  "libgmp10", "libgnutls30", "libgpg-error0", "libhogweed6", "libidn2-0",
-  "liblz4-1", "liblzma5", "libmount1", "libnettle8", "libnsl2", "libp11-kit0",
-  "libpam-modules", "libpam-modules-bin", "libpam-runtime", "libpam0g",
-  "libpcre2-8-0", "libpcre3", "libseccomp2", "libselinux1", "libsemanage-common",
-  "libsemanage2", "libsepol2", "libsmartcols1", "libss2", "libssl3", "libstdc++6",
-  "libsystemd0", "libtasn1-6", "libtinfo6", "libtirpc3", "libudev1", "libunistring2",
-  "libuuid1", "libxxhash0", "libzstd1", "login", "logsave", "lsb-base", "mawk",
-  "mount", "ncurses-base", "ncurses-bin", "passwd", "perl-base", "procps",
-  "sed", "sensible-utils", "sysvinit-utils", "tar", "tzdata", "ubuntu-keyring",
-  "util-linux", "util-linux-extra", "zlib1g"
-]);
-
-/** 系统服务黑名单（不需要还原的服务） */
-const SYSTEM_SERVICES_BLACKLIST = new Set([
-  "dbus", "getty@tty1", "keyboard-setup", "kmod-static-nodes", "ldconfig",
-  "multipathd", "networkd-dispatcher", "polkit", "rsyslog", "setvtrgb",
-  "snapd", "ssh", "sshd", "systemd-binfmt", "systemd-fsck-root",
-  "systemd-journal-flush", "systemd-logind", "systemd-modules-load",
-  "systemd-networkd", "systemd-random-seed", "systemd-remount-fs",
-  "systemd-resolved", "systemd-sysctl", "systemd-sysusers", "systemd-timesyncd",
-  "systemd-tmpfiles-setup", "systemd-tmpfiles-setup-dev", "systemd-udev-settle",
-  "systemd-udev-trigger", "systemd-udevd", "systemd-update-utmp",
-  "systemd-user-sessions", "ufw", "unattended-upgrades", "user@1000"
-]);
-
 export async function captureEnvironment(executor: SshExecutor): Promise<CaptureResult> {
   const summary: CaptureResult["summary"] = {
     aptPackages: [],
@@ -75,24 +46,35 @@ export async function captureEnvironment(executor: SshExecutor): Promise<Capture
     uptimeInfo: undefined
   };
 
-  // 1. 已安装的 apt 包（过滤系统包）
+  // 1. 已安装的 apt 包：用户手动安装减去 Ubuntu 基线（initial-status.gz）
+  //    fallback：没有 initial-status.gz 时用 apt-mark showmanual + TS 过滤
   try {
-    const { stdout } = await executor.exec(
-      "dpkg-query -W -f='${Package}\\n' 2>/dev/null | sort"
-    );
+    const captureScript = String.raw`
+TMPD=$(mktemp -d 2>/dev/null || mktemp -d -t envforge.XXXXXX 2>/dev/null || echo /tmp/envforge.$$)
+mkdir -p "$TMPD" 2>/dev/null
+apt-mark showmanual 2>/dev/null | sort -u > "$TMPD/manual.txt"
+if [ -f /var/log/installer/initial-status.gz ]; then
+  gzip -dc /var/log/installer/initial-status.gz 2>/dev/null | sed -n 's/^Package: //p' | sort -u > "$TMPD/base.txt"
+  comm -23 "$TMPD/manual.txt" "$TMPD/base.txt"
+else
+  cat "$TMPD/manual.txt"
+fi
+rm -rf "$TMPD" 2>/dev/null
+`;
+    const { stdout } = await executor.exec(captureScript);
     summary.aptPackages = stdout.trim().split("\n")
       .map((p) => p.trim())
-      .filter((p) => p && !SYSTEM_PACKAGES_BLACKLIST.has(p));
+      .filter((p) => p && !isSystemAptPackage(p));
   } catch { /* ignore */ }
 
-  // 2. 启用的 systemctl 服务
+  // 2. 启用的 systemctl 服务（用 collector 同款过滤）
   try {
     const { stdout } = await executor.exec(
       "systemctl list-unit-files --state=enabled --type=service --no-legend 2>/dev/null | awk '{print $1}' | sed 's/\\.service$//'"
     );
     summary.enabledServices = stdout.trim().split("\n")
       .map((s) => s.trim())
-      .filter((s) => s && !SYSTEM_SERVICES_BLACKLIST.has(s));
+      .filter((s) => s && !isSystemService(s));
   } catch { /* ignore */ }
 
   // 3. ~/.bashrc 中的非默认行

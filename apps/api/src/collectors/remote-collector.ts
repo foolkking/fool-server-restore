@@ -42,11 +42,25 @@ echo "===SECTION:os-release==="
 cat /etc/os-release 2>/dev/null | grep -E '^(PRETTY_NAME|ID|VERSION_ID)=' | head -3
 
 echo "===SECTION:apt==="
-# Collect all manually-marked apt packages (filtering done in TypeScript)
-apt-mark showmanual 2>/dev/null | sort -u | while read pkg; do
+# Collect user-installed apt packages by subtracting Ubuntu's installation baseline
+# from apt-mark showmanual. Uses temp files (POSIX-compatible, no bash-isms).
+# Reference: https://askubuntu.com/questions/17823/how-to-list-all-installed-packages
+APT_TMP=$(mktemp -d 2>/dev/null || mktemp -d -t envforge.XXXXXX 2>/dev/null || echo /tmp/envforge.$$)
+mkdir -p "$APT_TMP" 2>/dev/null
+apt-mark showmanual 2>/dev/null | sort -u > "$APT_TMP/manual.txt"
+if [ -f /var/log/installer/initial-status.gz ]; then
+  gzip -dc /var/log/installer/initial-status.gz 2>/dev/null | sed -n 's/^Package: //p' | sort -u > "$APT_TMP/base.txt"
+  comm -23 "$APT_TMP/manual.txt" "$APT_TMP/base.txt" > "$APT_TMP/user.txt"
+else
+  # Fallback: no initial-status.gz (Docker/non-Ubuntu) — use full manual list, TS filter will clean up
+  cp "$APT_TMP/manual.txt" "$APT_TMP/user.txt"
+fi
+while IFS= read -r pkg; do
+  [ -z "$pkg" ] && continue
   ver=$(dpkg-query -W -f='\${Version}' "$pkg" 2>/dev/null)
   [ -n "$ver" ] && echo "$pkg|$ver"
-done
+done < "$APT_TMP/user.txt"
+rm -rf "$APT_TMP" 2>/dev/null
 
 echo "===SECTION:apt-manual==="
 apt-mark showmanual 2>/dev/null | sort -u
@@ -268,12 +282,9 @@ function parseFullOutput(raw: string, host: string, _latencyMs: number): FullSys
   // ── Software inventory ──
   const software: SoftwareItem[] = [];
 
-  // 收集 apt-mark showmanual 列表（用户安装，排除系统预装）
-  const aptManualSet = new Set(
-    (sections["apt-manual"] ?? "").split("\n").map((l) => l.trim()).filter(Boolean)
-  );
-
-  // apt packages — filter out system/pre-installed packages in TypeScript
+  // apt packages — already filtered by `comm -23` against initial-status.gz baseline
+  // TS-side isSystemAptPackage() acts as defense-in-depth (catches edge cases like
+  // packages installed via cloud-init or pre-baked images without initial-status.gz)
   const aptPackages = parseKeyValueLines(sections.apt, "|");
   for (const { key, value } of aptPackages) {
     if (isSystemAptPackage(key)) continue;
@@ -609,6 +620,8 @@ function isSystemAptPackage(name: string): boolean {
   }
   return false;
 }
+
+export { isSystemAptPackage, isSystemService };
 
 const SYSTEM_SNAPS = new Set([
   "bare", "core", "core18", "core20", "core22", "core24",

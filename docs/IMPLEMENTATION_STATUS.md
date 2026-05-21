@@ -1,11 +1,33 @@
 # 实现状态
 
-更新时间：2026-05-21（最终状态）
+更新时间：2026-05-21（环境保留与采集逻辑统一）
 
 项目名称：**EnvForge**
 GitHub：https://github.com/foolkking/envforge
 
 ---
+
+## 最近修复
+
+### 环境保留 vs 系统采集 过滤逻辑统一（2026-05-21）
+
+**问题**：环境保留（capture.ts）和系统采集（remote-collector.ts）使用不同的过滤逻辑，导致环境保留生成的 Playbook 包含 600+ 个 Ubuntu 系统预装包（base-files、libc6、bash 等），而采集面板只显示 ~30 个用户安装的包。
+
+**修复**：两处采集统一采用 [AskUbuntu 社区方案](https://askubuntu.com/questions/17823/how-to-list-all-installed-packages)：
+
+```bash
+comm -23 \
+  <(apt-mark showmanual | sort -u) \
+  <(gzip -dc /var/log/installer/initial-status.gz | sed -n 's/^Package: //p' | sort -u)
+```
+
+- 用 `apt-mark showmanual`（用户手动安装的包）减去 `/var/log/installer/initial-status.gz`（Ubuntu 安装时的基线包列表）。
+- 没有 `initial-status.gz` 时（Docker / 非 Ubuntu）fallback 到 `apt-mark showmanual` 全量列表。
+- TypeScript 端 `isSystemAptPackage()` 作为兜底过滤（catch lib*, linux-*, python3-* 等漏网包）。
+- `capture.ts` 通过 `import { isSystemAptPackage, isSystemService }` 复用 collector 的过滤函数，保证两处一致。
+
+---
+
 
 ## 功能完成度
 
