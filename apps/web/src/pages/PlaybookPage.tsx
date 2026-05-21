@@ -179,11 +179,10 @@ export function PlaybookPage({
     <div className="playbook-page">
       <div className="playbook-sidebar">
         <div className="playbook-sidebar-header">
-          <h2>{locale === "zh" ? "我的 Playbook" : "My Playbooks"}</h2>
           <button
             className="primary-action"
             type="button"
-            style={{ fontSize: 13, minHeight: 34, padding: "0 14px" }}
+            style={{ flex: 1, fontSize: 13, minHeight: 34, padding: "0 14px" }}
             onClick={() => {
               setCreateMode(true);
               setSelectedId(null);
@@ -195,7 +194,7 @@ export function PlaybookPage({
           >
             + {locale === "zh" ? "新建" : "New"}
           </button>
-          <label className="conn-btn conn-btn-ghost" style={{ fontSize: 12, minHeight: 34, padding: "0 10px", cursor: "pointer" }}>
+          <label className="conn-btn conn-btn-ghost" style={{ flex: 1, justifyContent: "center", fontSize: 13, minHeight: 34, padding: "0 14px", cursor: "pointer" }}>
             ↑ {locale === "zh" ? "上传" : "Upload"}
             <input type="file" accept=".yaml,.yml,.txt" style={{ display: "none" }} onChange={(e) => {
               const file = e.target.files?.[0];

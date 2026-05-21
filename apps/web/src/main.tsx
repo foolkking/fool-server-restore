@@ -63,7 +63,7 @@ function App() {
   const [connectionError, setConnectionError] = useState("");
   const [probeResult, setProbeResult] = useState<AgentProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set(["software-node", "config-aliases"]));
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
   const [activeTask, setActiveTask] = useState<ExecutionTask | null>(null);
   const [terminalLogs, setTerminalLogs] = useState<Array<{ time: string; type: "info" | "success" | "error" | "cmd"; text: string }>>([]);
