@@ -1,0 +1,17 @@
+# Playbook: Ansible 自动化工具
+name: Install Ansible automation tool
+hosts: all
+
+tasks:
+  - name: Install Ansible
+    module: package
+    args:
+      name:
+        - ansible
+        - python3-pip
+      state: present
+
+  - name: Verify Ansible
+    module: shell
+    args:
+      cmd: "ansible --version | head -3"

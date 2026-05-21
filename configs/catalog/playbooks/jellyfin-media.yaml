@@ -1,0 +1,36 @@
+# Playbook: Jellyfin 媒体服务器
+name: Install Jellyfin media server
+hosts: all
+
+tasks:
+  - name: Install prerequisites
+    module: package
+    args:
+      name:
+        - apt-transport-https
+        - gnupg
+        - curl
+      state: present
+
+  - name: Add Jellyfin repository
+    module: shell
+    args:
+      cmd: |
+        sudo mkdir -p /etc/apt/keyrings
+        curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg --yes
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/jellyfin.gpg] https://repo.jellyfin.org/$(. /etc/os-release; echo $ID) $(. /etc/os-release; echo $VERSION_CODENAME) main" | sudo tee /etc/apt/sources.list.d/jellyfin.list
+        sudo apt-get update -qq
+      creates: /etc/apt/sources.list.d/jellyfin.list
+
+  - name: Install Jellyfin
+    module: package
+    args:
+      name: jellyfin
+      state: present
+
+  - name: Enable Jellyfin
+    module: service
+    args:
+      name: jellyfin
+      enabled: true
+      state: started

@@ -1,0 +1,19 @@
+# Playbook: rsync 备份同步工具
+name: Install rsync and backup tools
+hosts: all
+
+tasks:
+  - name: Install backup tools
+    module: package
+    args:
+      name:
+        - rsync
+        - rclone
+        - borgbackup
+        - restic
+      state: present
+
+  - name: Verify rsync
+    module: shell
+    args:
+      cmd: "rsync --version | head -1"

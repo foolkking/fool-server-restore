@@ -1,0 +1,23 @@
+# Playbook: Node.js 版本管理器 (NVM)
+name: Install NVM (Node Version Manager)
+hosts: all
+
+tasks:
+  - name: Install prerequisites
+    module: package
+    args:
+      name:
+        - curl
+        - build-essential
+      state: present
+
+  - name: Install NVM
+    module: shell
+    args:
+      cmd: "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash"
+      creates: ~/.nvm/nvm.sh
+
+  - name: Install latest LTS Node via NVM
+    module: shell
+    args:
+      cmd: "bash -c 'source ~/.nvm/nvm.sh && nvm install --lts && nvm use --lts'"

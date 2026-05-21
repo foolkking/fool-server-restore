@@ -1,0 +1,27 @@
+# Playbook: PHP 8 工具链
+name: Install PHP 8 with common extensions
+hosts: all
+
+tasks:
+  - name: Install PHP and extensions
+    module: package
+    args:
+      name:
+        - php
+        - php-cli
+        - php-fpm
+        - php-mysql
+        - php-pgsql
+        - php-curl
+        - php-gd
+        - php-mbstring
+        - php-xml
+        - php-zip
+        - php-redis
+        - composer
+      state: present
+
+  - name: Verify PHP
+    module: shell
+    args:
+      cmd: "php --version | head -1"

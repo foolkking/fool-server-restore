@@ -1,0 +1,30 @@
+# Playbook: tmux 终端复用器
+name: Install tmux with sane defaults
+hosts: all
+
+tasks:
+  - name: Install tmux
+    module: package
+    args:
+      name: tmux
+      state: present
+
+  - name: Configure tmux defaults
+    module: copy
+    args:
+      dest: ~/.tmux.conf
+      content: |
+        # Mouse support
+        set -g mouse on
+        # 256 colors
+        set -g default-terminal "screen-256color"
+        # History
+        set -g history-limit 10000
+        # Better split shortcuts
+        bind | split-window -h
+        bind - split-window -v
+
+  - name: Verify tmux
+    module: shell
+    args:
+      cmd: "tmux -V"

@@ -1,0 +1,26 @@
+# Playbook: Ruby + Rails 运行时
+name: Install Ruby with bundler
+hosts: all
+
+tasks:
+  - name: Install Ruby and dependencies
+    module: package
+    args:
+      name:
+        - ruby-full
+        - build-essential
+        - libssl-dev
+        - libreadline-dev
+        - zlib1g-dev
+      state: present
+
+  - name: Install bundler
+    module: shell
+    args:
+      cmd: "sudo gem install bundler"
+      creates: /usr/local/bin/bundler
+
+  - name: Verify Ruby
+    module: shell
+    args:
+      cmd: "ruby --version && gem --version && bundler --version"

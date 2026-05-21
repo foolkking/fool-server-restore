@@ -1,0 +1,23 @@
+# Playbook: Fish Shell + Starship Prompt
+name: Install Fish shell with Starship prompt
+hosts: all
+
+tasks:
+  - name: Install Fish and curl
+    module: package
+    args:
+      name:
+        - fish
+        - curl
+      state: present
+
+  - name: Install Starship prompt
+    module: shell
+    args:
+      cmd: "curl -sS https://starship.rs/install.sh | sh -s -- -y"
+      creates: /usr/local/bin/starship
+
+  - name: Verify Fish
+    module: shell
+    args:
+      cmd: "fish --version && starship --version"

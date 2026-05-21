@@ -1,0 +1,25 @@
+# Playbook: Mosquitto MQTT 消息代理
+name: Install Mosquitto MQTT broker
+hosts: all
+
+tasks:
+  - name: Install Mosquitto
+    module: package
+    args:
+      name:
+        - mosquitto
+        - mosquitto-clients
+      state: present
+
+  - name: Enable Mosquitto
+    module: service
+    args:
+      name: mosquitto
+      enabled: true
+      state: started
+
+  - name: Verify Mosquitto
+    module: shell
+    args:
+      cmd: "mosquitto -h 2>&1 | head -3 || true"
+    ignore_errors: true

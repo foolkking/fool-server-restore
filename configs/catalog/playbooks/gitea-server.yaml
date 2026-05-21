@@ -1,0 +1,61 @@
+# Playbook: Gitea 自托管 Git 服务
+name: Install Gitea Git server
+hosts: all
+
+tasks:
+  - name: Install dependencies
+    module: package
+    args:
+      name:
+        - git
+        - curl
+      state: present
+
+  - name: Create gitea user
+    module: user
+    args:
+      name: gitea
+      state: present
+      shell: /bin/bash
+
+  - name: Download Gitea binary
+    module: shell
+    args:
+      cmd: |
+        GITEA_VERSION=$(curl -s https://api.github.com/repos/go-gitea/gitea/releases/latest | grep tag_name | cut -d'"' -f4 | sed 's/^v//')
+        sudo curl -fsSL "https://dl.gitea.com/gitea/${GITEA_VERSION}/gitea-${GITEA_VERSION}-linux-amd64" -o /usr/local/bin/gitea
+        sudo chmod +x /usr/local/bin/gitea
+      creates: /usr/local/bin/gitea
+
+  - name: Create Gitea directories
+    module: shell
+    args:
+      cmd: |
+        sudo mkdir -p /var/lib/gitea/{custom,data,log} /etc/gitea
+        sudo chown -R gitea:gitea /var/lib/gitea /etc/gitea
+
+  - name: Create Gitea systemd service
+    module: copy
+    args:
+      dest: /etc/systemd/system/gitea.service
+      content: |
+        [Unit]
+        Description=Gitea
+        After=network.target
+
+        [Service]
+        Type=simple
+        User=gitea
+        Group=gitea
+        WorkingDirectory=/var/lib/gitea
+        ExecStart=/usr/local/bin/gitea web --config /etc/gitea/app.ini
+        Restart=always
+        Environment=USER=gitea HOME=/home/gitea GITEA_WORK_DIR=/var/lib/gitea
+
+        [Install]
+        WantedBy=multi-user.target
+
+  - name: Enable Gitea service
+    module: shell
+    args:
+      cmd: "sudo systemctl daemon-reload && sudo systemctl enable gitea"

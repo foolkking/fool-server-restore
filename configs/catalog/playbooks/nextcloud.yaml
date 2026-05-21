@@ -1,0 +1,21 @@
+# Playbook: Nextcloud 私有云盘
+name: Install Nextcloud (snap-based)
+hosts: all
+
+tasks:
+  - name: Install snapd
+    module: package
+    args:
+      name: snapd
+      state: present
+
+  - name: Install Nextcloud via snap
+    module: shell
+    args:
+      cmd: "sudo snap install nextcloud"
+      creates: /snap/bin/nextcloud
+
+  - name: Verify Nextcloud snap
+    module: shell
+    args:
+      cmd: "sudo snap list | grep nextcloud"

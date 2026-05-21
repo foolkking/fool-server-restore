@@ -1,0 +1,17 @@
+# Playbook: SQLite 嵌入式数据库
+name: Install SQLite3 with CLI tools
+hosts: all
+
+tasks:
+  - name: Install SQLite3
+    module: package
+    args:
+      name:
+        - sqlite3
+        - libsqlite3-dev
+      state: present
+
+  - name: Verify SQLite version
+    module: shell
+    args:
+      cmd: "sqlite3 --version"

@@ -1,0 +1,21 @@
+# Playbook: code-server (Web VSCode)
+name: Install code-server (browser-based VSCode)
+hosts: all
+
+tasks:
+  - name: Install code-server
+    module: shell
+    args:
+      cmd: "curl -fsSL https://code-server.dev/install.sh | sh"
+      creates: /usr/bin/code-server
+
+  - name: Enable code-server for current user
+    module: shell
+    args:
+      cmd: "sudo systemctl enable --now code-server@$USER"
+    ignore_errors: true
+
+  - name: Verify code-server
+    module: shell
+    args:
+      cmd: "code-server --version | head -1"

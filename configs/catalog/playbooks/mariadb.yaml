@@ -1,0 +1,25 @@
+# Playbook: MariaDB 数据库
+name: Install MariaDB (MySQL alternative)
+hosts: all
+
+tasks:
+  - name: Install MariaDB
+    module: package
+    args:
+      name:
+        - mariadb-server
+        - mariadb-client
+      state: present
+
+  - name: Enable and start MariaDB
+    module: service
+    args:
+      name: mariadb
+      enabled: true
+      state: started
+
+  - name: Verify MariaDB is running
+    module: shell
+    args:
+      cmd: "sudo mariadb -e 'SELECT VERSION();' && echo 'MariaDB OK'"
+    ignore_errors: true

@@ -1,0 +1,27 @@
+# Playbook: Zabbix 企业监控
+name: Install Zabbix Agent (monitoring agent)
+hosts: all
+
+tasks:
+  - name: Add Zabbix repository
+    module: shell
+    args:
+      cmd: |
+        wget -qO /tmp/zabbix-release.deb https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_7.0-2+ubuntu22.04_all.deb
+        sudo dpkg -i /tmp/zabbix-release.deb
+        sudo apt-get update -qq
+        rm -f /tmp/zabbix-release.deb
+      creates: /etc/apt/sources.list.d/zabbix.list
+
+  - name: Install Zabbix Agent
+    module: package
+    args:
+      name: zabbix-agent
+      state: present
+
+  - name: Enable Zabbix Agent
+    module: service
+    args:
+      name: zabbix-agent
+      enabled: true
+      state: started

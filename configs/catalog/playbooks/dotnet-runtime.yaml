@@ -1,0 +1,25 @@
+# Playbook: .NET SDK 运行时
+name: Install .NET 8 SDK
+hosts: all
+
+tasks:
+  - name: Install Microsoft repo
+    module: shell
+    args:
+      cmd: |
+        wget -qO /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
+        sudo dpkg -i /tmp/packages-microsoft-prod.deb
+        sudo apt-get update -qq
+        rm -f /tmp/packages-microsoft-prod.deb
+      creates: /etc/apt/sources.list.d/microsoft-prod.list
+
+  - name: Install .NET SDK
+    module: package
+    args:
+      name: dotnet-sdk-8.0
+      state: present
+
+  - name: Verify dotnet
+    module: shell
+    args:
+      cmd: "dotnet --version"

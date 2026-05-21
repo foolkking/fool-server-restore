@@ -1,0 +1,24 @@
+# Playbook: Samba 文件共享
+name: Install Samba file sharing
+hosts: all
+
+tasks:
+  - name: Install Samba
+    module: package
+    args:
+      name:
+        - samba
+        - samba-common-bin
+      state: present
+
+  - name: Enable Samba services
+    module: service
+    args:
+      name: smbd
+      enabled: true
+      state: started
+
+  - name: Verify Samba
+    module: shell
+    args:
+      cmd: "smbd --version"

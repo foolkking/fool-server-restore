@@ -1,0 +1,18 @@
+# Playbook: Neovim 编辑器
+name: Install Neovim with basic config
+hosts: all
+
+tasks:
+  - name: Install Neovim
+    module: package
+    args:
+      name:
+        - neovim
+        - vim
+        - git
+      state: present
+
+  - name: Verify Neovim
+    module: shell
+    args:
+      cmd: "nvim --version | head -1"

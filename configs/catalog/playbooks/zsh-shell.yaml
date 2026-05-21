@@ -1,0 +1,36 @@
+# Playbook: Zsh + Oh My Zsh
+name: Install Zsh and Oh My Zsh
+hosts: all
+
+tasks:
+  - name: Install Zsh
+    module: package
+    args:
+      name:
+        - zsh
+        - git
+        - curl
+      state: present
+
+  - name: Install Oh My Zsh
+    module: shell
+    args:
+      cmd: 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended'
+      creates: ~/.oh-my-zsh
+
+  - name: Install zsh-autosuggestions plugin
+    module: shell
+    args:
+      cmd: "git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+      creates: ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+
+  - name: Install zsh-syntax-highlighting plugin
+    module: shell
+    args:
+      cmd: "git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
+      creates: ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+
+  - name: Verify zsh
+    module: shell
+    args:
+      cmd: "zsh --version"
