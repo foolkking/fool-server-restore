@@ -1,0 +1,47 @@
+# Playbook: Docker + Compose 开发环境
+name: Docker development environment
+hosts: all
+
+tasks:
+  - name: Install prerequisites for Docker
+    module: package
+    args:
+      name:
+        - ca-certificates
+        - curl
+        - gnupg
+      state: present
+
+  - name: Add Docker official GPG key and repository
+    module: shell
+    args:
+      cmd: |
+        sudo install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt-get update -qq
+      creates: /etc/apt/sources.list.d/docker.list
+
+  - name: Install Docker Engine, Compose plugin, Buildx plugin
+    module: package
+    args:
+      name:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - docker-compose-plugin
+        - docker-buildx-plugin
+      state: present
+
+  - name: Enable docker service
+    module: service
+    args:
+      name: docker
+      enabled: true
+      state: started
+
+  - name: Add current user to docker group (requires re-login)
+    module: shell
+    args:
+      cmd: "sudo usermod -aG docker $USER || true"
+    ignore_errors: true

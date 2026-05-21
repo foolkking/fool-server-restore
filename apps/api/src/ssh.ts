@@ -2,15 +2,19 @@
  * ssh.ts — 真实 SSH 连接测试与远程系统信息采集
  *
  * 安全边界：
- * - 只执行白名单内的只读命令（uname、free、df、which、node/git/docker --version 等）
+ * - 只执行白名单内的只读命令
  * - 不执行任何写操作或用户传入的任意命令
- * - 连接超时 10 秒，命令超时 8 秒
- * - SSH 私钥只从服务器本地文件系统读取，不接受客户端上传的私钥内容
+ * - 连接超时 10 秒
+ * - SSH 私钥支持两种方式：服务器本地文件路径 OR 用户通过 Web 上传（加密存储在 data/keys/）
+ *
+ * 采集方式：使用 remote-collector.ts 的全面采集脚本（dpkg/rpm/snap/flatpak/npm/pip/gem/cargo/
+ * /usr/local/bin//opt/nvm/pyenv/rbenv/asdf/docker/systemd 等）
  */
 
 import { Client, type ConnectConfig } from "ssh2";
 import fs from "node:fs/promises";
 import type { StoredProbeSnapshot } from "./runtime-store.js";
+import { collectRemoteSnapshot, type FullSystemSnapshot } from "./collectors/remote-collector.js";
 
 export interface SshTestResult {
   ok: true;
@@ -27,26 +31,11 @@ export interface SshTestFailure {
 export type SshResult = SshTestResult | SshTestFailure;
 
 const CONNECT_TIMEOUT_MS = 10_000;
-const COMMAND_TIMEOUT_MS = 8_000;
 
-/** 只读采集命令白名单 */
-const COLLECT_SCRIPT = `
-hostname 2>/dev/null || echo unknown;
-uname -s 2>/dev/null || echo unknown;
-uname -m 2>/dev/null || echo unknown;
-uname -r 2>/dev/null || echo unknown;
-nproc 2>/dev/null || echo 0;
-cat /proc/cpuinfo 2>/dev/null | grep 'model name' | head -1 | cut -d: -f2 | xargs || echo unknown;
-free -b 2>/dev/null | awk '/^Mem:/{print $2, $4}' || echo '0 0';
-node --version 2>/dev/null || echo '';
-npm --version 2>/dev/null || echo '';
-git --version 2>/dev/null || echo '';
-docker --version 2>/dev/null || echo '';
-python3 --version 2>/dev/null || python --version 2>/dev/null || echo '';
-systemctl is-active sshd 2>/dev/null || echo inactive;
-env | wc -l 2>/dev/null || echo 0
-`.trim();
-
+/**
+ * 测试 SSH 连接并采集全面的系统信息。
+ * 使用 remote-collector 的 ===SECTION=== 分隔符方式，一次 exec 采集所有数据。
+ */
 export async function testSshConnection(
   host: string,
   port: number,
@@ -95,29 +84,16 @@ export async function testSshConnection(
     });
 
     conn.on("ready", () => {
-      // SSH 握手成功，执行只读采集脚本
-      conn.exec(COLLECT_SCRIPT, (err, stream) => {
-        if (err) {
-          done({ ok: false, error: err.message, code: "unknown" });
-          return;
-        }
-
-        let stdout = "";
-        let stderr = "";
-        const cmdTimer = setTimeout(() => {
-          stream.destroy();
-          done({ ok: false, error: "Remote command timed out.", code: "timeout" });
-        }, COMMAND_TIMEOUT_MS);
-
-        stream.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
-        stream.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
-        stream.on("close", () => {
-          clearTimeout(cmdTimer);
+      // SSH 握手成功，使用全面采集器
+      collectRemoteSnapshot(conn, host)
+        .then((fullSnapshot) => {
           const latencyMs = Date.now() - start;
-          const snapshot = parseCollectOutput(stdout, host);
+          const snapshot = fullSnapshotToStored(fullSnapshot);
           done({ ok: true, latencyMs, snapshot });
+        })
+        .catch((err) => {
+          done({ ok: false, error: err instanceof Error ? err.message : "Collection failed", code: "unknown" });
         });
-      });
     });
 
     const connectConfig: ConnectConfig = {
@@ -134,59 +110,87 @@ export async function testSshConnection(
   });
 }
 
-function parseCollectOutput(raw: string, host: string): StoredProbeSnapshot {
-  const lines = raw.split("\n").map((l) => l.trim());
-  const get = (i: number) => lines[i] ?? "";
+/**
+ * 使用内存中的私钥内容进行 SSH 连接测试（用于 Web 上传的密钥）
+ */
+export async function testSshConnectionWithContent(
+  host: string,
+  port: number,
+  username: string,
+  privateKeyContent: string,
+  passphrase?: string
+): Promise<SshResult> {
+  const start = Date.now();
 
-  const hostname = get(0) || host;
-  const platform = get(1).toLowerCase() || "linux";
-  const arch = get(2) || "x64";
-  const release = get(3) || "";
-  const cores = parseInt(get(4), 10) || 1;
-  const cpuModel = get(5) || "unknown";
-  const memParts = get(6).split(" ");
-  const totalBytes = parseInt(memParts[0], 10) || 0;
-  const freeBytes = parseInt(memParts[1], 10) || 0;
+  return new Promise<SshResult>((resolve) => {
+    const conn = new Client();
+    let settled = false;
 
-  const software: StoredProbeSnapshot["software"] = [];
-  const addSoftware = (name: string, raw: string, source: "runtime" | "system" | "npm") => {
-    const v = raw.replace(/^(node|npm|git version|Docker version|Python)\s*/i, "").split(/[\s,]/)[0];
-    if (v) software.push({ name, version: v, source, status: "synced" });
-  };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      conn.destroy();
+      resolve({ ok: false, error: "Connection timed out.", code: "timeout" });
+    }, CONNECT_TIMEOUT_MS);
 
-  if (get(7)) addSoftware("node", get(7), "runtime");
-  if (get(8)) addSoftware("npm", get(8), "runtime");
-  if (get(9)) addSoftware("git", get(9), "system");
-  if (get(10)) addSoftware("docker", get(10), "system");
-  if (get(11)) addSoftware("python", get(11), "system");
+    function done(result: SshResult) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      conn.end();
+      resolve(result);
+    }
 
-  const sshStatus = get(12) === "active" ? "healthy" : "warning";
-  const envCount = parseInt(get(13), 10) || 0;
+    conn.on("error", (err: Error & { code?: string; level?: string }) => {
+      let code: SshTestFailure["code"] = "unknown";
+      const msg = err.message ?? "";
+      if (err.level === "client-authentication" || msg.includes("Authentication")) code = "auth_failed";
+      else if (err.code === "ECONNREFUSED") code = "refused";
+      else if (err.code === "ENOTFOUND" || err.code === "EHOSTUNREACH") code = "host_unreachable";
+      else if (err.code === "ETIMEDOUT") code = "timeout";
+      done({ ok: false, error: msg, code });
+    });
 
-  const configChecklist: StoredProbeSnapshot["configChecklist"] = [
-    { id: "ssh", label: "SSH service", category: "security", status: sshStatus, lastChanged: new Date().toISOString().slice(0, 10) },
-    { id: "env-vars", label: `Environment variables (${envCount} set)`, category: "runtime", status: "healthy", lastChanged: new Date().toISOString().slice(0, 10) }
-  ];
+    conn.on("ready", () => {
+      collectRemoteSnapshot(conn, host)
+        .then((fullSnapshot) => {
+          const latencyMs = Date.now() - start;
+          const snapshot = fullSnapshotToStored(fullSnapshot);
+          done({ ok: true, latencyMs, snapshot });
+        })
+        .catch((err) => {
+          done({ ok: false, error: err instanceof Error ? err.message : "Collection failed", code: "unknown" });
+        });
+    });
 
+    const cfg: ConnectConfig = {
+      host,
+      port,
+      username,
+      readyTimeout: CONNECT_TIMEOUT_MS,
+      privateKey: Buffer.from(privateKeyContent, "utf8"),
+      ...(passphrase ? { passphrase } : {})
+    };
+
+    conn.connect(cfg);
+  });
+}
+
+/**
+ * 将 FullSystemSnapshot 转换为 StoredProbeSnapshot（兼容现有存储格式）
+ */
+function fullSnapshotToStored(full: FullSystemSnapshot): StoredProbeSnapshot {
   return {
-    agentId: `ssh:${host}`,
-    collectedAt: new Date().toISOString(),
-    system: {
-      hostname,
-      platform,
-      arch,
-      release,
-      uptime: 0,
-      cpu: { model: cpuModel, cores, speedMhz: 0 },
-      memory: {
-        totalBytes,
-        freeBytes,
-        usedBytes: totalBytes - freeBytes,
-        totalGb: (totalBytes / 1024 ** 3).toFixed(1),
-        freeGb: (freeBytes / 1024 ** 3).toFixed(1)
-      }
-    },
-    software,
-    configChecklist
+    agentId: full.agentId,
+    collectedAt: full.collectedAt,
+    system: full.system,
+    software: full.software.map((s) => ({
+      name: s.name,
+      version: s.version,
+      source: s.source,
+      status: s.status
+    })),
+    configChecklist: full.configChecklist,
+    counts: full.counts
   };
 }

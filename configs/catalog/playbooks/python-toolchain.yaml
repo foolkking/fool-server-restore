@@ -1,0 +1,13 @@
+# Playbook: Python 工具链
+name: Install Python toolchain
+hosts: all
+
+tasks:
+  - name: Install Python 3 with pip and venv
+    module: package
+    args:
+      name:
+        - python3
+        - python3-pip
+        - python3-venv
+      state: present

@@ -1,0 +1,44 @@
+# Playbook: Node.js 生产部署
+name: Node.js production deploy (Node LTS + PM2 + Nginx)
+hosts: all
+
+tasks:
+  - name: Install curl for NodeSource setup
+    module: package
+    args:
+      name: curl
+      state: present
+
+  - name: Add NodeSource LTS repository (Node 20.x)
+    module: shell
+    args:
+      cmd: "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
+      creates: /etc/apt/sources.list.d/nodesource.list
+
+  - name: Install Node.js and Nginx
+    module: package
+    args:
+      name:
+        - nodejs
+        - nginx
+      state: present
+      update_cache: true
+
+  - name: Install PM2 globally via npm
+    module: shell
+    args:
+      cmd: "sudo npm install -g pm2"
+      creates: /usr/lib/node_modules/pm2
+
+  - name: Setup PM2 startup script
+    module: shell
+    args:
+      cmd: "sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u $USER --hp $HOME || true"
+    ignore_errors: true
+
+  - name: Enable nginx service
+    module: service
+    args:
+      name: nginx
+      enabled: true
+      state: started

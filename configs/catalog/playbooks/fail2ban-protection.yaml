@@ -1,0 +1,17 @@
+# Playbook: Fail2Ban 入侵防护
+name: Install Fail2Ban and enable SSH protection
+hosts: all
+
+tasks:
+  - name: Install fail2ban package
+    module: package
+    args:
+      name: fail2ban
+      state: present
+
+  - name: Enable fail2ban service to start on boot
+    module: service
+    args:
+      name: fail2ban
+      enabled: true
+      state: started

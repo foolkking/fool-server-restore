@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AppConfig } from "./config.js";
+import { checkDatabaseHealth } from "./db-store.js";
 
 export interface ReadinessCheck {
   name: string;
@@ -16,13 +17,32 @@ export async function runReadinessChecks(config: AppConfig): Promise<{
     checkDirectory("dataDir", config.dataDir),
     checkDirectory("snapshotDir", config.snapshotDir),
     checkParentDirectory("runtimeDatabase", config.runtimeDatabasePath),
-    config.serveWeb ? checkFile("webIndex", path.join(config.webDistDir, "index.html")) : skipped("webIndex", "SERVE_WEB is disabled.")
+    checkDatabaseIntegrity("databaseIntegrity", config.runtimeDatabasePath),
+    config.serveWeb
+      ? checkFile("webIndex", path.join(config.webDistDir, "index.html"))
+      : skipped("webIndex", "SERVE_WEB is disabled.")
   ]);
 
   return {
     ok: checks.every((check) => check.ok),
     checks
   };
+}
+
+async function checkDatabaseIntegrity(name: string, filePath: string): Promise<ReadinessCheck> {
+  try {
+    await fs.access(filePath).catch(() => null);
+    const health = await checkDatabaseHealth(filePath);
+    if (!health.ok && health.error) {
+      return { name, ok: false, detail: `Database corrupted: ${health.error}` };
+    }
+    const detail = health.size > 0
+      ? `${(health.size / 1024).toFixed(1)} KB${health.hasBackup ? " (backup exists)" : ""}`
+      : "empty (will be initialized)";
+    return { name, ok: true, detail };
+  } catch (err) {
+    return { name, ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 async function checkDirectory(name: string, directory: string): Promise<ReadinessCheck> {

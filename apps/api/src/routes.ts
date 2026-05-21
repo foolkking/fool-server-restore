@@ -10,9 +10,10 @@ import { createUserProfile, listUserProfiles, getUserProfile, updateUserProfile 
 import { buildInstallTask, buildSnapshotDeployTask, executeTask, getTask, subscribeTask } from "./executor.js";
 import { listCatalogFromDatabase, listMigrationStrategies, readCatalogGuide } from "./database.js";
 import { runReadinessChecks } from "./readiness.js";
-import { readRuntimeDatabase, updateRuntimeDatabase } from "./runtime-store.js";
+import { readRuntimeDatabase, updateRuntimeDatabase, createId } from "./runtime-store.js";
 import { listSnapshots, persistSnapshot } from "./snapshot-store.js";
 import { probeAgent, pingAgent } from "./probe.js";
+import { listConfigFiles, readConfigFile, writeConfigFile } from "./config-files.js";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/health", async () => ({
@@ -348,21 +349,152 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const connection = db.connections.find((c) => c.id === body.connectionId && c.userId === user.id);
     if (!connection) { reply.code(404); return { error: "Connection not found." }; }
 
-    const profile = db.userProfiles.find((p) => p.id === body.profileId);
-    if (!profile) { reply.code(404); return { error: "Profile not found." }; }
+    const dryRun = body.dryRun !== false;
+    const { registerBatchTask, executeCatalogTask, executePlaybookTask, getTask: gt } = await import("./executor.js");
 
-    const dryRun = body.dryRun !== false; // 默认 dry-run
-
-    let task;
-    if (profile.kind === "vm-snapshot") {
-      task = buildSnapshotDeployTask(user.id, connection, profile, dryRun);
-    } else {
-      task = buildInstallTask(user.id, connection, profile, dryRun);
+    // Try catalog item first
+    const catalogItems = await listCatalogFromDatabase();
+    const catalogItem = catalogItems.find((c) => c.id === body.profileId);
+    if (catalogItem) {
+      const taskId = registerBatchTask(user.id, connection.id, [{ catalogId: catalogItem.id, displayName: catalogItem.name }], dryRun);
+      void executeCatalogTask(user.id, connection, catalogItem.id, catalogItem.name, dryRun, taskId);
+      const task = gt(taskId);
+      return { taskId, dryRun, steps: task?.steps ?? [] };
     }
 
-    // 异步执行，立即返回 taskId
-    void executeTask(task, connection);
-    return { taskId: task.id, dryRun, steps: task.steps.map((s) => ({ id: s.id, label: s.label, command: s.command, status: s.status })) };
+    // Try user profile
+    const profile = db.userProfiles.find((p) => p.id === body.profileId);
+    if (profile) {
+      const { buildPlaybookFromProfile } = await import("./executor.js");
+      const yaml = buildPlaybookFromProfile(profile);
+      const taskId = registerBatchTask(user.id, connection.id, [{ catalogId: profile.id, displayName: profile.name }], dryRun);
+      void executePlaybookTask(user.id, connection, yaml, dryRun, taskId);
+      const task = gt(taskId);
+      return { taskId, dryRun, steps: task?.steps ?? [] };
+    }
+
+    reply.code(404);
+    return { error: "Profile or catalog item not found." };
+  });
+
+  // ── 影响范围预估 ────────────────────────────────────────
+
+  app.get("/api/catalog/:id/impact", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const { hasPlaybook, loadPlaybookFromCatalog, parsePlaybook } = await import("./engine/index.js");
+      const { estimateImpact } = await import("./engine/impact.js");
+      if (!(await hasPlaybook(id))) { reply.code(404); return { error: "Playbook not found." }; }
+      const yaml = await loadPlaybookFromCatalog(id);
+      const playbook = parsePlaybook(yaml);
+      const impact = estimateImpact(playbook);
+      return { impact };
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Impact estimation failed" };
+    }
+  });
+
+  app.post("/api/impact/batch", async (request, reply) => {
+    const body = (request.body ?? {}) as { catalogIds?: string[] };
+    if (!Array.isArray(body.catalogIds) || body.catalogIds.length === 0) {
+      reply.code(400); return { error: "catalogIds[] is required." };
+    }
+    try {
+      const { hasPlaybook, loadPlaybookFromCatalog, parsePlaybook } = await import("./engine/index.js");
+      const { estimateImpact } = await import("./engine/impact.js");
+      const catalogItems = await listCatalogFromDatabase();
+      const reports: Array<{ catalogId: string; name: string; impact: any }> = [];
+      let totalDisk = 0, totalSeconds = 0, maxRisk: "low" | "medium" | "high" = "low";
+      let needsSudo = false;
+
+      for (const cid of body.catalogIds) {
+        const item = catalogItems.find((c) => c.id === cid);
+        if (!item) continue;
+        if (!(await hasPlaybook(cid))) continue;
+        const yaml = await loadPlaybookFromCatalog(cid);
+        const playbook = parsePlaybook(yaml);
+        const impact = estimateImpact(playbook);
+        reports.push({ catalogId: cid, name: item.name, impact });
+        totalDisk += impact.totalDiskDeltaMb;
+        totalSeconds += impact.estimatedSeconds;
+        if (impact.needsSudo) needsSudo = true;
+        if (impact.maxRisk === "high") maxRisk = "high";
+        else if (impact.maxRisk === "medium" && maxRisk !== "high") maxRisk = "medium";
+      }
+
+      return {
+        reports,
+        totals: {
+          diskDeltaMb: totalDisk,
+          estimatedSeconds: totalSeconds,
+          needsSudo,
+          maxRisk,
+          summaryZh: `共 ${reports.length} 项，预计磁盘 +${totalDisk}MB，耗时 ~${totalSeconds}s`,
+          summaryEn: `${reports.length} items, disk +${totalDisk}MB, ~${totalSeconds}s`
+        }
+      };
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Batch impact failed" };
+    }
+  });
+
+  // ── 软件卸载 ─────────────────────────────────────────────
+
+  app.post("/api/connections/:id/uninstall", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { packages?: string[]; source?: string; dryRun?: boolean };
+    if (!body.packages || body.packages.length === 0) {
+      reply.code(400); return { error: "packages[] is required." };
+    }
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+
+    const dryRun = body.dryRun !== false;
+    const source = body.source ?? "apt";
+    const pkgNames = body.packages;
+
+    // Generate uninstall playbook based on source
+    let yaml: string;
+    if (source === "apt" || source === "apt-manual" || source === "rpm") {
+      yaml = `name: Uninstall packages\nhosts: all\ntasks:\n  - name: Remove ${pkgNames.join(", ")}\n    module: package\n    args:\n      name:\n${pkgNames.map((p) => `        - ${p}`).join("\n")}\n      state: absent\n`;
+    } else if (source === "npm") {
+      yaml = `name: Uninstall npm packages\nhosts: all\ntasks:\n${pkgNames.map((p) => `  - name: Remove npm ${p}\n    module: shell\n    args:\n      cmd: "sudo npm uninstall -g ${p}"\n`).join("")}`;
+    } else if (source === "pip") {
+      yaml = `name: Uninstall pip packages\nhosts: all\ntasks:\n${pkgNames.map((p) => `  - name: Remove pip ${p}\n    module: shell\n    args:\n      cmd: "pip3 uninstall -y ${p}"\n`).join("")}`;
+    } else if (source === "snap") {
+      yaml = `name: Uninstall snap packages\nhosts: all\ntasks:\n${pkgNames.map((p) => `  - name: Remove snap ${p}\n    module: shell\n    args:\n      cmd: "sudo snap remove ${p}"\n`).join("")}`;
+    } else {
+      yaml = `name: Remove packages\nhosts: all\ntasks:\n${pkgNames.map((p) => `  - name: Remove ${p}\n    module: shell\n    args:\n      cmd: "sudo rm -rf /usr/local/bin/${p} /opt/${p} ~/.local/bin/${p}"\n`).join("")}`;
+    }
+
+    const { registerBatchTask, executePlaybookTask, getTask: gt } = await import("./executor.js");
+    const taskId = registerBatchTask(user.id, conn.id, [{ catalogId: "uninstall", displayName: `Uninstall ${pkgNames.join(", ")}` }], dryRun);
+    void executePlaybookTask(user.id, conn, yaml, dryRun, taskId);
+    const task = gt(taskId);
+    return { taskId, dryRun, packages: pkgNames, steps: task?.steps ?? [] };
+  });
+
+  // ── Docker Compose 部署模式 ─────────────────────────────
+
+  app.get("/api/catalog/:id/docker-compose", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const { resolveFromRoot } = await import("./repo.js");
+      const path = await import("node:path");
+      const fs = await import("node:fs/promises");
+      const composePath = resolveFromRoot(path.join("configs/catalog/docker", `${id}.yaml`));
+      const content = await fs.readFile(composePath, "utf8");
+      reply.type("text/yaml");
+      return content;
+    } catch {
+      reply.code(404);
+      return { error: `No Docker Compose file for ${id}` };
+    }
   });
 
   // 获取任务状态
@@ -375,31 +507,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     return { task };
   });
 
-  // SSE：实时推送任务日志
-  app.get("/api/tasks/:id/stream", async (request, reply) => {
-    const user = await getUserByToken(readBearerToken(request.headers.authorization));
-    if (!user) { reply.code(401); return; }
-    const { id } = request.params as { id: string };
-    const task = getTask(id);
-    if (!task || task.userId !== user.id) { reply.code(404); return; }
-
-    reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "Access-Control-Allow-Origin": "*"
-    });
-
-    const send = (t: typeof task) => {
-      reply.raw.write(`data: ${JSON.stringify(t)}\n\n`);
-    };
-
-    // 立即发送当前状态
-    send(task);
-
-    const unsubscribe = subscribeTask(id, send);
-    request.raw.on("close", unsubscribe);
-  });
+  // (SSE stream moved to bottom with query token auth support)
 
   // 从当前连接的 probeSnapshot 提取热门组合草稿
   app.get("/api/connections/:id/extract-combo", async (request, reply) => {
@@ -460,6 +568,300 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     };
 
     return createRestorePlan(body.snapshot, body.targetSnapshotPath);
+  });
+
+  // ── SSH Key 管理 ────────────────────────────────────────
+
+  app.post("/api/keys", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as { label?: string; privateKey?: string };
+    if (!body.privateKey) { reply.code(400); return { error: "privateKey is required." }; }
+    const { saveUserKey } = await import("./key-store.js");
+    const meta = await saveUserKey(user.id, body.label || "My key", body.privateKey);
+    return { key: meta };
+  });
+
+  app.get("/api/keys", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { listUserKeys } = await import("./key-store.js");
+    const keys = await listUserKeys(user.id);
+    return { keys };
+  });
+
+  app.delete("/api/keys/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const { deleteUserKey } = await import("./key-store.js");
+    await deleteUserKey(user.id, id);
+    return { ok: true };
+  });
+
+  // ── 环境保留 (Capture) ──────────────────────────────────
+
+  app.get("/api/connections/:id/capture", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try {
+      const { captureEnvironment } = await import("./capture.js");
+      const { Ssh2Executor } = await import("./engine/ssh-executor.js");
+      // Connect SSH
+      const { Client: SshClient } = await import("ssh2");
+      const { decryptStoredFields } = await import("./connections.js");
+      const { readUserKey } = await import("./key-store.js");
+      const decrypted = decryptStoredFields(conn.fields);
+      const client = await new Promise<InstanceType<typeof SshClient>>((resolve, reject) => {
+        const c = new SshClient();
+        const timer = setTimeout(() => { c.destroy(); reject(new Error("SSH timeout")); }, 10000);
+        c.on("ready", () => { clearTimeout(timer); resolve(c); });
+        c.on("error", (err: Error) => { clearTimeout(timer); reject(err); });
+        const cfg: Record<string, unknown> = { host: decrypted.host, port: parseInt(decrypted.port ?? "22", 10) || 22, username: decrypted.username, readyTimeout: 10000 };
+        if (conn.method === "ssh-key") {
+          const keyId = decrypted._keyId;
+          if (keyId) {
+            readUserKey(user.id, keyId).then((pk) => { cfg.privateKey = Buffer.from(pk, "utf8"); if (decrypted._rawPassphrase) cfg.passphrase = decrypted._rawPassphrase; c.connect(cfg as any); }).catch(reject);
+          } else if (decrypted.privateKeyPath) {
+            import("node:fs/promises").then((fsm) => fsm.readFile(decrypted.privateKeyPath, "utf8")).then((pk) => { cfg.privateKey = pk; c.connect(cfg as any); }).catch(reject);
+          } else { clearTimeout(timer); reject(new Error("No SSH key")); }
+        } else {
+          cfg.password = decrypted._rawPassword;
+          if (!cfg.password) { clearTimeout(timer); reject(new Error("No password")); return; }
+          c.connect(cfg as any);
+        }
+      });
+      const executor = new Ssh2Executor(client);
+      try {
+        const result = await captureEnvironment(executor);
+        return { playbookYaml: result.playbookYaml, summary: result.summary, connectionId: id, capturedAt: new Date().toISOString() };
+      } finally { client.end(); }
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Capture failed" };
+    }
+  });
+
+  // ── 任务历史 ────────────────────────────────────────────
+
+  app.get("/api/tasks", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const db = await readRuntimeDatabase();
+    const tasks = (db.tasks ?? []).filter((t) => t.userId === user.id).slice(0, 50);
+    return { tasks };
+  });
+
+  // ── Batch execute (Market 一键安装) ──────────────────────
+
+  app.post("/api/batch-execute", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as { connectionId?: string; catalogIds?: string[]; dryRun?: boolean };
+    if (!body.connectionId || !Array.isArray(body.catalogIds) || body.catalogIds.length === 0) {
+      reply.code(400); return { error: "connectionId and catalogIds[] are required." };
+    }
+    const db = await readRuntimeDatabase();
+    const connection = db.connections.find((c) => c.id === body.connectionId && c.userId === user.id);
+    if (!connection) { reply.code(404); return { error: "Connection not found." }; }
+    const catalogItems = await listCatalogFromDatabase();
+    const items = body.catalogIds.map((id) => { const item = catalogItems.find((c) => c.id === id); return item ? { catalogId: item.id, displayName: item.name } : null; }).filter((x): x is { catalogId: string; displayName: string } => x !== null);
+    if (items.length === 0) { reply.code(400); return { error: "None of the provided catalogIds were found." }; }
+    const dryRun = body.dryRun !== false;
+    const { registerBatchTask, executeBatchCatalogTask, getTask: gt } = await import("./executor.js");
+    const taskId = registerBatchTask(user.id, connection.id, items, dryRun);
+    void executeBatchCatalogTask(user.id, connection, items, dryRun, taskId);
+    const task = gt(taskId);
+    return { taskId, dryRun, totalItems: items.length, items: task?.items ?? [] };
+  });
+
+  // ── Multi-execute (Playbook 多目标执行) ─────────────────
+
+  app.post("/api/multi-execute", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as { yaml?: string; playbookId?: string; connectionIds?: string[]; tags?: string[]; dryRun?: boolean };
+    let yamlText = body.yaml ?? "";
+    if (!yamlText && body.playbookId) {
+      const db = await readRuntimeDatabase();
+      const pb = (db.playbooks ?? []).find((p) => p.id === body.playbookId && p.userId === user.id);
+      if (pb) yamlText = pb.yaml;
+    }
+    if (!yamlText) { reply.code(400); return { error: "yaml or playbookId is required." }; }
+    const db = await readRuntimeDatabase();
+    let targetConns = db.connections.filter((c) => c.userId === user.id);
+    if (body.connectionIds?.length) targetConns = targetConns.filter((c) => body.connectionIds!.includes(c.id));
+    else if (body.tags?.length) targetConns = targetConns.filter((c) => c.tags?.some((t) => body.tags!.includes(t)));
+    if (targetConns.length === 0) { reply.code(400); return { error: "No matching connections found." }; }
+    const dryRun = body.dryRun !== false;
+    const { registerBatchTask, executePlaybookTask, getTask: gt } = await import("./executor.js");
+    const taskIds: Array<{ connectionId: string; label: string; taskId: string }> = [];
+    for (const conn of targetConns) {
+      const taskId = registerBatchTask(user.id, conn.id, [{ catalogId: "playbook", displayName: conn.label }], dryRun);
+      taskIds.push({ connectionId: conn.id, label: conn.label, taskId });
+      void executePlaybookTask(user.id, conn, yamlText, dryRun, taskId);
+    }
+    return { targets: taskIds, dryRun, totalTargets: targetConns.length, message: `Launched on ${targetConns.length} target(s)` };
+  });
+
+  // ── Task SSE stream ─────────────────────────────────────
+
+  app.get("/api/tasks/:id/stream", async (request, reply) => {
+    const queryToken = (request.query as Record<string, string>)?.token;
+    const headerToken = readBearerToken(request.headers.authorization);
+    const user = await getUserByToken(headerToken ?? queryToken);
+    if (!user) { reply.code(401); return; }
+    const { id } = request.params as { id: string };
+    const { getTask: gt, subscribeTask: sub } = await import("./executor.js");
+    const task = gt(id);
+    if (!task || task.userId !== user.id) { reply.code(404); return; }
+    reply.raw.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+    reply.raw.write(`data: ${JSON.stringify(task)}\n\n`);
+    if (task.status === "succeeded" || task.status === "failed" || task.status === "cancelled") { reply.raw.end(); return; }
+    const unsub = sub(id, (updated) => {
+      try { reply.raw.write(`data: ${JSON.stringify(updated)}\n\n`); } catch { unsub(); }
+      if (updated.status === "succeeded" || updated.status === "failed" || updated.status === "cancelled") { unsub(); reply.raw.end(); }
+    });
+    request.raw.on("close", unsub);
+  });
+
+  // ── Task cancel ─────────────────────────────────────────
+
+  app.post("/api/tasks/:id/cancel", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const { cancelTask } = await import("./executor.js");
+    cancelTask(id);
+    return { ok: true };
+  });
+
+  // ── Playbook CRUD ────────────────────────────────────────
+
+  app.get("/api/playbooks", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const db = await readRuntimeDatabase();
+    const playbooks = (db.playbooks ?? []).filter((p) => p.userId === user.id);
+    return { playbooks };
+  });
+
+  app.get("/api/playbooks/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const playbook = (db.playbooks ?? []).find((p) => p.id === id && p.userId === user.id);
+    if (!playbook) { reply.code(404); return { error: "Not found." }; }
+    return { playbook };
+  });
+
+  app.post("/api/playbooks", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as { name?: string; description?: string; yaml?: string; sourceKind?: string; sourceId?: string; comment?: string };
+    if (!body.yaml) { reply.code(400); return { error: "yaml is required." }; }
+    const playbook = { id: createId("pb"), userId: user.id, name: body.name || "Untitled", description: body.description, version: 1, yaml: body.yaml, history: [{ version: 1, yaml: body.yaml, savedAt: new Date().toISOString(), comment: body.comment }], sourceKind: (body.sourceKind ?? "user") as "catalog" | "capture" | "user", sourceId: body.sourceId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    await updateRuntimeDatabase((db) => { if (!db.playbooks) db.playbooks = []; db.playbooks.push(playbook); });
+    return { playbook };
+  });
+
+  app.patch("/api/playbooks/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { name?: string; description?: string; yaml?: string; comment?: string };
+    const result = await updateRuntimeDatabase((db) => {
+      const pb = (db.playbooks ?? []).find((p) => p.id === id && p.userId === user.id);
+      if (!pb) return null;
+      if (body.name !== undefined) pb.name = body.name;
+      if (body.description !== undefined) pb.description = body.description;
+      if (body.yaml !== undefined && body.yaml !== pb.yaml) {
+        pb.version++;
+        pb.yaml = body.yaml;
+        if (!pb.history) pb.history = [];
+        pb.history.push({ version: pb.version, yaml: body.yaml, savedAt: new Date().toISOString(), comment: body.comment });
+        if (pb.history.length > 20) pb.history = pb.history.slice(-20);
+      }
+      pb.updatedAt = new Date().toISOString();
+      return pb;
+    });
+    if (!result) { reply.code(404); return { error: "Not found." }; }
+    return { playbook: result };
+  });
+
+  app.delete("/api/playbooks/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    await updateRuntimeDatabase((db) => { db.playbooks = (db.playbooks ?? []).filter((p) => !(p.id === id && p.userId === user.id)); });
+    return { ok: true };
+  });
+
+  app.post("/api/playbooks/:id/restore/:version", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id, version } = request.params as { id: string; version: string };
+    const ver = parseInt(version, 10);
+    const result = await updateRuntimeDatabase((db) => {
+      const pb = (db.playbooks ?? []).find((p) => p.id === id && p.userId === user.id);
+      if (!pb) return null;
+      const hist = pb.history?.find((h) => h.version === ver);
+      if (!hist) return null;
+      pb.version++;
+      pb.yaml = hist.yaml;
+      pb.history?.push({ version: pb.version, yaml: hist.yaml, savedAt: new Date().toISOString(), comment: `Restored from v${ver}` });
+      pb.updatedAt = new Date().toISOString();
+      return pb;
+    });
+    if (!result) { reply.code(404); return { error: "Not found or version not found." }; }
+    return { playbook: result };
+  });
+
+  // ── Config files API ────────────────────────────────────
+
+  app.get("/api/connections/:id/configs", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try {
+      const softwareNames = conn.probeSnapshot?.software?.map((s) => s.name) ?? [];
+      const files = await listConfigFiles(conn, softwareNames);
+      return { files };
+    } catch (err) { reply.code(500); return { error: err instanceof Error ? err.message : "Failed" }; }
+  });
+
+  app.get("/api/connections/:id/configs/read", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const { path: filePath } = request.query as { path?: string };
+    if (!filePath) { reply.code(400); return { error: "path query parameter is required." }; }
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try { return await readConfigFile(conn, filePath); }
+    catch (err) { reply.code(500); return { error: err instanceof Error ? err.message : "Failed" }; }
+  });
+
+  app.post("/api/connections/:id/configs/write", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { path?: string; content?: string; backup?: boolean };
+    if (!body.path || body.content === undefined) { reply.code(400); return { error: "path and content are required." }; }
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try { return await writeConfigFile(conn, body.path, body.content, body.backup !== false); }
+    catch (err) { reply.code(500); return { error: err instanceof Error ? err.message : "Failed" }; }
   });
 }
 

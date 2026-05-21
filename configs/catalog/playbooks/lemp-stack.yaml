@@ -1,0 +1,36 @@
+# Playbook: LEMP 全栈
+name: LEMP stack (Nginx + MySQL + PHP-FPM)
+hosts: all
+
+tasks:
+  - name: Install Nginx, MySQL, PHP-FPM
+    module: package
+    args:
+      name:
+        - nginx
+        - mysql-server
+        - php-fpm
+        - php-mysql
+        - php-curl
+        - php-mbstring
+      state: present
+
+  - name: Enable nginx
+    module: service
+    args:
+      name: nginx
+      enabled: true
+      state: started
+
+  - name: Enable mysql
+    module: service
+    args:
+      name: mysql
+      enabled: true
+      state: started
+
+  - name: Verify Nginx is serving
+    module: shell
+    args:
+      cmd: "curl -s -o /dev/null -w '%{http_code}' http://localhost | grep -q 200 && echo 'Nginx OK'"
+    ignore_errors: true

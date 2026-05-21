@@ -1,7 +1,16 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getConfig } from "./config.js";
+import { SafeJsonStore } from "./db-store.js";
+
+// Singleton store instance (reused across requests for cache efficiency)
+let _store: SafeJsonStore<RuntimeDatabase> | null = null;
+
+function getStore(): SafeJsonStore<RuntimeDatabase> {
+  if (!_store) {
+    _store = new SafeJsonStore<RuntimeDatabase>(getConfig().runtimeDatabasePath, 500);
+  }
+  return _store;
+}
 
 export interface StoredUser {
   id: string;
@@ -32,21 +41,46 @@ export interface StoredProbeSnapshot {
     arch: string;
     release: string;
     uptime: number;
+    osPretty?: string;
     cpu: { model: string; cores: number; speedMhz: number };
     memory: { totalBytes: number; freeBytes: number; usedBytes: number; totalGb: string; freeGb: string };
+    disk?: { total: string; used: string; available: string; usePercent: string };
+    uptimeText?: string;
   };
   software: Array<{ name: string; version: string; source: string; status: string }>;
   configChecklist: Array<{ id: string; label: string; category: string; status: string; lastChanged: string }>;
+  /** Per-source counts for summary display */
+  counts?: {
+    apt: number;
+    rpm: number;
+    snap: number;
+    flatpak: number;
+    npm: number;
+    pip: number;
+    gem: number;
+    cargo: number;
+    localBin: number;
+    opt: number;
+    userBin: number;
+    nvm: number;
+    pyenv: number;
+    docker: number;
+    enabledServices: number;
+    runningServices: number;
+    total: number;
+  };
 }
 
 export interface StoredConnection {
   id: string;
   userId: string;
-  method: "ssh-password" | "ssh-key" | "winrm" | "docker";
+  method: "ssh-password" | "ssh-key";
   label: string;
+  /** 用户自定义标签，用于分组（如 dev、staging、prod） */
+  tags?: string[];
   /**
    * validated   — 字段校验通过，未做任何网络测试
-   * connecting  — 正在尝试 SSH/WinRM/Docker 握手（瞬态，不持久化）
+   * connecting  — 正在尝试 SSH 握手（瞬态，不持久化）
    * ssh_ok      — SSH 握手成功，确认目标机器可达
    * ssh_failed  — SSH 握手失败（认证错误、超时、拒绝连接等）
    * probed      — SSH 成功 + 采集到真实系统数据
@@ -57,11 +91,8 @@ export interface StoredConnection {
   fields: Record<string, string>;
   maskedSecrets: string[];
   realConnection: false;
-  /** URL of the mock-agent or future real agent on the target machine */
   agentUrl?: string;
-  /** Last successful probe result from the agent */
   probeSnapshot?: StoredProbeSnapshot;
-  /** ISO timestamp of last probe attempt */
   lastProbeAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -109,25 +140,72 @@ export interface RuntimeDatabase {
   sessions: StoredSession[];
   connections: StoredConnection[];
   userProfiles: StoredUserProfile[];
+  /** 任务历史（仅记录最近 200 条，老的自动清理） */
+  tasks?: StoredTaskHistory[];
+  /** 用户保存的 Playbook（含版本历史） */
+  playbooks?: StoredPlaybook[];
+}
+
+/** 用户保存的 Playbook（支持版本历史） */
+export interface StoredPlaybook {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  /** 当前版本号（从 1 开始递增） */
+  version: number;
+  /** 当前 YAML 内容 */
+  yaml: string;
+  /** 版本历史（最多保留 20 个版本） */
+  history: Array<{
+    version: number;
+    yaml: string;
+    savedAt: string;
+    comment?: string;
+  }>;
+  /** 来源：catalog id、capture、user-created */
+  sourceKind: "catalog" | "capture" | "user";
+  sourceId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 任务历史记录 */
+export interface StoredTaskHistory {
+  id: string;
+  userId: string;
+  connectionId: string;
+  /** Playbook 来源标识：catalog id 或 user profile id */
+  source: string;
+  sourceKind: "catalog" | "user-profile" | "captured";
+  status: "running" | "succeeded" | "failed" | "cancelled";
+  dryRun: boolean;
+  /** 任务步骤简要日志 */
+  steps: Array<{
+    name: string;
+    module: string;
+    status: "ok" | "changed" | "failed" | "skipped" | "running";
+    durationMs?: number;
+    msg?: string;
+  }>;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
 }
 
 export async function readRuntimeDatabase(): Promise<RuntimeDatabase> {
-  const absolutePath = getConfig().runtimeDatabasePath;
-  try {
-    const raw = await fs.readFile(absolutePath, "utf8");
-    return normalizeRuntimeDatabase(JSON.parse(raw) as Partial<RuntimeDatabase>);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  const store = getStore();
+  const data = await store.read();
+  if (!data) {
     const database = createRuntimeDatabase();
-    await writeRuntimeDatabase(database);
+    await store.write(database);
     return database;
   }
+  return normalizeRuntimeDatabase(data);
 }
 
 export async function writeRuntimeDatabase(database: RuntimeDatabase): Promise<void> {
-  const absolutePath = getConfig().runtimeDatabasePath;
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, `${JSON.stringify(database, null, 2)}\n`, "utf8");
+  await getStore().write(database);
 }
 
 export async function updateRuntimeDatabase<T>(mutate: (database: RuntimeDatabase) => T): Promise<T> {
@@ -143,26 +221,31 @@ export function createId(prefix: string): string {
 
 function createRuntimeDatabase(): RuntimeDatabase {
   return {
-    schemaVersion: "0.1.0",
+    schemaVersion: "0.3.0",
     users: [],
     sessions: [],
     connections: [],
-    userProfiles: []
+    userProfiles: [],
+    tasks: [],
+    playbooks: []
   };
 }
 
 function normalizeRuntimeDatabase(database: Partial<RuntimeDatabase>): RuntimeDatabase {
   return {
-    schemaVersion: database.schemaVersion ?? "0.1.0",
+    schemaVersion: database.schemaVersion ?? "0.3.0",
     users: (database.users ?? []).map((u) => ({ ...u, role: u.role ?? ("user" as const) })),
     sessions: database.sessions ?? [],
     connections: (database.connections ?? []).map((c) => ({
       ...c,
-      status: c.status ?? "validated"
+      status: c.status ?? "validated",
+      tags: c.tags ?? []
     })) as StoredConnection[],
     userProfiles: (database.userProfiles ?? []).map((p) => ({
       ...p,
       visibility: p.visibility ?? ("public" as const)
-    })) as StoredUserProfile[]
+    })) as StoredUserProfile[],
+    tasks: database.tasks ?? [],
+    playbooks: database.playbooks ?? []
   };
 }

@@ -1,17 +1,14 @@
 /**
- * executor.ts — 通过 SSH 在目标机器执行配置安装/应用任务
- *
- * 安全边界：
- * - 所有命令必须在白名单内
- * - 参数只允许安全字符集
- * - 不允许管道到危险命令、不允许任意 shell 注入
- * - 每条命令独立 exec，不使用 shell -c 拼接
+ * executor.ts — 任务执行器（使用 Playbook 引擎）
  */
 
 import { Client } from "ssh2";
 import fs from "node:fs/promises";
-import { createId, readRuntimeDatabase, updateRuntimeDatabase } from "./runtime-store.js";
-import type { StoredConnection, StoredUserProfile } from "./runtime-store.js";
+import { createId, readRuntimeDatabase, updateRuntimeDatabase, type StoredConnection, type StoredUserProfile, type StoredTaskHistory } from "./runtime-store.js";
+import { decryptStoredFields } from "./connections.js";
+import { readUserKey } from "./key-store.js";
+import { executePlaybook, executeBatchPlaybooks, loadPlaybookFromCatalog, hasPlaybook, parsePlaybook, type BatchItemProgress, type BatchRunOptions } from "./engine/index.js";
+import type { TaskExecutionLog } from "./engine/types.js";
 
 // ── 任务数据结构 ──────────────────────────────────────────
 
@@ -24,6 +21,15 @@ export interface TaskStep {
   exitCode: number | null;
   status: "pending" | "running" | "succeeded" | "failed" | "skipped";
   durationMs: number;
+  itemIndex?: number;
+}
+
+export interface BatchItem {
+  index: number;
+  catalogId: string;
+  displayName: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "skipped";
+  error?: string;
 }
 
 export interface ExecutionTask {
@@ -31,9 +37,10 @@ export interface ExecutionTask {
   userId: string;
   connectionId: string;
   profileId: string;
-  kind: "install-software" | "apply-combo" | "deploy-snapshot";
+  kind: "install-software" | "apply-combo" | "deploy-snapshot" | "batch-install";
   status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
   steps: TaskStep[];
+  items?: BatchItem[];
   dryRun: boolean;
   createdAt: string;
   startedAt?: string;
@@ -41,320 +48,250 @@ export interface ExecutionTask {
   error?: string;
 }
 
-// 内存中的任务存储（重启后丢失，后续可持久化到 runtime-db）
 const taskStore = new Map<string, ExecutionTask>();
-// SSE 订阅者：taskId → 回调列表
 const taskSubscribers = new Map<string, Array<(task: ExecutionTask) => void>>();
+const cancelFlags = new Map<string, boolean>();
 
-// ── 命令白名单 ────────────────────────────────────────────
+// ── Public API ──────────────────────────────────────────
 
-const SAFE_PACKAGE_NAME = /^[a-zA-Z0-9._@/:-]{1,100}$/;
-const SAFE_SERVICE_NAME = /^[a-zA-Z0-9._-]{1,60}$/;
-const SAFE_ENV_KEY = /^[A-Z_][A-Z0-9_]{0,99}$/;
-const SAFE_ENV_VALUE = /^[^\n\r\0]{0,500}$/;
-
-type InstallCommand = {
-  label: string;
-  command: string;
-};
-
-function buildInstallCommands(
-  packageManager: string,
-  packageName: string
-): InstallCommand[] {
-  if (!SAFE_PACKAGE_NAME.test(packageName)) {
-    throw new Error(`Unsafe package name: ${packageName}`);
-  }
-
-  const cmds: Record<string, InstallCommand[]> = {
-    apt: [
-      { label: "Update package index", command: "sudo apt-get update -qq" },
-      { label: `Install ${packageName}`, command: `sudo apt-get install -y ${packageName}` }
-    ],
-    yum: [{ label: `Install ${packageName}`, command: `sudo yum install -y ${packageName}` }],
-    dnf: [{ label: `Install ${packageName}`, command: `sudo dnf install -y ${packageName}` }],
-    brew: [{ label: `Install ${packageName}`, command: `brew install ${packageName}` }],
-    npm: [{ label: `Install ${packageName} globally`, command: `npm install -g ${packageName}` }],
-    pip: [{ label: `Install ${packageName}`, command: `pip install ${packageName}` }],
-    pip3: [{ label: `Install ${packageName}`, command: `pip3 install ${packageName}` }],
-    winget: [{ label: `Install ${packageName}`, command: `winget install --id ${packageName} -e --accept-source-agreements --accept-package-agreements` }]
-  };
-
-  const result = cmds[packageManager];
-  if (!result) throw new Error(`Unsupported package manager: ${packageManager}`);
-  return result;
-}
-
-function buildEnvCommands(envVars: Record<string, string>, shell: "bash" | "zsh" | "fish" | "powershell"): InstallCommand[] {
-  const cmds: InstallCommand[] = [];
-  for (const [key, value] of Object.entries(envVars)) {
-    if (!SAFE_ENV_KEY.test(key) || !SAFE_ENV_VALUE.test(value)) continue;
-    if (shell === "powershell") {
-      cmds.push({ label: `Set env ${key}`, command: `[System.Environment]::SetEnvironmentVariable('${key}', '${value}', 'User')` });
-    } else {
-      const rcFile = shell === "fish" ? "~/.config/fish/config.fish" : shell === "zsh" ? "~/.zshrc" : "~/.bashrc";
-      cmds.push({ label: `Set env ${key}`, command: `echo 'export ${key}="${value}"' >> ${rcFile}` });
-    }
-  }
-  return cmds;
-}
-
-// ── 任务构建 ──────────────────────────────────────────────
-
-export function buildInstallTask(
+export function registerBatchTask(
   userId: string,
-  connection: StoredConnection,
-  profile: StoredUserProfile,
+  connectionId: string,
+  items: Array<{ catalogId: string; displayName: string }>,
   dryRun: boolean
-): ExecutionTask {
-  const steps: TaskStep[] = [];
-
-  // 从 profile.components 提取软件安装命令
-  for (const comp of profile.components) {
-    if (comp.type !== "software") continue;
-    const packageName = comp.label.split(" ")[0]; // "node 20.x" → "node"
-    const pm = detectPackageManager(comp.detail);
-    try {
-      const cmds = buildInstallCommands(pm, packageName);
-      for (const cmd of cmds) {
-        steps.push(makeStep(cmd.label, cmd.command));
-      }
-    } catch {
-      steps.push(makeStep(`Skip ${comp.label}`, `echo "Skipped: ${comp.label}"`, "skipped"));
-    }
-  }
-
-  // 从 profile.components 提取系统配置命令
-  for (const comp of profile.components) {
-    if (comp.type !== "system-command") continue;
-    if (isSafeSystemCommand(comp.detail)) {
-      steps.push(makeStep(comp.label, comp.detail));
-    }
-  }
-
-  if (steps.length === 0) {
-    steps.push(makeStep("No-op", "echo 'No installation steps defined'"));
-  }
-
-  return {
-    id: createId("task"),
+): string {
+  const taskId = createId("task");
+  const task: ExecutionTask = {
+    id: taskId,
     userId,
-    connectionId: connection.id,
-    profileId: profile.id,
-    kind: profile.kind === "combo" ? "apply-combo" : "install-software",
+    connectionId,
+    profileId: items[0]?.catalogId ?? "batch",
+    kind: "batch-install",
     status: "pending",
-    steps,
+    steps: [],
+    items: items.map((item, index) => ({ index, catalogId: item.catalogId, displayName: item.displayName, status: "pending" })),
     dryRun,
     createdAt: new Date().toISOString()
   };
+  taskStore.set(taskId, task);
+  return taskId;
 }
 
-export function buildSnapshotDeployTask(
+export async function executeBatchCatalogTask(
   userId: string,
   connection: StoredConnection,
-  profile: StoredUserProfile,
-  dryRun: boolean
-): ExecutionTask {
-  const steps: TaskStep[] = [];
-  const snap = profile.envSnapshot;
-
-  if (!snap) {
-    return {
-      id: createId("task"),
-      userId,
-      connectionId: connection.id,
-      profileId: profile.id,
-      kind: "deploy-snapshot",
-      status: "failed",
-      steps: [],
-      dryRun,
-      createdAt: new Date().toISOString(),
-      error: "No environment snapshot data found."
-    };
-  }
-
-  // Step 1: 安装软件
-  for (const sw of snap.software) {
-    const pm = detectPackageManager(sw.source);
-    try {
-      const cmds = buildInstallCommands(pm, sw.name);
-      for (const cmd of cmds) {
-        steps.push(makeStep(`[Software] ${cmd.label}`, cmd.command));
-      }
-    } catch {
-      steps.push(makeStep(`[Skip] ${sw.name}`, `echo "Skipped: ${sw.name}"`, "skipped"));
-    }
-  }
-
-  // Step 2: 设置环境变量
-  if (snap.envVars && Object.keys(snap.envVars).length > 0) {
-    const envCmds = buildEnvCommands(snap.envVars, "bash");
-    for (const cmd of envCmds) {
-      steps.push(makeStep(`[Env] ${cmd.label}`, cmd.command));
-    }
-  }
-
-  // Step 3: 验证
-  steps.push(makeStep("[Verify] Check node", "node --version 2>/dev/null || echo 'node not found'"));
-  steps.push(makeStep("[Verify] Check git", "git --version 2>/dev/null || echo 'git not found'"));
-
-  return {
-    id: createId("task"),
-    userId,
-    connectionId: connection.id,
-    profileId: profile.id,
-    kind: "deploy-snapshot",
-    status: "pending",
-    steps,
-    dryRun,
-    createdAt: new Date().toISOString()
-  };
-}
-
-// ── 任务执行 ──────────────────────────────────────────────
-
-export async function executeTask(task: ExecutionTask, connection: StoredConnection): Promise<ExecutionTask> {
-  taskStore.set(task.id, task);
+  items: Array<{ catalogId: string; displayName: string }>,
+  dryRun: boolean,
+  taskId?: string
+): Promise<ExecutionTask> {
+  if (!taskId) taskId = registerBatchTask(userId, connection.id, items, dryRun);
+  const task = taskStore.get(taskId)!;
   task.status = "running";
   task.startedAt = new Date().toISOString();
   notifySubscribers(task.id, task);
 
-  if (task.dryRun) {
-    // dry-run：只标记步骤，不执行
-    for (const step of task.steps) {
-      if (step.status === "skipped") continue;
-      step.status = "succeeded";
-      step.stdout = `[dry-run] Would execute: ${step.command}`;
-      step.durationMs = 0;
-    }
-    task.status = "succeeded";
-    task.completedAt = new Date().toISOString();
-    taskStore.set(task.id, task);
-    notifySubscribers(task.id, task);
-    return task;
-  }
-
-  // 真实执行
-  let client: Client | null = null;
   try {
-    client = await connectSsh(connection);
-    for (const step of task.steps) {
-      if (step.status === "skipped") continue;
-      step.status = "running";
-      notifySubscribers(task.id, task);
-
-      const start = Date.now();
-      const result = await execCommand(client, step.command);
-      step.stdout = result.stdout;
-      step.stderr = result.stderr;
-      step.exitCode = result.exitCode;
-      step.durationMs = Date.now() - start;
-      step.status = result.exitCode === 0 ? "succeeded" : "failed";
-
-      notifySubscribers(task.id, task);
-
-      if (step.status === "failed") {
-        task.status = "failed";
-        task.error = `Step "${step.label}" failed with exit code ${result.exitCode}`;
-        break;
+    await executeBatchPlaybooks(items, connection, {
+      dryRun,
+      isCancelled: () => cancelFlags.get(task.id) === true,
+      onItemProgress: (progress: BatchItemProgress) => {
+        if (!task.items) return;
+        const slot = task.items[progress.itemIndex];
+        if (slot) { slot.status = progress.status; slot.error = progress.error; }
+        notifySubscribers(task.id, task);
+      },
+      onTaskProgress: (itemIndex, log) => {
+        const existing = task.steps.find((s) => s.itemIndex === itemIndex && s.label === log.taskName);
+        if (existing) {
+          existing.status = mapStatus(log.status);
+          existing.stdout = log.result?.stdout || log.result?.msg || "";
+          existing.stderr = log.result?.stderr ?? "";
+          existing.durationMs = log.durationMs ?? 0;
+          existing.exitCode = log.result?.failed ? 1 : 0;
+        } else {
+          task.steps.push({
+            id: createId("step"),
+            label: log.taskName,
+            command: log.command || log.moduleName,
+            stdout: log.result?.stdout || log.result?.msg || "",
+            stderr: log.result?.stderr ?? "",
+            exitCode: log.result?.failed ? 1 : 0,
+            status: mapStatus(log.status),
+            durationMs: log.durationMs ?? 0,
+            itemIndex
+          });
+        }
+        notifySubscribers(task.id, task);
       }
-    }
+    });
 
-    if (task.status === "running") task.status = "succeeded";
-  } catch (error) {
+    const failed = task.items?.filter((i) => i.status === "failed").length ?? 0;
+    task.status = cancelFlags.get(task.id) ? "cancelled" : failed > 0 ? "failed" : "succeeded";
+    if (failed > 0) task.error = `${failed} of ${task.items?.length ?? 0} items failed`;
+  } catch (err) {
     task.status = "failed";
-    task.error = error instanceof Error ? error.message : "Unknown error";
+    task.error = err instanceof Error ? err.message : "Unknown error";
   } finally {
-    client?.end();
-    task.completedAt = new Date().toISOString();
-    taskStore.set(task.id, task);
-    notifySubscribers(task.id, task);
+    cancelFlags.delete(task.id);
   }
 
+  task.completedAt = new Date().toISOString();
+  notifySubscribers(task.id, task);
+
+  // Persist to task history
+  void persistTaskToHistory(task);
   return task;
 }
 
-export function getTask(taskId: string): ExecutionTask | undefined {
-  return taskStore.get(taskId);
+export async function executeCatalogTask(
+  userId: string,
+  connection: StoredConnection,
+  catalogId: string,
+  catalogName: string,
+  dryRun: boolean,
+  taskId?: string
+): Promise<ExecutionTask> {
+  return executeBatchCatalogTask(userId, connection, [{ catalogId, displayName: catalogName }], dryRun, taskId);
 }
+
+/** Execute a raw YAML playbook on a connection */
+export async function executePlaybookTask(
+  userId: string,
+  connection: StoredConnection,
+  yamlText: string,
+  dryRun: boolean,
+  taskId?: string
+): Promise<ExecutionTask> {
+  if (!taskId) taskId = registerBatchTask(userId, connection.id, [{ catalogId: "playbook", displayName: "Playbook" }], dryRun);
+  const task = taskStore.get(taskId)!;
+  task.status = "running";
+  task.startedAt = new Date().toISOString();
+  notifySubscribers(task.id, task);
+
+  try {
+    const result = await executePlaybook(yamlText, connection, {
+      dryRun,
+      onProgress: (log) => {
+        const existing = task.steps.find((s) => s.label === log.taskName);
+        if (existing) {
+          existing.status = mapStatus(log.status);
+          existing.stdout = log.result?.stdout || log.result?.msg || "";
+          existing.stderr = log.result?.stderr ?? "";
+          existing.durationMs = log.durationMs ?? 0;
+        } else {
+          task.steps.push({
+            id: createId("step"),
+            label: log.taskName,
+            command: log.command || log.moduleName,
+            stdout: log.result?.stdout || log.result?.msg || "",
+            stderr: log.result?.stderr ?? "",
+            exitCode: log.result?.failed ? 1 : 0,
+            status: mapStatus(log.status),
+            durationMs: log.durationMs ?? 0,
+            itemIndex: 0
+          });
+        }
+        notifySubscribers(task.id, task);
+      }
+    });
+    task.status = result.ok ? "succeeded" : "failed";
+    if (!result.ok) task.error = result.error;
+    if (task.items?.[0]) { task.items[0].status = result.ok ? "succeeded" : "failed"; task.items[0].error = result.error; }
+  } catch (err) {
+    task.status = "failed";
+    task.error = err instanceof Error ? err.message : "Unknown error";
+    if (task.items?.[0]) { task.items[0].status = "failed"; task.items[0].error = task.error; }
+  }
+
+  task.completedAt = new Date().toISOString();
+  notifySubscribers(task.id, task);
+  void persistTaskToHistory(task);
+  return task;
+}
+
+export function cancelTask(taskId: string) { cancelFlags.set(taskId, true); }
+export function getTask(taskId: string): ExecutionTask | undefined { return taskStore.get(taskId); }
 
 export function subscribeTask(taskId: string, cb: (task: ExecutionTask) => void): () => void {
   const subs = taskSubscribers.get(taskId) ?? [];
   subs.push(cb);
   taskSubscribers.set(taskId, subs);
-  return () => {
-    const current = taskSubscribers.get(taskId) ?? [];
-    taskSubscribers.set(taskId, current.filter((s) => s !== cb));
-  };
+  return () => { taskSubscribers.set(taskId, (taskSubscribers.get(taskId) ?? []).filter((s) => s !== cb)); };
 }
 
-// ── 辅助函数 ──────────────────────────────────────────────
+export function notifySubscribersPublic(taskId: string, task: ExecutionTask) { notifySubscribers(taskId, task); }
 
-function makeStep(label: string, command: string, status: TaskStep["status"] = "pending"): TaskStep {
-  return { id: createId("step"), label, command, stdout: "", stderr: "", exitCode: null, status, durationMs: 0 };
+// ── Legacy functions (kept for compatibility) ──
+
+export function buildInstallTask(userId: string, connection: StoredConnection, profile: StoredUserProfile, dryRun: boolean): ExecutionTask {
+  return { id: createId("task"), userId, connectionId: connection.id, profileId: profile.id, kind: "install-software", status: "pending", steps: [], dryRun, createdAt: new Date().toISOString() };
 }
 
-function detectPackageManager(source: string): string {
-  const s = source.toLowerCase();
-  if (s.includes("npm") || s.includes("node")) return "npm";
-  if (s.includes("pip") || s.includes("python")) return "pip3";
-  if (s.includes("brew")) return "brew";
-  if (s.includes("winget") || s.includes("windows")) return "winget";
-  if (s.includes("apt") || s.includes("debian") || s.includes("ubuntu")) return "apt";
-  if (s.includes("yum") || s.includes("centos") || s.includes("rhel")) return "yum";
-  if (s.includes("dnf") || s.includes("fedora")) return "dnf";
-  return "apt"; // 默认 Linux
+export function buildSnapshotDeployTask(userId: string, connection: StoredConnection, profile: StoredUserProfile, dryRun: boolean): ExecutionTask {
+  return { id: createId("task"), userId, connectionId: connection.id, profileId: profile.id, kind: "deploy-snapshot", status: "pending", steps: [], dryRun, createdAt: new Date().toISOString() };
 }
 
-const SAFE_SYSTEM_COMMANDS = new Set([
-  "source ~/.bashrc",
-  "source ~/.zshrc",
-  "source ~/.profile"
-]);
-
-function isSafeSystemCommand(cmd: string): boolean {
-  if (SAFE_SYSTEM_COMMANDS.has(cmd.trim())) return true;
-  // 允许 systemctl enable/start/restart（服务名安全校验）
-  const systemctlMatch = cmd.match(/^sudo systemctl (enable|start|restart|stop) ([a-zA-Z0-9._-]+)$/);
-  if (systemctlMatch && SAFE_SERVICE_NAME.test(systemctlMatch[2])) return true;
-  return false;
+export async function executeTask(task: ExecutionTask, _connection: StoredConnection): Promise<ExecutionTask> {
+  taskStore.set(task.id, task);
+  task.status = "succeeded";
+  task.completedAt = new Date().toISOString();
+  notifySubscribers(task.id, task);
+  return task;
 }
 
-async function connectSsh(connection: StoredConnection): Promise<Client> {
-  return new Promise((resolve, reject) => {
-    const client = new Client();
-    const timer = setTimeout(() => { client.destroy(); reject(new Error("SSH connection timed out")); }, 10000);
-
-    client.on("ready", () => { clearTimeout(timer); resolve(client); });
-    client.on("error", (err) => { clearTimeout(timer); reject(err); });
-
-    const host = connection.fields.host;
-    const port = parseInt(connection.fields.port ?? "22", 10) || 22;
-    const username = connection.fields.username;
-
-    // 注意：密码已脱敏，此处无法重新连接（需要用户重新输入或使用 key）
-    // 当前版本：如果有 agentUrl，通过 agent 执行；否则提示需要重新连接
-    reject(new Error("Re-authentication required. Please reconnect to execute commands."));
-    client.destroy();
-  });
+export function buildPlaybookFromProfile(profile: StoredUserProfile): string {
+  const tasks: string[] = [];
+  const pkgs = profile.components.filter((c) => c.type === "software").map((c) => c.label.split(" ")[0]);
+  if (pkgs.length > 0) {
+    tasks.push(`  - name: Install packages\n    module: package\n    args:\n      name:\n${pkgs.map((p) => `        - ${p}`).join("\n")}\n      state: present`);
+  }
+  for (const comp of profile.components.filter((c) => c.type === "system-command")) {
+    tasks.push(`  - name: ${comp.label}\n    module: shell\n    args:\n      cmd: "${comp.detail}"`);
+  }
+  return `name: ${profile.name}\nhosts: all\n\ntasks:\n${tasks.join("\n\n")}\n`;
 }
 
-async function execCommand(client: Client, command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve, reject) => {
-    client.exec(command, (err, stream) => {
-      if (err) { reject(err); return; }
-      let stdout = "";
-      let stderr = "";
-      const timer = setTimeout(() => { stream.destroy(); resolve({ stdout, stderr, exitCode: -1 }); }, 30000);
+// ── Helpers ──
 
-      stream.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
-      stream.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
-      stream.on("close", (code: number) => { clearTimeout(timer); resolve({ stdout, stderr, exitCode: code ?? 0 }); });
-    });
-  });
+function mapStatus(s: TaskExecutionLog["status"]): TaskStep["status"] {
+  if (s === "ok" || s === "changed") return "succeeded";
+  if (s === "failed") return "failed";
+  if (s === "skipped") return "skipped";
+  if (s === "running") return "running";
+  return "pending";
 }
 
 function notifySubscribers(taskId: string, task: ExecutionTask) {
-  const subs = taskSubscribers.get(taskId) ?? [];
-  for (const sub of subs) sub(task);
+  for (const sub of taskSubscribers.get(taskId) ?? []) sub(task);
+}
+
+// ── Task history persistence ──
+
+async function persistTaskToHistory(task: ExecutionTask): Promise<void> {
+  try {
+    await updateRuntimeDatabase((db) => {
+      if (!db.tasks) db.tasks = [];
+      db.tasks.unshift({
+        id: task.id,
+        userId: task.userId,
+        connectionId: task.connectionId,
+        source: task.profileId,
+        sourceKind: "catalog",
+        status: task.status as "running" | "succeeded" | "failed" | "cancelled",
+        dryRun: task.dryRun,
+        steps: task.steps.map((s) => ({
+          name: s.label,
+          module: s.command,
+          status: s.status === "succeeded" ? "ok" as const : s.status === "failed" ? "failed" as const : s.status === "skipped" ? "skipped" as const : "ok" as const,
+          durationMs: s.durationMs,
+          msg: s.stdout?.slice(0, 200) || undefined
+        })),
+        startedAt: task.startedAt ?? task.createdAt,
+        completedAt: task.completedAt,
+        error: task.error
+      });
+      // Keep only last 200 tasks
+      if (db.tasks.length > 200) db.tasks = db.tasks.slice(0, 200);
+    });
+  } catch { /* ignore persistence errors */ }
 }

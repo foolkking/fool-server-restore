@@ -1,0 +1,46 @@
+version: "3.8"
+
+# EnvForge — Self-hosted VM configuration management platform
+# Usage:
+#   docker compose up -d
+#   Open http://localhost:5173
+
+services:
+  envforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: envforge:latest
+    container_name: envforge
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      # Persist runtime data (users, connections, tasks, playbooks)
+      - envforge_data:/app/data
+      # Mount host SSH keys read-only so EnvForge can connect to target VMs
+      # Adjust the path if your keys are elsewhere
+      - ${SSH_KEY_DIR:-~/.ssh}:/home/envforge/.ssh:ro
+    environment:
+      NODE_ENV: production
+      HOST: "0.0.0.0"
+      PORT: "5173"
+      SERVE_WEB: "1"
+      FOOL_DATA_DIR: /app/data
+      FOOL_RUNTIME_DB: /app/data/runtime-db.json
+      FOOL_SNAPSHOT_DIR: /app/data/snapshots
+      SESSION_TTL_HOURS: "168"
+      # Set a strong master key for encrypting SSH passwords
+      # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+      ENVFORGE_MASTER_KEY: ${ENVFORGE_MASTER_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5173/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  envforge_data:
+    driver: local

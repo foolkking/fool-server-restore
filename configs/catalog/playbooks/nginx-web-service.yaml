@@ -1,0 +1,23 @@
+# Playbook: Nginx Web 服务
+name: Install and configure Nginx web server
+hosts: all
+
+tasks:
+  - name: Install nginx package
+    module: package
+    args:
+      name: nginx
+      state: present
+
+  - name: Enable nginx service to start on boot
+    module: service
+    args:
+      name: nginx
+      enabled: true
+      state: started
+
+  - name: Verify nginx is running
+    module: shell
+    args:
+      cmd: "systemctl is-active --quiet nginx && echo 'nginx is running'"
+    ignore_errors: true

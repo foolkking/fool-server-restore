@@ -1,0 +1,36 @@
+# Playbook: Redis 内存数据库
+name: Install Redis in-memory database
+hosts: all
+vars:
+  redis_port: 6379
+
+tasks:
+  - name: Install redis-server package
+    module: package
+    args:
+      name: redis-server
+      state: present
+
+  - name: Enable redis-server service to start on boot
+    module: service
+    args:
+      name: redis-server
+      enabled: true
+      state: started
+
+  - name: Bind Redis to localhost only
+    module: lineinfile
+    args:
+      path: /etc/redis/redis.conf
+      regexp: "^bind "
+      line: "bind 127.0.0.1 ::1"
+      create: true
+      backup: true
+    register: bind_changed
+
+  - name: Restart redis if bind changed
+    module: service
+    args:
+      name: redis-server
+      state: restarted
+    when: bind_changed.changed

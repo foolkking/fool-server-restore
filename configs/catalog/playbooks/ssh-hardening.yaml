@@ -1,0 +1,54 @@
+# Playbook: SSH 安全加固
+name: Harden SSH server configuration
+hosts: all
+
+tasks:
+  - name: Ensure openssh-server is installed
+    module: package
+    args:
+      name: openssh-server
+      state: present
+
+  - name: Disable root login via SSH
+    module: lineinfile
+    args:
+      path: /etc/ssh/sshd_config
+      regexp: "^#?PermitRootLogin"
+      line: "PermitRootLogin no"
+      create: true
+      backup: true
+    register: root_login_changed
+
+  - name: Limit max auth tries
+    module: lineinfile
+    args:
+      path: /etc/ssh/sshd_config
+      regexp: "^#?MaxAuthTries"
+      line: "MaxAuthTries 3"
+      create: true
+    register: max_auth_changed
+
+  - name: Set client alive interval
+    module: lineinfile
+    args:
+      path: /etc/ssh/sshd_config
+      regexp: "^#?ClientAliveInterval"
+      line: "ClientAliveInterval 300"
+      create: true
+    register: alive_changed
+
+  - name: Disable password authentication
+    module: lineinfile
+    args:
+      path: /etc/ssh/sshd_config
+      regexp: "^#?PasswordAuthentication"
+      line: "PasswordAuthentication no"
+      create: true
+    register: password_auth_changed
+
+  - name: Restart sshd if any setting changed
+    module: service
+    args:
+      name: sshd
+      state: restarted
+    when: root_login_changed.changed

@@ -21,15 +21,15 @@ export function getConfig(): AppConfig {
 
   return {
     host: process.env.HOST ?? "127.0.0.1",
-    port: toPort(process.env.PORT, 4000),
+    port: toPort(process.env.PORT, 5173),
     nodeEnv: process.env.NODE_ENV ?? "development",
-    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "http://127.0.0.1:4000",
+    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "http://127.0.0.1:5173",
     dataDir,
     runtimeDatabasePath: resolveConfiguredPath(process.env.FOOL_RUNTIME_DB, path.join(dataDir, "runtime-db.json")),
     snapshotDir: resolveConfiguredPath(process.env.FOOL_SNAPSHOT_DIR, path.join(dataDir, "snapshots")),
     serveWeb: isEnabled(process.env.SERVE_WEB),
     webDistDir: resolveConfiguredPath(process.env.WEB_DIST_DIR, "apps/web/dist"),
-    sessionTtlHours: toPositiveNumber(process.env.SESSION_TTL_HOURS, 168)
+    sessionTtlHours: toPositiveNumber(process.env.SESSION_TTL_HOURS, 24)
   };
 }
 

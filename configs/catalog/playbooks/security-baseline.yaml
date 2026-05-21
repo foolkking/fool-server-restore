@@ -1,0 +1,41 @@
+# Playbook: 安全基线（UFW + Fail2Ban + 自动更新）
+name: Security baseline
+hosts: all
+
+tasks:
+  - name: Install ufw, fail2ban, unattended-upgrades
+    module: package
+    args:
+      name:
+        - ufw
+        - fail2ban
+        - unattended-upgrades
+      state: present
+
+  - name: Allow SSH on UFW before enabling
+    module: shell
+    args:
+      cmd: "sudo ufw allow 22/tcp"
+
+  - name: Allow HTTP and HTTPS
+    module: shell
+    args:
+      cmd: "sudo ufw allow 80/tcp && sudo ufw allow 443/tcp"
+
+  - name: Enable UFW with default deny
+    module: shell
+    args:
+      cmd: "echo 'y' | sudo ufw enable"
+
+  - name: Enable fail2ban service
+    module: service
+    args:
+      name: fail2ban
+      enabled: true
+      state: started
+
+  - name: Enable unattended-upgrades
+    module: shell
+    args:
+      cmd: "sudo dpkg-reconfigure -f noninteractive unattended-upgrades 2>/dev/null || true"
+    ignore_errors: true

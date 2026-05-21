@@ -1,0 +1,33 @@
+# Playbook: Rust 工具链
+name: Install Rust toolchain via rustup
+hosts: all
+
+tasks:
+  - name: Install build-essential and curl (required by rustup)
+    module: package
+    args:
+      name:
+        - curl
+        - build-essential
+        - pkg-config
+        - libssl-dev
+      state: present
+
+  - name: Install rustup non-interactively
+    module: shell
+    args:
+      cmd: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable"
+      creates: ~/.cargo/bin/rustc
+
+  - name: Add cargo bin to PATH in bashrc
+    module: lineinfile
+    args:
+      path: ~/.bashrc
+      regexp: "^\\..*cargo/env"
+      line: '. "$HOME/.cargo/env"'
+      create: true
+
+  - name: Verify Rust installation
+    module: shell
+    args:
+      cmd: "source ~/.cargo/env && rustc --version && cargo --version"

@@ -1,0 +1,18 @@
+# Playbook: Git 版本控制
+name: Install Git and Git LFS
+hosts: all
+
+tasks:
+  - name: Install git and git-lfs
+    module: package
+    args:
+      name:
+        - git
+        - git-lfs
+      state: present
+
+  - name: Initialize git lfs for current user
+    module: shell
+    args:
+      cmd: "git lfs install"
+      creates: ~/.config/git/attributes

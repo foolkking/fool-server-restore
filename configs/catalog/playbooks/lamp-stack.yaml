@@ -1,0 +1,37 @@
+# Playbook: LAMP 全栈
+name: LAMP stack (Apache + MySQL + PHP)
+hosts: all
+
+tasks:
+  - name: Install Apache, MySQL, PHP
+    module: package
+    args:
+      name:
+        - apache2
+        - mysql-server
+        - php
+        - libapache2-mod-php
+        - php-mysql
+        - php-curl
+        - php-mbstring
+      state: present
+
+  - name: Enable apache2
+    module: service
+    args:
+      name: apache2
+      enabled: true
+      state: started
+
+  - name: Enable mysql
+    module: service
+    args:
+      name: mysql
+      enabled: true
+      state: started
+
+  - name: Verify Apache is serving
+    module: shell
+    args:
+      cmd: "curl -s -o /dev/null -w '%{http_code}' http://localhost | grep -q 200 && echo 'Apache OK'"
+    ignore_errors: true

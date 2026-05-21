@@ -1,0 +1,17 @@
+# Playbook: Certbot / Let's Encrypt SSL
+name: Install Certbot for free SSL certificates
+hosts: all
+
+tasks:
+  - name: Install certbot and nginx plugin
+    module: package
+    args:
+      name:
+        - certbot
+        - python3-certbot-nginx
+      state: present
+
+  - name: Verify certbot installation
+    module: shell
+    args:
+      cmd: "certbot --version"

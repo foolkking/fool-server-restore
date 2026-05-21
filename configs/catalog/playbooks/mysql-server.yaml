@@ -1,0 +1,29 @@
+# Playbook: MySQL 数据库
+name: Install MySQL database server
+hosts: all
+
+tasks:
+  - name: Install mysql-server package
+    module: package
+    args:
+      name: mysql-server
+      state: present
+
+  - name: Enable mysql service to start on boot
+    module: service
+    args:
+      name: mysql
+      enabled: true
+      state: started
+
+  - name: Secure MySQL - set root auth to socket
+    module: shell
+    args:
+      cmd: "sudo mysql -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH auth_socket;\" 2>/dev/null || true"
+    ignore_errors: true
+
+  - name: Verify MySQL is running
+    module: shell
+    args:
+      cmd: "sudo mysqladmin ping -u root --socket=/var/run/mysqld/mysqld.sock 2>/dev/null && echo 'MySQL is alive'"
+    ignore_errors: true

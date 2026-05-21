@@ -1,3 +1,12 @@
+<!--
+ * @Author: fool
+ * @Date: 2026-05-19 17:08:02
+ * @LastEditors: fool
+ * @LastEditTime: 2026-05-21 13:08:37
+ * @FilePath: \EnvForge\docs\CURRENT_ENVIRONMENT.md
+ * @Description:  
+ * @Note:  
+-->
 # 当前环境记录
 
 记录时间：2026-05-19
@@ -5,7 +14,7 @@
 工作目录：
 
 ```text
-E:\1project\myweb
+E:\1project\EnvForge
 ```
 
 ## 已确认工具

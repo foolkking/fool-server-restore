@@ -1,0 +1,12 @@
+# Playbook: Java / OpenJDK 运行时
+name: Install Java OpenJDK and Maven
+hosts: all
+
+tasks:
+  - name: Install OpenJDK and Maven
+    module: package
+    args:
+      name:
+        - default-jdk
+        - maven
+      state: present

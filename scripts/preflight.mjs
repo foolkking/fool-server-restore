@@ -1,3 +1,12 @@
+/*
+ * @Author: fool
+ * @Date: 2026-05-19 21:02:08
+ * @LastEditors: fool
+ * @LastEditTime: 2026-05-21 13:06:38
+ * @FilePath: \EnvForge\scripts\preflight.mjs
+ * @Description:  
+ * @Note:  
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";

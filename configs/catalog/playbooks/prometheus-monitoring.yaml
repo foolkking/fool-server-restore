@@ -1,0 +1,32 @@
+# Playbook: Prometheus 监控
+name: Install Prometheus and Node Exporter
+hosts: all
+
+tasks:
+  - name: Install prometheus and node-exporter
+    module: package
+    args:
+      name:
+        - prometheus
+        - prometheus-node-exporter
+      state: present
+
+  - name: Enable prometheus service
+    module: service
+    args:
+      name: prometheus
+      enabled: true
+      state: started
+
+  - name: Enable node-exporter service
+    module: service
+    args:
+      name: prometheus-node-exporter
+      enabled: true
+      state: started
+
+  - name: Verify Prometheus is listening
+    module: shell
+    args:
+      cmd: "curl -s http://localhost:9090/-/healthy && echo ' Prometheus OK'"
+    ignore_errors: true

@@ -70,6 +70,8 @@ export interface CatalogItem {
   guideAuthor: "admin" | "user";
   installMode: "skip-existing" | "replace-existing";
   components: CatalogComponent[];
+  /** 支持的部署模式：system = apt 安装，docker = docker compose 部署 */
+  deployModes?: Array<"system" | "docker">;
 }
 
 export interface CatalogComponent {
@@ -120,13 +122,15 @@ export interface AuthResponse {
   user: AuthUser;
 }
 
-export type ConnectionMethod = "ssh-password" | "ssh-key" | "winrm" | "docker";
+export type ConnectionMethod = "ssh-password" | "ssh-key";
 
 export interface ConnectionProfile {
   id: string;
   userId: string;
   method: ConnectionMethod;
   label: string;
+  /** 用户自定义标签，用于分组（如 dev、staging、prod） */
+  tags?: string[];
   status: "validated" | "ssh_ok" | "ssh_failed" | "probed" | "unreachable";
   sshError?: string;
   fields: Record<string, string>;
@@ -148,8 +152,8 @@ export interface ConnectionResponse {
 export interface TargetSoftware {
   name: string;
   version: string;
-  source: "npm" | "system" | "container" | "runtime";
-  status: "synced" | "unsynced" | "warning";
+  source: string; // apt | apt-manual | rpm | snap | flatpak | npm | pip | gem | cargo | local-bin | opt | user-bin | nvm | pyenv | rbenv | asdf | sdkman | docker | runtime | system | container
+  status: string; // installed | synced | unsynced | warning
 }
 
 export interface SystemConfigItem {
@@ -166,8 +170,11 @@ export interface AgentSystemInfo {
   arch: string;
   release: string;
   uptime: number;
+  osPretty?: string;
   cpu: { model: string; cores: number; speedMhz: number };
   memory: { totalBytes: number; freeBytes: number; usedBytes: number; totalGb: string; freeGb: string };
+  disk?: { total: string; used: string; available: string; usePercent: string };
+  uptimeText?: string;
 }
 
 export interface AgentProbeResult {
@@ -177,6 +184,26 @@ export interface AgentProbeResult {
   system: AgentSystemInfo;
   software: TargetSoftware[];
   configChecklist: SystemConfigItem[];
+  /** Per-source counts for summary display */
+  counts?: {
+    apt: number;
+    rpm: number;
+    snap: number;
+    flatpak: number;
+    npm: number;
+    pip: number;
+    gem: number;
+    cargo: number;
+    localBin: number;
+    opt: number;
+    userBin: number;
+    nvm: number;
+    pyenv: number;
+    docker: number;
+    enabledServices: number;
+    runningServices: number;
+    total: number;
+  };
 }
 
 export interface AgentProbeFailure {
@@ -331,6 +358,7 @@ export async function connectServer(input: {
   label?: string;
   fields: Record<string, string>;
   agentUrl?: string;
+  keyId?: string;
 }): Promise<ConnectionResponse> {
   const response = await fetch("/api/connections/connect", {
     method: "POST",
@@ -342,7 +370,8 @@ export async function connectServer(input: {
       method: input.method,
       label: input.label,
       fields: input.fields,
-      agentUrl: input.agentUrl
+      agentUrl: input.agentUrl,
+      keyId: input.keyId
     })
   });
   return readJsonOrThrow<ConnectionResponse>(response, "Connection failed");
@@ -401,7 +430,8 @@ export async function pingAgent(agentUrl: string): Promise<boolean> {
 export async function reprobeConnection(token: string, connectionId: string): Promise<ConnectionProfile> {
   const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/reprobe`, {
     method: "POST",
-    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({})
   });
   const body = await readJsonOrThrow<{ connection: ConnectionProfile }>(response, "Reprobe failed");
   return body.connection;
@@ -423,7 +453,7 @@ export async function deleteConnection(token: string, id: string): Promise<void>
   await readJsonOrThrow<{ ok: boolean }>(response, "Delete connection failed");
 }
 
-export async function updateConnection(token: string, id: string, input: { label?: string; agentUrl?: string }): Promise<ConnectionProfile> {
+export async function updateConnection(token: string, id: string, input: { label?: string; agentUrl?: string; tags?: string[] }): Promise<ConnectionProfile> {
   const response = await fetch(`/api/connections/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
@@ -492,6 +522,16 @@ export interface TaskStep {
   exitCode: number | null;
   status: "pending" | "running" | "succeeded" | "failed" | "skipped";
   durationMs: number;
+  /** 关联到 batch task 的第几个 item */
+  itemIndex?: number;
+}
+
+export interface BatchItem {
+  index: number;
+  catalogId: string;
+  displayName: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "skipped";
+  error?: string;
 }
 
 export interface ExecutionTask {
@@ -499,9 +539,11 @@ export interface ExecutionTask {
   userId: string;
   connectionId: string;
   profileId: string;
-  kind: "install-software" | "apply-combo" | "deploy-snapshot";
+  kind: "install-software" | "apply-combo" | "deploy-snapshot" | "batch-install";
   status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
   steps: TaskStep[];
+  /** 仅 batch-install 任务才有 */
+  items?: BatchItem[];
   dryRun: boolean;
   createdAt: string;
   startedAt?: string;
@@ -518,6 +560,278 @@ export async function executeProfile(token: string, connectionId: string, profil
   return readJsonOrThrow<{ taskId: string; steps: TaskStep[] }>(response, "Execute failed");
 }
 
+export async function batchExecute(
+  token: string,
+  connectionId: string,
+  catalogIds: string[],
+  dryRun = true
+): Promise<{ taskId: string; totalItems: number; items: BatchItem[] }> {
+  const response = await fetch("/api/batch-execute", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ connectionId, catalogIds, dryRun })
+  });
+  return readJsonOrThrow<{ taskId: string; totalItems: number; items: BatchItem[] }>(response, "Batch execute failed");
+}
+
+export async function cancelTaskRequest(token: string, taskId: string): Promise<void> {
+  await fetch(`/api/tasks/${encodeURIComponent(taskId)}/cancel`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+}
+
+// ── SSH 密钥管理 ──────────────────────────────────────────
+
+export interface SshKeyMeta {
+  id: string;
+  userId: string;
+  label: string;
+  fingerprint: string;
+  createdAt: string;
+}
+
+export async function uploadSshKey(token: string, label: string, privateKey: string): Promise<SshKeyMeta> {
+  const response = await fetch("/api/keys", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ label, privateKey })
+  });
+  const body = await readJsonOrThrow<{ key: SshKeyMeta }>(response, "Upload SSH key failed");
+  return body.key;
+}
+
+export async function fetchSshKeys(token: string): Promise<SshKeyMeta[]> {
+  const response = await fetch("/api/keys", {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ keys: SshKeyMeta[] }>(response, "Fetch SSH keys failed");
+  return body.keys;
+}
+
+export async function deleteSshKey(token: string, keyId: string): Promise<void> {
+  const response = await fetch(`/api/keys/${encodeURIComponent(keyId)}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow<{ ok: boolean }>(response, "Delete SSH key failed");
+}
+
+// ── 环境保留 ──────────────────────────────────────────────
+
+export interface CaptureResult {
+  playbookYaml: string;
+  summary: {
+    aptPackages: string[];
+    enabledServices: string[];
+    bashrcLines: string[];
+    npmGlobals: string[];
+    pipGlobals: string[];
+    dockerContainers: string[];
+    diskInfo?: string;
+    uptimeInfo?: string;
+  };
+  connectionId: string;
+  capturedAt: string;
+}
+
+export async function captureEnvironment(token: string, connectionId: string): Promise<CaptureResult> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/capture`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow<CaptureResult>(response, "Capture failed");
+}
+
+// ── 影响范围预估 ──────────────────────────────────────────
+
+export interface ImpactItem {
+  kind: "package" | "service" | "file" | "command" | "user" | "firewall";
+  action: string;
+  target: string;
+  diskDeltaMb?: number;
+  needsSudo: boolean;
+  risk: "low" | "medium" | "high";
+  descZh: string;
+  descEn: string;
+}
+
+export interface ImpactReport {
+  items: ImpactItem[];
+  totalDiskDeltaMb: number;
+  needsSudo: boolean;
+  maxRisk: "low" | "medium" | "high";
+  estimatedSeconds: number;
+  summaryZh: string;
+  summaryEn: string;
+}
+
+export interface BatchImpactResult {
+  reports: Array<{ catalogId: string; name: string; impact: ImpactReport }>;
+  totals: {
+    diskDeltaMb: number;
+    estimatedSeconds: number;
+    needsSudo: boolean;
+    maxRisk: "low" | "medium" | "high";
+    summaryZh: string;
+    summaryEn: string;
+  };
+}
+
+export async function fetchCatalogImpact(catalogId: string): Promise<ImpactReport> {
+  const response = await fetch(`/api/catalog/${encodeURIComponent(catalogId)}/impact`);
+  const body = await readJsonOrThrow<{ impact: ImpactReport }>(response, "Impact fetch failed");
+  return body.impact;
+}
+
+export async function fetchBatchImpact(catalogIds: string[]): Promise<BatchImpactResult> {
+  const response = await fetch("/api/impact/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ catalogIds })
+  });
+  return readJsonOrThrow<BatchImpactResult>(response, "Batch impact failed");
+}
+
+// ── 任务历史 ──────────────────────────────────────────────
+
+export interface TaskHistoryEntry {
+  id: string;
+  userId: string;
+  connectionId: string;
+  source: string;
+  sourceKind: "catalog" | "user-profile" | "captured";
+  status: "running" | "succeeded" | "failed" | "cancelled";
+  dryRun: boolean;
+  steps: Array<{
+    name: string;
+    module: string;
+    status: "ok" | "changed" | "failed" | "skipped" | "running";
+    durationMs?: number;
+    msg?: string;
+  }>;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+}
+
+export async function fetchTaskHistory(token: string): Promise<TaskHistoryEntry[]> {
+  const response = await fetch("/api/tasks", {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ tasks: TaskHistoryEntry[] }>(response, "Fetch task history failed");
+  return body.tasks;
+}
+
+// ── Playbook 版本管理 ─────────────────────────────────────
+
+export interface StoredPlaybook {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  version: number;
+  yaml: string;
+  history?: Array<{
+    version: number;
+    yaml: string;
+    savedAt: string;
+    comment?: string;
+  }>;
+  sourceKind: "catalog" | "capture" | "user";
+  sourceId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchPlaybooks(token: string): Promise<StoredPlaybook[]> {
+  const response = await fetch("/api/playbooks", {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ playbooks: StoredPlaybook[] }>(response, "Fetch playbooks failed");
+  return body.playbooks;
+}
+
+export async function fetchPlaybook(token: string, id: string): Promise<StoredPlaybook> {
+  const response = await fetch(`/api/playbooks/${encodeURIComponent(id)}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ playbook: StoredPlaybook }>(response, "Fetch playbook failed");
+  return body.playbook;
+}
+
+export async function createPlaybook(token: string, input: {
+  name: string;
+  description?: string;
+  yaml: string;
+  sourceKind?: "catalog" | "capture" | "user";
+  sourceId?: string;
+  comment?: string;
+}): Promise<StoredPlaybook> {
+  const response = await fetch("/api/playbooks", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const body = await readJsonOrThrow<{ playbook: StoredPlaybook }>(response, "Create playbook failed");
+  return body.playbook;
+}
+
+export async function updatePlaybook(token: string, id: string, input: {
+  name?: string;
+  description?: string;
+  yaml?: string;
+  comment?: string;
+}): Promise<StoredPlaybook> {
+  const response = await fetch(`/api/playbooks/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const body = await readJsonOrThrow<{ playbook: StoredPlaybook }>(response, "Update playbook failed");
+  return body.playbook;
+}
+
+export async function restorePlaybookVersion(token: string, id: string, version: number): Promise<StoredPlaybook> {
+  const response = await fetch(`/api/playbooks/${encodeURIComponent(id)}/restore/${version}`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ playbook: StoredPlaybook }>(response, "Restore playbook version failed");
+  return body.playbook;
+}
+
+export async function deletePlaybook(token: string, id: string): Promise<void> {
+  const response = await fetch(`/api/playbooks/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow<{ ok: boolean }>(response, "Delete playbook failed");
+}
+
+// ── 多目标批量执行 ────────────────────────────────────────
+
+export interface MultiExecuteResult {
+  targets: Array<{ connectionId: string; label: string; taskId: string }>;
+  dryRun: boolean;
+  totalTargets: number;
+  message: string;
+}
+
+export async function multiExecute(token: string, input: {
+  yaml?: string;
+  playbookId?: string;
+  connectionIds?: string[];
+  tags?: string[];
+  dryRun?: boolean;
+}): Promise<MultiExecuteResult> {
+  const response = await fetch("/api/multi-execute", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow<MultiExecuteResult>(response, "Multi-execute failed");
+}
+
 export async function fetchTask(token: string, taskId: string): Promise<ExecutionTask> {
   const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
     headers: { "Authorization": `Bearer ${token}` }
@@ -526,11 +840,13 @@ export async function fetchTask(token: string, taskId: string): Promise<Executio
   return body.task;
 }
 
-export function streamTask(taskId: string, onUpdate: (task: ExecutionTask) => void): () => void {
-  const es = new EventSource(`/api/tasks/${encodeURIComponent(taskId)}/stream`);
+export function streamTask(taskId: string, onUpdate: (task: ExecutionTask) => void, token?: string): () => void {
+  const url = `/api/tasks/${encodeURIComponent(taskId)}/stream${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+  const es = new EventSource(url);
   es.onmessage = (event) => {
     try { onUpdate(JSON.parse(event.data as string) as ExecutionTask); } catch { /* ignore */ }
   };
+  es.onerror = () => es.close();
   return () => es.close();
 }
 
@@ -540,4 +856,65 @@ export async function extractCombo(token: string, connectionId: string): Promise
   });
   const body = await readJsonOrThrow<{ draft: Partial<CreateProfileInput> }>(response, "Extract combo failed");
   return body.draft;
+}
+
+export async function fetchDockerCompose(catalogId: string): Promise<string> {
+  const response = await fetch(`/api/catalog/${encodeURIComponent(catalogId)}/docker-compose`);
+  if (!response.ok) throw new Error(`No Docker Compose for ${catalogId}`);
+  return response.text();
+}
+
+
+// ── 配置文件管理 ──────────────────────────────────────────
+
+export interface ConfigFileInfo {
+  path: string;
+  size: number;
+  modifiedAt: string;
+  category: "system" | "user" | "app";
+  associatedSoftware?: string;
+}
+
+export interface ConfigFileContent {
+  path: string;
+  content: string;
+  size: number;
+  modifiedAt: string;
+  encoding: "utf8";
+}
+
+export async function fetchConfigFiles(token: string, connectionId: string): Promise<ConfigFileInfo[]> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/configs`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ files: ConfigFileInfo[] }>(response, "Fetch config files failed");
+  return body.files;
+}
+
+export async function readRemoteConfigFile(token: string, connectionId: string, path: string): Promise<ConfigFileContent> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/configs/read?path=${encodeURIComponent(path)}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow<ConfigFileContent>(response, "Read config file failed");
+}
+
+export async function writeRemoteConfigFile(token: string, connectionId: string, path: string, content: string, backup = true): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/configs/write`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ path, content, backup })
+  });
+  return readJsonOrThrow<{ success: boolean; message: string }>(response, "Write config file failed");
+}
+
+
+// ── 软件卸载 ──────────────────────────────────────────────
+
+export async function uninstallPackages(token: string, connectionId: string, packages: string[], source: string, dryRun = false): Promise<{ taskId: string; dryRun: boolean; packages: string[] }> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/uninstall`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ packages, source, dryRun })
+  });
+  return readJsonOrThrow<{ taskId: string; dryRun: boolean; packages: string[] }>(response, "Uninstall failed");
 }

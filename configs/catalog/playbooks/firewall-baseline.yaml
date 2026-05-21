@@ -1,0 +1,35 @@
+# Playbook: 防火墙基线（UFW）
+name: Configure UFW firewall baseline
+hosts: all
+
+tasks:
+  - name: Install ufw
+    module: package
+    args:
+      name: ufw
+      state: present
+
+  - name: Allow SSH (port 22) before enabling UFW
+    module: shell
+    args:
+      cmd: "sudo ufw allow 22/tcp"
+
+  - name: Allow HTTP (port 80)
+    module: shell
+    args:
+      cmd: "sudo ufw allow 80/tcp"
+
+  - name: Allow HTTPS (port 443)
+    module: shell
+    args:
+      cmd: "sudo ufw allow 443/tcp"
+
+  - name: Enable UFW with default deny incoming
+    module: shell
+    args:
+      cmd: "echo 'y' | sudo ufw enable"
+
+  - name: Verify UFW status
+    module: shell
+    args:
+      cmd: "sudo ufw status verbose"

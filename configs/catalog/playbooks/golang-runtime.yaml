@@ -1,0 +1,43 @@
+# Playbook: Go 语言运行时
+name: Install Go language runtime
+hosts: all
+
+tasks:
+  - name: Download and install Go (latest stable)
+    module: shell
+    args:
+      cmd: |
+        GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1)
+        curl -fsSL "https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+        sudo rm -rf /usr/local/go
+        sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+        rm -f /tmp/go.tar.gz
+      creates: /usr/local/go/bin/go
+
+  - name: Add Go to PATH in profile
+    module: lineinfile
+    args:
+      path: /etc/profile.d/golang.sh
+      line: 'export PATH=$PATH:/usr/local/go/bin'
+      create: true
+
+  - name: Set GOPATH in bashrc
+    module: lineinfile
+    args:
+      path: ~/.bashrc
+      regexp: "^export GOPATH="
+      line: 'export GOPATH="$HOME/go"'
+      create: true
+
+  - name: Add GOPATH/bin to PATH in bashrc
+    module: lineinfile
+    args:
+      path: ~/.bashrc
+      regexp: "^export PATH=.*GOPATH"
+      line: 'export PATH="$PATH:$GOPATH/bin"'
+      create: true
+
+  - name: Verify Go installation
+    module: shell
+    args:
+      cmd: "/usr/local/go/bin/go version"

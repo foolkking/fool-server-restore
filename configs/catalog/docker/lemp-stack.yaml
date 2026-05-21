@@ -1,0 +1,32 @@
+services:
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: lemp-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./html:/var/www/html
+    depends_on:
+      - php
+
+  php:
+    image: php:8.2-fpm-alpine
+    container_name: lemp-php
+    restart: unless-stopped
+    volumes:
+      - ./html:/var/www/html
+
+  mysql:
+    image: mysql:8.0
+    container_name: lemp-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?required}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-app}
+    volumes:
+      - lemp_mysql_data:/var/lib/mysql
+
+volumes:
+  lemp_mysql_data:

@@ -1,0 +1,37 @@
+# Playbook: Grafana 可视化面板
+name: Install Grafana dashboard
+hosts: all
+
+tasks:
+  - name: Install required tooling for Grafana repo
+    module: package
+    args:
+      name:
+        - apt-transport-https
+        - software-properties-common
+        - wget
+        - gnupg
+      state: present
+
+  - name: Add Grafana GPG key and APT repository
+    module: shell
+    args:
+      cmd: |
+        sudo mkdir -p /etc/apt/keyrings
+        wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+        echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+        sudo apt-get update -qq
+      creates: /etc/apt/sources.list.d/grafana.list
+
+  - name: Install grafana package
+    module: package
+    args:
+      name: grafana
+      state: present
+
+  - name: Enable grafana-server service
+    module: service
+    args:
+      name: grafana-server
+      enabled: true
+      state: started

@@ -1,8 +1,10 @@
 import { createId, updateRuntimeDatabase, readRuntimeDatabase, type StoredConnection, type StoredProbeSnapshot } from "./runtime-store.js";
 import { probeAgent } from "./probe.js";
-import { testSshConnection } from "./ssh.js";
+import { testSshConnection, testSshConnectionWithContent } from "./ssh.js";
+import { encryptSecret, decryptSecret } from "./crypto.js";
+import { readUserKey } from "./key-store.js";
 
-export type ConnectionMethod = "ssh-password" | "ssh-key" | "winrm" | "docker";
+export type ConnectionMethod = "ssh-password" | "ssh-key";
 
 export interface ConnectionRequest {
   method?: ConnectionMethod;
@@ -10,6 +12,8 @@ export interface ConnectionRequest {
   fields?: Record<string, string>;
   /** Optional URL of the mock-agent or real agent running on the target machine */
   agentUrl?: string;
+  /** For ssh-key: ID of a key uploaded via /api/keys (preferred over privateKeyPath) */
+  keyId?: string;
 }
 
 export interface ConnectionResponse {
@@ -20,9 +24,7 @@ export interface ConnectionResponse {
 
 const requiredFields: Record<ConnectionMethod, string[]> = {
   "ssh-password": ["host", "port", "username", "password"],
-  "ssh-key": ["host", "port", "username", "privateKeyPath"],
-  winrm: ["host", "domain", "username", "password"],
-  docker: ["contextName", "host"]
+  "ssh-key": ["host", "port", "username"]  // privateKeyPath OR keyId, validated separately
 };
 
 const secretFields = new Set(["password", "passphrase", "privateKeyPath"]);
@@ -30,6 +32,12 @@ const secretFields = new Set(["password", "passphrase", "privateKeyPath"]);
 export async function createConnection(userId: string, input: ConnectionRequest): Promise<ConnectionResponse> {
   const method = normalizeMethod(input.method);
   const fields = normalizeFields(input.fields ?? {});
+
+  // For ssh-key: require either privateKeyPath or keyId
+  if (method === "ssh-key" && !fields.privateKeyPath && !input.keyId) {
+    throw new Error("SSH key connection requires either privateKeyPath or keyId.");
+  }
+
   const missing = requiredFields[method].filter((field) => !fields[field]);
   if (missing.length) {
     throw new Error(`Missing required connection fields: ${missing.join(", ")}`);
@@ -49,40 +57,39 @@ export async function createConnection(userId: string, input: ConnectionRequest)
     const port = parseInt(fields.port ?? "22", 10) || 22;
     const username = fields.username;
 
-    const auth =
-      method === "ssh-password"
-        ? ({ type: "password", password: fields.password } as const)
-        : ({ type: "key", privateKeyPath: fields.privateKeyPath, passphrase: fields.passphrase } as const);
+    let sshResult: import("./ssh.js").SshResult;
 
-    const sshResult = await testSshConnection(host, port, username, auth);
+    if (method === "ssh-password") {
+      sshResult = await testSshConnection(host, port, username, {
+        type: "password",
+        password: fields.password
+      });
+    } else if (input.keyId) {
+      // 使用 Web 上传的密钥
+      try {
+        const privateKeyContent = await readUserKey(userId, input.keyId);
+        sshResult = await testSshConnectionWithContent(
+          host, port, username, privateKeyContent, fields.passphrase
+        );
+      } catch (err) {
+        throw new Error(`Failed to load SSH key: ${err instanceof Error ? err.message : err}`);
+      }
+    } else {
+      sshResult = await testSshConnection(host, port, username, {
+        type: "key",
+        privateKeyPath: fields.privateKeyPath,
+        passphrase: fields.passphrase
+      });
+    }
 
     if (sshResult.ok) {
       status = "probed";
       probeSnapshot = sshResult.snapshot;
-      notes.push(`SSH connection to ${host}:${port} succeeded (${sshResult.latencyMs}ms). Real system data collected.`);
+      notes.push(`SSH connection to ${host}:${port} succeeded (${sshResult.latencyMs}ms). Comprehensive system data collected.`);
     } else {
       status = "ssh_failed";
       sshError = sshResult.error;
       notes.push(`SSH connection to ${host}:${port} failed: ${sshResult.error}`);
-    }
-  }
-
-  // ── mock-agent HTTP 探测（SSH 未成功时的备选，或 docker/winrm 方式）──
-  if (status !== "probed" && agentUrl) {
-    const result = await probeAgent(agentUrl);
-    if (result.reachable) {
-      probeSnapshot = {
-        agentId: result.agentId,
-        collectedAt: result.collectedAt,
-        system: result.system,
-        software: result.software,
-        configChecklist: result.configChecklist
-      };
-      status = "probed";
-      notes.push(`Agent at ${agentUrl} probed successfully. Real system data saved.`);
-    } else {
-      if (status === "validated") status = "unreachable";
-      notes.push(`Agent at ${agentUrl} was not reachable.`);
     }
   }
 
@@ -97,7 +104,7 @@ export async function createConnection(userId: string, input: ConnectionRequest)
     label: normalizeLabel(input.label, method, fields),
     status,
     sshError,
-    fields: maskFields(fields),
+    fields: maskFieldsForStorage(fields, method, input.keyId),
     maskedSecrets: Object.keys(fields).filter((field) => secretFields.has(field)),
     realConnection: false,
     agentUrl: agentUrl ?? undefined,
@@ -124,13 +131,57 @@ export async function reprobeConnection(connectionId: string, userId: string): P
   let status: StoredConnection["status"] = conn.status;
   let sshError: string | undefined;
 
-  // 重新尝试 SSH
+  // 重新尝试真实 SSH 连接（使用存储的凭据）
   if (conn.method === "ssh-password" || conn.method === "ssh-key") {
-    // 注意：密码已脱敏，reprobe 只能用 agentUrl 方式
-    // 如果有 agentUrl，走 agent 探测
+    const decryptedFields = decryptStoredFields(conn.fields);
+    const host = decryptedFields.host;
+    const port = parseInt(decryptedFields.port ?? "22", 10) || 22;
+    const username = decryptedFields.username;
+
+    let sshResult: import("./ssh.js").SshResult | null = null;
+
+    if (conn.method === "ssh-password") {
+      const password = decryptedFields._rawPassword ?? decryptedFields.password;
+      if (password && password !== "********") {
+        sshResult = await testSshConnection(host, port, username, {
+          type: "password",
+          password
+        });
+      }
+    } else {
+      // ssh-key: check for stored keyId or privateKeyPath
+      const keyId = decryptedFields._keyId;
+      if (keyId) {
+        try {
+          const privateKeyContent = await readUserKey(userId, keyId);
+          const passphrase = decryptedFields._rawPassphrase;
+          sshResult = await testSshConnectionWithContent(host, port, username, privateKeyContent, passphrase);
+        } catch {
+          // Key may have been deleted — fall through
+        }
+      } else if (decryptedFields.privateKeyPath && decryptedFields.privateKeyPath !== "********") {
+        sshResult = await testSshConnection(host, port, username, {
+          type: "key",
+          privateKeyPath: decryptedFields.privateKeyPath,
+          passphrase: decryptedFields._rawPassphrase
+        });
+      }
+    }
+
+    if (sshResult) {
+      if (sshResult.ok) {
+        probeSnapshot = sshResult.snapshot;
+        status = "probed";
+        sshError = undefined;
+      } else {
+        status = "ssh_failed";
+        sshError = sshResult.error;
+      }
+    }
   }
 
-  if (conn.agentUrl) {
+  // 如果 SSH 没成功且有 agentUrl，尝试 agent 探测作为备选
+  if (!probeSnapshot && conn.agentUrl) {
     const result = await probeAgent(conn.agentUrl);
     if (result.reachable) {
       probeSnapshot = {
@@ -142,7 +193,7 @@ export async function reprobeConnection(connectionId: string, userId: string): P
       };
       status = "probed";
     } else {
-      status = "unreachable";
+      if (status !== "ssh_failed") status = "unreachable";
     }
   }
 
@@ -152,7 +203,7 @@ export async function reprobeConnection(connectionId: string, userId: string): P
     target.lastProbeAt = now;
     target.updatedAt = now;
     target.status = status;
-    if (sshError !== undefined) target.sshError = sshError;
+    target.sshError = sshError;
     if (probeSnapshot) target.probeSnapshot = probeSnapshot;
     return target;
   });
@@ -160,12 +211,14 @@ export async function reprobeConnection(connectionId: string, userId: string): P
 
 export async function listUserConnections(userId: string): Promise<StoredConnection[]> {
   const db = await readRuntimeDatabase();
-  return db.connections.filter((c) => c.userId === userId);
+  return db.connections
+    .filter((c) => c.userId === userId)
+    .map((c) => ({ ...c, fields: maskFields(c.fields) }));
 }
 
 function normalizeMethod(method?: ConnectionMethod): ConnectionMethod {
-  if (method && method in requiredFields) return method;
-  throw new Error("Unsupported connection method.");
+  if (method === "ssh-password" || method === "ssh-key") return method;
+  throw new Error("Unsupported connection method. Only ssh-password and ssh-key are supported.");
 }
 
 function normalizeFields(fields: Record<string, string>): Record<string, string> {
@@ -182,8 +235,52 @@ function normalizeLabel(label: string | undefined, method: ConnectionMethod, fie
 
 function maskFields(fields: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(fields).map(([key, value]) => [key, secretFields.has(key) ? "********" : value])
+    Object.entries(fields)
+      .filter(([key]) => !key.startsWith("_raw") && key !== "_keyId")
+      .map(([key, value]) => [key, secretFields.has(key) ? "********" : value])
   );
+}
+
+/** Store raw password internally for SSH execution, but mask for API responses */
+function maskFieldsForStorage(fields: Record<string, string>, method: ConnectionMethod, keyId?: string): Record<string, string> {
+  const stored: Record<string, string> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (key.startsWith("_")) continue; // skip internal fields from frontend
+    if (secretFields.has(key)) {
+      stored[key] = "********";
+      if (key === "password" && method === "ssh-password") {
+        stored["_rawPassword"] = encryptSecret(value);
+      }
+      if (key === "privateKeyPath") {
+        stored[key] = value; // keep path as-is
+      }
+      if (key === "passphrase" && value) {
+        stored["_rawPassphrase"] = encryptSecret(value);
+      }
+    } else {
+      stored[key] = value;
+    }
+  }
+  // Store keyId reference (not the key content)
+  if (keyId) {
+    stored["_keyId"] = keyId;
+  }
+  return stored;
+}
+
+/**
+ * 解密内部存储的敏感字段，仅在 SSH 执行/重新探测时使用。
+ * 不暴露给 API 响应。
+ */
+export function decryptStoredFields(fields: Record<string, string>): Record<string, string> {
+  const decrypted = { ...fields };
+  if (decrypted._rawPassword) {
+    try { decrypted._rawPassword = decryptSecret(decrypted._rawPassword); } catch { /* ignore */ }
+  }
+  if (decrypted._rawPassphrase) {
+    try { decrypted._rawPassphrase = decryptSecret(decrypted._rawPassphrase); } catch { /* ignore */ }
+  }
+  return decrypted;
 }
 
 function normalizeAgentUrl(agentUrl?: string): string | null {

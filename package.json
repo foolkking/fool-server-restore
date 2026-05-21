@@ -5,7 +5,8 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/api",
+    "apps/web"
   ],
   "scripts": {
     "build": "npm run build --workspace @fool/core && npm run build --workspace @fool/collectors && npm run build --workspace @fool/restorers && npm run build --workspace @fool/cli && npm run build --workspace @fool/api && npm run build --workspace @fool/web",
@@ -15,13 +16,10 @@
     "dev": "npm run dev:api",
     "dev:api": "npm run build:server && npm run start --workspace @fool/api",
     "dev:web": "npm run dev --workspace @fool/web",
-    "dev:mobile": "npm run dev --workspace @fool/mobile",
     "scan": "node packages/cli/dist/index.js scan",
     "restore": "node packages/cli/dist/index.js restore",
     "smoke:test": "node scripts/smoke-test.mjs",
     "start:prod": "node apps/api/dist/server.js",
-    "start:agent": "node apps/mock-agent/src/index.js",
-    "dev:both": "npm run build:server && start \"mock-agent\" node apps/mock-agent/src/index.js && npm run start --workspace @fool/api",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {

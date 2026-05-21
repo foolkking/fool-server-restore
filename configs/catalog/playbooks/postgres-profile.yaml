@@ -1,0 +1,25 @@
+# Playbook: PostgreSQL 数据库
+name: Install PostgreSQL database
+hosts: all
+
+tasks:
+  - name: Install PostgreSQL packages
+    module: package
+    args:
+      name:
+        - postgresql
+        - postgresql-contrib
+      state: present
+
+  - name: Enable postgresql service
+    module: service
+    args:
+      name: postgresql
+      enabled: true
+      state: started
+
+  - name: Verify PostgreSQL is running
+    module: shell
+    args:
+      cmd: "sudo -u postgres pg_isready && echo 'PostgreSQL is ready'"
+    ignore_errors: true

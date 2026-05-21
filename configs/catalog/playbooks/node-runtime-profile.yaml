@@ -1,0 +1,28 @@
+# Playbook: Node.js 运行时配置
+name: Install Node.js LTS runtime
+hosts: all
+
+tasks:
+  - name: Install curl for NodeSource setup
+    module: package
+    args:
+      name: curl
+      state: present
+
+  - name: Add NodeSource LTS repository (Node 20.x)
+    module: shell
+    args:
+      cmd: "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
+      creates: /etc/apt/sources.list.d/nodesource.list
+
+  - name: Install Node.js from NodeSource
+    module: package
+    args:
+      name: nodejs
+      state: present
+      update_cache: true
+
+  - name: Verify node and npm versions
+    module: shell
+    args:
+      cmd: "node --version && npm --version"
