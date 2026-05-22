@@ -7,11 +7,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   fetchAdminCatalog, fetchAdminCatalogItem, createAdminCatalog, updateAdminCatalog,
   deleteAdminCatalog, resetAdminCatalog,
-  type AdminCatalogList, type AdminCatalogDetail, type AdminCatalogInput, type CatalogStatus
+  type AdminCatalogList, type AdminCatalogDetail, type AdminCatalogInput, type CatalogStatus,
+  type VarsSchema
 } from "../api";
 import type { Locale } from "../lib/types";
+import { SchemaEditor } from "./SchemaEditor";
 
-type EditTab = "meta" | "yaml" | "markdown";
+type EditTab = "meta" | "yaml" | "markdown" | "schema";
 
 const STATUS_LABEL: Record<CatalogStatus, { zh: string; en: string; bg: string; fg: string }> = {
   baseline: { zh: "基线", en: "Baseline", bg: "#f1f5f9", fg: "#475569" },
@@ -183,8 +185,15 @@ function CatalogEditor({
     rating: 0,
     playbookYaml: NEW_TEMPLATE_YAML,
     guideMarkdown: "",
-    deployModes: ["system"]
+    deployModes: ["system"],
+    varsSchema: undefined  // 不动；admin 在 schema tab 里改
   });
+  // schema 单独维护一份 state，让"删除整个 schema"和"保存"区分得开：
+  //   - varsSchemaCurrent: null  → schema 当前不存在
+  //   - varsSchemaCurrent: 对象  → 现在的 schema 内容
+  //   - dirty 标记：是否被改过，决定 PATCH 时是否提交 varsSchema 字段
+  const [varsSchemaCurrent, setVarsSchemaCurrent] = useState<VarsSchema | null>(null);
+  const [schemaDirty, setSchemaDirty] = useState<"keep" | "save" | "delete">("keep");
 
   useEffect(() => {
     if (mode !== "edit" || !id) return;
@@ -205,8 +214,11 @@ function CatalogEditor({
           rating: d.item.rating,
           playbookYaml: d.yaml,
           guideMarkdown: d.markdown,
-          deployModes: d.item.deployModes ?? ["system"]
+          deployModes: d.item.deployModes ?? ["system"],
+          varsSchema: undefined
         });
+        setVarsSchemaCurrent(d.varsSchema);
+        setSchemaDirty("keep");
       })
       .catch((e) => setErr(e instanceof Error ? e.message : "Failed"))
       .finally(() => setLoading(false));
@@ -215,18 +227,32 @@ function CatalogEditor({
   async function handleSave() {
     setSaving(true); setErr(""); setSavedMsg("");
     try {
+      // 把 schema 状态合并到 form 里：
+      //   keep   → 不传 varsSchema 字段，后端不动 override
+      //   save   → 传当前 varsSchemaCurrent
+      //   delete → 传 null，后端会删除 override
+      const formWithSchema: AdminCatalogInput = { ...form };
+      if (schemaDirty === "save") formWithSchema.varsSchema = varsSchemaCurrent ?? undefined;
+      else if (schemaDirty === "delete") formWithSchema.varsSchema = null;
+
       if (mode === "create") {
-        if (!form.id?.match(/^[a-z0-9][a-z0-9-]{0,59}$/)) {
+        if (!formWithSchema.id?.match(/^[a-z0-9][a-z0-9-]{0,59}$/)) {
           throw new Error(locale === "zh"
             ? "id 必须由小写字母、数字、连字符组成（1-60 字符）"
             : "id must match [a-z0-9-]{1,60}");
         }
-        await createAdminCatalog(authToken, form);
+        await createAdminCatalog(authToken, formWithSchema);
+        // create 端点目前不接受 varsSchema；如果用户在 create 时同时填了 schema，
+        // 第一步 create 后再 PATCH 一次写 schema
+        if (schemaDirty === "save" && varsSchemaCurrent && formWithSchema.id) {
+          await updateAdminCatalog(authToken, formWithSchema.id, { varsSchema: varsSchemaCurrent });
+        }
         setSavedMsg(locale === "zh" ? "✓ 已创建" : "✓ Created");
       } else if (id) {
-        await updateAdminCatalog(authToken, id, form);
+        await updateAdminCatalog(authToken, id, formWithSchema);
         setSavedMsg(locale === "zh" ? "✓ 已保存" : "✓ Saved");
       }
+      setSchemaDirty("keep");
       await onSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed");
@@ -319,6 +345,12 @@ function CatalogEditor({
         </button>
         <button type="button" className={tab === "markdown" ? "active" : ""} onClick={() => setTab("markdown")}>
           {locale === "zh" ? "安装说明" : "Guide (Markdown)"}
+        </button>
+        <button type="button" className={tab === "schema" ? "active" : ""} onClick={() => setTab("schema")}>
+          {locale === "zh" ? "可配置参数" : "Vars Schema"}
+          {varsSchemaCurrent && Object.keys(varsSchemaCurrent).length > 0 && (
+            <span className="catalog-editor-tab-count">{Object.keys(varsSchemaCurrent).length}</span>
+          )}
         </button>
       </nav>
 
@@ -434,6 +466,29 @@ function CatalogEditor({
               spellCheck={false}
               rows={20}
               placeholder={locale === "zh" ? "# 安装说明\n\n这个软件做什么..." : "# Install Guide\n\nWhat this does..."}
+            />
+          </div>
+        )}
+        {tab === "schema" && (
+          <div>
+            {detail?.hasSchemaOverride && !isCreate && (
+              <p className="catalog-editor-hint">
+                {locale === "zh"
+                  ? "📝 当前显示的是 admin override 的 schema。删除整个 schema 即可恢复基线版本。"
+                  : "📝 Showing admin schema override. Delete entire schema to revert to baseline."}
+              </p>
+            )}
+            <SchemaEditor
+              schema={varsSchemaCurrent}
+              locale={locale}
+              onChange={(newSchema) => {
+                setVarsSchemaCurrent(newSchema);
+                setSchemaDirty("save");
+              }}
+              onClear={() => {
+                setVarsSchemaCurrent(null);
+                setSchemaDirty("delete");
+              }}
             />
           </div>
         )}

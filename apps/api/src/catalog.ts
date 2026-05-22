@@ -17,6 +17,16 @@ export interface CatalogItem {
   components: CatalogComponent[];
   /** 支持的部署模式：system = apt 安装，docker = docker compose 部署 */
   deployModes?: Array<"system" | "docker">;
+  /**
+   * 跨发行版兼容性声明（可选）。
+   * 见 distro-compat.ts 的 PlaybookCompatibility。声明后，部署前 EnvForge 会
+   * 把目标机器的发行版和这个声明对照，给用户清晰的兼容性反馈。
+   */
+  compatibility?: {
+    verified?: string[];          // 例：["ubuntu-22", "anolis-9"]
+    knownIncompatible?: string[]; // 例：["alpine-*"]
+    families?: Array<"debian-family" | "rhel-family" | "suse-family" | "arch-family" | "alpine">;
+  };
 }
 
 export interface CatalogComponent {
@@ -49,7 +59,8 @@ export function listCatalogItems(): CatalogItem[] {
         { type: "software", label: "nodejs", labelEn: "Node.js", detail: "apt" },
         { type: "software", label: "npm", labelEn: "npm", detail: "apt" },
         { type: "system-command", label: "设置 npm registry", labelEn: "set npm registry", detail: "echo 'export NPM_CONFIG_REGISTRY=\"https://registry.npmmirror.com\"' >> ~/.bashrc" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "docker-host-profile",
@@ -73,7 +84,8 @@ export function listCatalogItems(): CatalogItem[] {
         { type: "software", label: "docker-compose-plugin", labelEn: "Docker Compose", detail: "apt" },
         { type: "system-command", label: "启动 Docker 服务", labelEn: "start Docker service", detail: "sudo systemctl enable docker" },
         { type: "system-command", label: "启动 Docker", labelEn: "start Docker", detail: "sudo systemctl start docker" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "ssh-hardening",
@@ -95,7 +107,8 @@ export function listCatalogItems(): CatalogItem[] {
       components: [
         { type: "software", label: "openssh-server", labelEn: "OpenSSH Server", detail: "apt" },
         { type: "system-command", label: "重启 sshd", labelEn: "restart sshd", detail: "sudo systemctl restart sshd" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "nginx-web-service",
@@ -118,7 +131,8 @@ export function listCatalogItems(): CatalogItem[] {
         { type: "software", label: "nginx", labelEn: "Nginx", detail: "apt" },
         { type: "system-command", label: "启动 Nginx", labelEn: "start Nginx", detail: "sudo systemctl enable nginx" },
         { type: "system-command", label: "启动服务", labelEn: "start service", detail: "sudo systemctl start nginx" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "postgres-profile",
@@ -142,7 +156,8 @@ export function listCatalogItems(): CatalogItem[] {
         { type: "software", label: "postgresql-contrib", labelEn: "PostgreSQL contrib", detail: "apt" },
         { type: "system-command", label: "启动 PostgreSQL", labelEn: "start PostgreSQL", detail: "sudo systemctl enable postgresql" },
         { type: "system-command", label: "启动服务", labelEn: "start service", detail: "sudo systemctl start postgresql" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "firewall-baseline",
@@ -164,7 +179,8 @@ export function listCatalogItems(): CatalogItem[] {
       components: [
         { type: "software", label: "ufw", labelEn: "UFW firewall", detail: "apt" },
         { type: "system-command", label: "启用 UFW", labelEn: "enable UFW", detail: "sudo ufw enable" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "python-toolchain",
@@ -187,7 +203,8 @@ export function listCatalogItems(): CatalogItem[] {
         { type: "software", label: "python3", labelEn: "Python 3", detail: "apt" },
         { type: "software", label: "python3-pip", labelEn: "pip", detail: "apt" },
         { type: "software", label: "python3-venv", labelEn: "venv", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     ...getNewSoftwareCatalog(),
     ...getNewComboCatalog()
@@ -217,7 +234,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
         { type: "software", label: "redis-server", labelEn: "Redis Server", detail: "apt" },
         { type: "system-command", label: "启动 Redis", labelEn: "start Redis", detail: "sudo systemctl enable redis-server" },
         { type: "system-command", label: "启动服务", labelEn: "start service", detail: "sudo systemctl start redis-server" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "mysql-server",
@@ -240,7 +258,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
         { type: "software", label: "mysql-server", labelEn: "MySQL Server", detail: "apt" },
         { type: "system-command", label: "启动 MySQL", labelEn: "start MySQL", detail: "sudo systemctl enable mysql" },
         { type: "system-command", label: "启动服务", labelEn: "start service", detail: "sudo systemctl start mysql" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "golang-runtime",
@@ -263,7 +282,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
         { type: "software", label: "golang-go", labelEn: "Go compiler", detail: "apt" },
         { type: "system-command", label: "设置 GOPATH", labelEn: "set GOPATH", detail: "echo 'export GOPATH=\"$HOME/go\"' >> ~/.bashrc" },
         { type: "system-command", label: "设置 PATH", labelEn: "set PATH", detail: "echo 'export PATH=\"$PATH:$GOPATH/bin\"' >> ~/.bashrc" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "openjdk-runtime",
@@ -285,7 +305,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       components: [
         { type: "software", label: "default-jdk", labelEn: "OpenJDK", detail: "apt" },
         { type: "software", label: "maven", labelEn: "Maven", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "rust-toolchain",
@@ -307,7 +328,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       components: [
         { type: "software", label: "curl", labelEn: "curl (for rustup)", detail: "apt" },
         { type: "software", label: "build-essential", labelEn: "build-essential", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "git-version-control",
@@ -329,7 +351,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       components: [
         { type: "software", label: "git", labelEn: "Git", detail: "apt" },
         { type: "software", label: "git-lfs", labelEn: "Git LFS", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "certbot-ssl",
@@ -351,7 +374,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       components: [
         { type: "software", label: "certbot", labelEn: "Certbot", detail: "apt" },
         { type: "software", label: "python3-certbot-nginx", labelEn: "Certbot Nginx plugin", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "fail2ban-protection",
@@ -374,7 +398,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
         { type: "software", label: "fail2ban", labelEn: "Fail2Ban", detail: "apt" },
         { type: "system-command", label: "启动 Fail2Ban", labelEn: "start Fail2Ban", detail: "sudo systemctl enable fail2ban" },
         { type: "system-command", label: "启动服务", labelEn: "start service", detail: "sudo systemctl start fail2ban" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "prometheus-monitoring",
@@ -398,7 +423,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
         { type: "software", label: "prometheus-node-exporter", labelEn: "Node Exporter", detail: "apt" },
         { type: "system-command", label: "启动 Prometheus", labelEn: "start Prometheus", detail: "sudo systemctl enable prometheus" },
         { type: "system-command", label: "启动服务", labelEn: "start service", detail: "sudo systemctl start prometheus" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "grafana-dashboard",
@@ -421,7 +447,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
         { type: "software", label: "grafana", labelEn: "Grafana", detail: "apt" },
         { type: "system-command", label: "启动 Grafana", labelEn: "start Grafana", detail: "sudo systemctl enable grafana-server" },
         { type: "system-command", label: "启动服务", labelEn: "start service", detail: "sudo systemctl start grafana-server" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "mongodb",
@@ -442,7 +469,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       deployModes: ["system", "docker"],
       components: [
         { type: "software", label: "mongodb-org", labelEn: "MongoDB", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "rabbitmq",
@@ -463,7 +491,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       deployModes: ["system", "docker"],
       components: [
         { type: "software", label: "rabbitmq-server", labelEn: "RabbitMQ", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "wireguard-vpn",
@@ -484,7 +513,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       deployModes: ["system"],
       components: [
         { type: "software", label: "wireguard", labelEn: "WireGuard", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "netdata-monitoring",
@@ -505,7 +535,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       deployModes: ["system"],
       components: [
         { type: "system-command", label: "安装 Netdata", labelEn: "Install Netdata", detail: "curl script" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "minio-storage",
@@ -526,7 +557,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       deployModes: ["system", "docker"],
       components: [
         { type: "system-command", label: "安装 MinIO", labelEn: "Install MinIO", detail: "binary download" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "traefik-proxy",
@@ -547,7 +579,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       deployModes: ["system", "docker"],
       components: [
         { type: "system-command", label: "安装 Traefik", labelEn: "Install Traefik", detail: "binary download" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "elasticsearch",
@@ -568,7 +601,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       deployModes: ["system", "docker"],
       components: [
         { type: "software", label: "elasticsearch", labelEn: "Elasticsearch", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "cockpit-panel",
@@ -589,7 +623,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       deployModes: ["system"],
       components: [
         { type: "software", label: "cockpit", labelEn: "Cockpit", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "htop-tools",
@@ -612,7 +647,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
         { type: "software", label: "htop", labelEn: "htop", detail: "apt" },
         { type: "software", label: "btop", labelEn: "btop", detail: "apt" },
         { type: "software", label: "ncdu", labelEn: "ncdu", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "swap-config",
@@ -633,7 +669,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       deployModes: ["system"],
       components: [
         { type: "system-command", label: "创建 Swap", labelEn: "Create swap", detail: "fallocate + mkswap" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "mariadb",
@@ -647,7 +684,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["mariadb", "mysql-client"],
       guidePath: "configs/catalog/software/mariadb.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
-      components: [{ type: "software", label: "mariadb-server", labelEn: "MariaDB", detail: "apt" }]
+      components: [{ type: "software", label: "mariadb-server", labelEn: "MariaDB", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "sqlite",
@@ -661,7 +699,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["sqlite3", "cli"],
       guidePath: "configs/catalog/software/sqlite.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "sqlite3", labelEn: "SQLite3", detail: "apt" }]
+      components: [{ type: "software", label: "sqlite3", labelEn: "SQLite3", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "nodejs-version-mgr",
@@ -675,7 +714,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["nvm", "node-lts"],
       guidePath: "configs/catalog/software/nodejs-version-mgr.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "system-command", label: "安装 NVM", labelEn: "Install NVM", detail: "curl script" }]
+      components: [{ type: "system-command", label: "安装 NVM", labelEn: "Install NVM", detail: "curl script" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "pyenv-toolchain",
@@ -689,7 +729,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["pyenv", "build-deps"],
       guidePath: "configs/catalog/software/pyenv-toolchain.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "system-command", label: "安装 pyenv", labelEn: "Install pyenv", detail: "curl script" }]
+      components: [{ type: "system-command", label: "安装 pyenv", labelEn: "Install pyenv", detail: "curl script" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "zsh-shell",
@@ -703,7 +744,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["zsh", "oh-my-zsh", "plugins"],
       guidePath: "configs/catalog/software/zsh-shell.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "zsh", labelEn: "Zsh", detail: "apt" }]
+      components: [{ type: "software", label: "zsh", labelEn: "Zsh", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "neovim-editor",
@@ -717,7 +759,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["neovim", "vim"],
       guidePath: "configs/catalog/software/neovim-editor.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "neovim", labelEn: "Neovim", detail: "apt" }]
+      components: [{ type: "software", label: "neovim", labelEn: "Neovim", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "tmux-multiplex",
@@ -731,7 +774,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["tmux"],
       guidePath: "configs/catalog/software/tmux-multiplex.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "tmux", labelEn: "tmux", detail: "apt" }]
+      components: [{ type: "software", label: "tmux", labelEn: "tmux", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "ansible-tool",
@@ -745,7 +789,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["ansible", "python"],
       guidePath: "configs/catalog/software/ansible-tool.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "ansible", labelEn: "Ansible", detail: "apt" }]
+      components: [{ type: "software", label: "ansible", labelEn: "Ansible", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "nextcloud",
@@ -759,7 +804,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["nextcloud", "snap"],
       guidePath: "configs/catalog/software/nextcloud.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
-      components: [{ type: "system-command", label: "snap install nextcloud", labelEn: "snap install nextcloud", detail: "snap" }]
+      components: [{ type: "system-command", label: "snap install nextcloud", labelEn: "snap install nextcloud", detail: "snap" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "gitea-server",
@@ -773,7 +819,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["gitea", "systemd"],
       guidePath: "configs/catalog/software/gitea-server.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
-      components: [{ type: "system-command", label: "安装 Gitea", labelEn: "Install Gitea", detail: "binary download" }]
+      components: [{ type: "system-command", label: "安装 Gitea", labelEn: "Install Gitea", detail: "binary download" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "portainer",
@@ -787,7 +834,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["portainer", "docker"],
       guidePath: "configs/catalog/software/portainer.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
-      components: [{ type: "system-command", label: "Portainer 容器", labelEn: "Portainer container", detail: "docker run" }]
+      components: [{ type: "system-command", label: "Portainer 容器", labelEn: "Portainer container", detail: "docker run" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "jellyfin-media",
@@ -801,7 +849,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["jellyfin", "media"],
       guidePath: "configs/catalog/software/jellyfin-media.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
-      components: [{ type: "software", label: "jellyfin", labelEn: "Jellyfin", detail: "apt" }]
+      components: [{ type: "software", label: "jellyfin", labelEn: "Jellyfin", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "samba-share",
@@ -815,7 +864,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["samba", "smbd"],
       guidePath: "configs/catalog/software/samba-share.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "samba", labelEn: "Samba", detail: "apt" }]
+      components: [{ type: "software", label: "samba", labelEn: "Samba", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "rsync-tools",
@@ -832,7 +882,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       components: [
         { type: "software", label: "rsync", labelEn: "rsync", detail: "apt" },
         { type: "software", label: "rclone", labelEn: "rclone", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "mosquitto-mqtt",
@@ -846,7 +897,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["mosquitto", "mqtt"],
       guidePath: "configs/catalog/software/mosquitto-mqtt.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
-      components: [{ type: "software", label: "mosquitto", labelEn: "Mosquitto", detail: "apt" }]
+      components: [{ type: "software", label: "mosquitto", labelEn: "Mosquitto", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "zabbix-monitoring",
@@ -860,7 +912,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["zabbix-agent"],
       guidePath: "configs/catalog/software/zabbix-monitoring.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "zabbix-agent", labelEn: "Zabbix Agent", detail: "apt" }]
+      components: [{ type: "software", label: "zabbix-agent", labelEn: "Zabbix Agent", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "dotnet-runtime",
@@ -874,7 +927,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["dotnet", "csharp"],
       guidePath: "configs/catalog/software/dotnet-runtime.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "dotnet-sdk-8.0", labelEn: ".NET SDK 8", detail: "apt" }]
+      components: [{ type: "software", label: "dotnet-sdk-8.0", labelEn: ".NET SDK 8", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "php-toolchain",
@@ -888,7 +942,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["php", "composer"],
       guidePath: "configs/catalog/software/php-toolchain.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "php", labelEn: "PHP", detail: "apt" }]
+      components: [{ type: "software", label: "php", labelEn: "PHP", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "ruby-toolchain",
@@ -902,7 +957,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["ruby", "bundler", "gem"],
       guidePath: "configs/catalog/software/ruby-toolchain.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "ruby-full", labelEn: "Ruby", detail: "apt" }]
+      components: [{ type: "software", label: "ruby-full", labelEn: "Ruby", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "code-server",
@@ -916,7 +972,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["code-server", "vscode"],
       guidePath: "configs/catalog/software/code-server.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "system-command", label: "安装 code-server", labelEn: "Install code-server", detail: "curl script" }]
+      components: [{ type: "system-command", label: "安装 code-server", labelEn: "Install code-server", detail: "curl script" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "fish-shell",
@@ -930,7 +987,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["fish", "starship"],
       guidePath: "configs/catalog/software/fish-shell.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "fish", labelEn: "Fish", detail: "apt" }]
+      components: [{ type: "software", label: "fish", labelEn: "Fish", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "jenkins-ci", kind: "software", name: "Jenkins CI/CD", nameEn: "Jenkins CI/CD server",
@@ -938,7 +996,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.5, installs: "7.3k", imageTone: "blue", sensitivity: "review",
       assets: ["jenkins", "java"], guidePath: "configs/catalog/software/jenkins-ci.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
-      components: [{ type: "software", label: "jenkins", labelEn: "Jenkins", detail: "apt" }]
+      components: [{ type: "software", label: "jenkins", labelEn: "Jenkins", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "gitlab-runner", kind: "software", name: "GitLab Runner", nameEn: "GitLab CI runner",
@@ -946,7 +1005,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.6, installs: "4.4k", imageTone: "orange", sensitivity: "review",
       assets: ["gitlab-runner"], guidePath: "configs/catalog/software/gitlab-runner.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "gitlab-runner", labelEn: "GitLab Runner", detail: "apt" }]
+      components: [{ type: "software", label: "gitlab-runner", labelEn: "GitLab Runner", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "vault-secrets", kind: "software", name: "HashiCorp Vault", nameEn: "HashiCorp Vault secrets",
@@ -954,7 +1014,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.7, installs: "3.8k", imageTone: "indigo", sensitivity: "privileged",
       assets: ["vault"], guidePath: "configs/catalog/software/vault-secrets.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "vault", labelEn: "Vault", detail: "apt" }]
+      components: [{ type: "software", label: "vault", labelEn: "Vault", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "terraform-iac", kind: "software", name: "Terraform IaC", nameEn: "Terraform infrastructure",
@@ -962,7 +1023,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.8, installs: "8.2k", imageTone: "indigo", sensitivity: "review",
       assets: ["terraform"], guidePath: "configs/catalog/software/terraform-iac.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "terraform", labelEn: "Terraform", detail: "apt" }]
+      components: [{ type: "software", label: "terraform", labelEn: "Terraform", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "kubernetes-tools", kind: "software", name: "Kubernetes 工具集", nameEn: "Kubernetes tools",
@@ -973,7 +1035,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       components: [
         { type: "software", label: "kubectl", labelEn: "kubectl", detail: "apt" },
         { type: "system-command", label: "Helm", labelEn: "Helm", detail: "curl script" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "loki-logging", kind: "software", name: "Grafana Loki 日志", nameEn: "Grafana Loki logs",
@@ -981,7 +1044,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.6, installs: "3.6k", imageTone: "amber", sensitivity: "review",
       assets: ["loki", "promtail"], guidePath: "configs/catalog/software/loki-logging.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
-      components: [{ type: "software", label: "loki", labelEn: "Loki", detail: "apt" }]
+      components: [{ type: "software", label: "loki", labelEn: "Loki", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "openvpn-server", kind: "software", name: "OpenVPN 服务器", nameEn: "OpenVPN server",
@@ -989,7 +1053,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.4, installs: "5.2k", imageTone: "indigo", sensitivity: "privileged",
       assets: ["openvpn", "easy-rsa"], guidePath: "configs/catalog/software/openvpn-server.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "openvpn", labelEn: "OpenVPN", detail: "apt" }]
+      components: [{ type: "software", label: "openvpn", labelEn: "OpenVPN", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "haproxy-lb", kind: "software", name: "HAProxy 负载均衡", nameEn: "HAProxy load balancer",
@@ -997,7 +1062,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.7, installs: "5.7k", imageTone: "cyan", sensitivity: "review",
       assets: ["haproxy"], guidePath: "configs/catalog/software/haproxy-lb.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
-      components: [{ type: "software", label: "haproxy", labelEn: "HAProxy", detail: "apt" }]
+      components: [{ type: "software", label: "haproxy", labelEn: "HAProxy", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "sonarqube", kind: "software", name: "SonarQube 代码质量", nameEn: "SonarQube code quality",
@@ -1005,7 +1071,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.5, installs: "3.1k", imageTone: "blue", sensitivity: "review",
       assets: ["sonarqube", "docker"], guidePath: "configs/catalog/software/sonarqube.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
-      components: [{ type: "system-command", label: "SonarQube 容器", labelEn: "SonarQube container", detail: "docker run" }]
+      components: [{ type: "system-command", label: "SonarQube 容器", labelEn: "SonarQube container", detail: "docker run" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "rust-cli-tools", kind: "software", name: "现代 CLI 工具集", nameEn: "Modern CLI tools",
@@ -1018,7 +1085,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
         { type: "software", label: "bat", labelEn: "bat", detail: "apt" },
         { type: "software", label: "ripgrep", labelEn: "ripgrep", detail: "apt" },
         { type: "software", label: "fd-find", labelEn: "fd", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "memcached", kind: "software", name: "Memcached 缓存", nameEn: "Memcached cache",
@@ -1026,7 +1094,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.5, installs: "4.3k", imageTone: "yellow", sensitivity: "review",
       assets: ["memcached"], guidePath: "configs/catalog/software/memcached.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
-      components: [{ type: "software", label: "memcached", labelEn: "Memcached", detail: "apt" }]
+      components: [{ type: "software", label: "memcached", labelEn: "Memcached", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "flutter-sdk", kind: "software", name: "Flutter SDK", nameEn: "Flutter SDK",
@@ -1034,7 +1103,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.7, installs: "4.1k", imageTone: "blue", sensitivity: "safe",
       assets: ["flutter", "dart"], guidePath: "configs/catalog/software/flutter-sdk.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "system-command", label: "克隆 Flutter", labelEn: "Clone Flutter", detail: "git clone" }]
+      components: [{ type: "system-command", label: "克隆 Flutter", labelEn: "Clone Flutter", detail: "git clone" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "nodejs-pm2", kind: "software", name: "PM2 进程管理", nameEn: "PM2 process manager",
@@ -1042,7 +1112,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.8, installs: "6.7k", imageTone: "emerald", sensitivity: "safe",
       assets: ["pm2"], guidePath: "configs/catalog/software/nodejs-pm2.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "system-command", label: "npm install -g pm2", labelEn: "Install PM2", detail: "npm" }]
+      components: [{ type: "system-command", label: "npm install -g pm2", labelEn: "Install PM2", detail: "npm" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "openresty", kind: "software", name: "OpenResty (Nginx+Lua)", nameEn: "OpenResty (Nginx+Lua)",
@@ -1050,7 +1121,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.6, installs: "3.4k", imageTone: "red", sensitivity: "review",
       assets: ["openresty", "nginx", "lua"], guidePath: "configs/catalog/software/openresty.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "openresty", labelEn: "OpenResty", detail: "apt" }]
+      components: [{ type: "software", label: "openresty", labelEn: "OpenResty", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "nethogs-bandwidth", kind: "software", name: "网络流量监控", nameEn: "Network bandwidth tools",
@@ -1062,7 +1134,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       components: [
         { type: "software", label: "nethogs", labelEn: "nethogs", detail: "apt" },
         { type: "software", label: "vnstat", labelEn: "vnstat", detail: "apt" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "firewalld", kind: "software", name: "firewalld 防火墙", nameEn: "firewalld dynamic firewall",
@@ -1070,7 +1143,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       rating: 4.5, installs: "3.9k", imageTone: "red", sensitivity: "privileged",
       assets: ["firewalld"], guidePath: "configs/catalog/software/firewalld.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
-      components: [{ type: "software", label: "firewalld", labelEn: "firewalld", detail: "apt" }]
+      components: [{ type: "software", label: "firewalld", labelEn: "firewalld", detail: "apt" }],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "x-ui-panel", kind: "software", name: "3x-ui 面板", nameEn: "3x-ui panel",
@@ -1084,7 +1158,8 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       components: [
         { type: "system-command", label: "下载并运行 install.sh", labelEn: "fetch install.sh", detail: "curl + bash" },
         { type: "system-command", label: "设置面板端口与口令", labelEn: "set panel port + admin", detail: "x-ui setting" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     }
   ];
 }
@@ -1116,7 +1191,8 @@ function getNewComboCatalog(): CatalogItem[] {
         { type: "software", label: "php-mysql", labelEn: "PHP MySQL extension", detail: "apt" },
         { type: "system-command", label: "启动 Apache", labelEn: "start Apache", detail: "sudo systemctl enable apache2" },
         { type: "system-command", label: "启动 MySQL", labelEn: "start MySQL", detail: "sudo systemctl enable mysql" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "lemp-stack",
@@ -1142,7 +1218,8 @@ function getNewComboCatalog(): CatalogItem[] {
         { type: "software", label: "php-mysql", labelEn: "PHP MySQL extension", detail: "apt" },
         { type: "system-command", label: "启动 Nginx", labelEn: "start Nginx", detail: "sudo systemctl enable nginx" },
         { type: "system-command", label: "启动 MySQL", labelEn: "start MySQL", detail: "sudo systemctl enable mysql" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "node-production-deploy",
@@ -1168,7 +1245,8 @@ function getNewComboCatalog(): CatalogItem[] {
         { type: "software", label: "nginx", labelEn: "Nginx", detail: "apt" },
         { type: "system-command", label: "启动 Nginx", labelEn: "start Nginx", detail: "sudo systemctl enable nginx" },
         { type: "system-command", label: "启动服务", labelEn: "start service", detail: "sudo systemctl start nginx" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "docker-compose-dev",
@@ -1193,7 +1271,8 @@ function getNewComboCatalog(): CatalogItem[] {
         { type: "software", label: "docker-buildx-plugin", labelEn: "Docker Buildx", detail: "apt" },
         { type: "system-command", label: "启动 Docker", labelEn: "start Docker", detail: "sudo systemctl enable docker" },
         { type: "system-command", label: "启动服务", labelEn: "start service", detail: "sudo systemctl start docker" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     },
     {
       id: "security-baseline",
@@ -1218,7 +1297,8 @@ function getNewComboCatalog(): CatalogItem[] {
         { type: "software", label: "unattended-upgrades", labelEn: "Unattended Upgrades", detail: "apt" },
         { type: "system-command", label: "启动 Fail2Ban", labelEn: "start Fail2Ban", detail: "sudo systemctl enable fail2ban" },
         { type: "system-command", label: "启动服务", labelEn: "start services", detail: "sudo systemctl start fail2ban" }
-      ]
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     }
   ];
 }

@@ -1070,6 +1070,50 @@ export async function runPreflightCheck(token: string, connectionId: string): Pr
   return data.report;
 }
 
+// ─── Distro detection + compatibility ──────────────────────────────────
+
+export type DistroFamily = "debian-family" | "rhel-family" | "suse-family" | "arch-family" | "alpine" | "unknown";
+
+export interface DistroInfo {
+  id: string;
+  idLike: string[];
+  prettyName: string;
+  major: number;
+  versionId: string;
+  family: DistroFamily;
+  packageManager: "apt" | "dnf" | "yum" | "zypper" | "apk" | "pacman" | "unknown";
+}
+
+export type CompatibilityLevel = "verified" | "compatible" | "untested" | "unsupported";
+
+export interface CompatibilityResult {
+  catalogId: string;
+  level: CompatibilityLevel;
+  reasonZh: string;
+  reasonEn: string;
+}
+
+export async function fetchTargetDistro(token: string, connectionId: string): Promise<DistroInfo> {
+  const r = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/distro`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const data = await readJsonOrThrow<{ distro: DistroInfo }>(r, "Distro detection failed");
+  return data.distro;
+}
+
+export async function checkCompatibility(
+  token: string,
+  connectionId: string,
+  catalogIds: string[]
+): Promise<{ distro: DistroInfo; results: CompatibilityResult[] }> {
+  const r = await fetch("/api/compatibility/check", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ connectionId, catalogIds })
+  });
+  return readJsonOrThrow(r, "Compatibility check failed");
+}
+
 export interface VerifyResult {
   verifiedAt: string;
   addedSoftware: Array<{ name: string; version: string; source: string }>;
@@ -1285,8 +1329,11 @@ export interface AdminCatalogDetail {
   item: CatalogItem;
   yaml: string;
   markdown: string;
+  /** Vars schema (override 优先，没有则基线，都没有则 null) */
+  varsSchema: VarsSchema | null;
   hasYamlOverride: boolean;
   hasMarkdownOverride: boolean;
+  hasSchemaOverride: boolean;
   isUserAdded: boolean;
 }
 
@@ -1303,6 +1350,13 @@ export interface AdminCatalogInput {
   rating?: number;
   playbookYaml?: string;
   guideMarkdown?: string;
+  /**
+   * varsSchema:
+   *  - undefined → 不动（保留现有 override 或基线）
+   *  - null → 删除 override（恢复到基线 / 没有 schema）
+   *  - object → 保存为 override
+   */
+  varsSchema?: VarsSchema | null;
   components?: Array<{ type: "software" | "system-command" | "system-config"; label: string; labelEn: string; detail: string }>;
   deployModes?: Array<"system" | "docker">;
   hidden?: boolean;

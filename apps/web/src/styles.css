@@ -5754,3 +5754,330 @@ button:disabled {
   .preview-file-content { background: #0f172a; color: #cbd5e1; }
   .preview-actions { border-top-color: #334155; }
 }
+
+
+/* ── SchemaEditor (admin 端 vars.schema.json 表单编辑器) ───────────── */
+
+.schema-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.schema-editor-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.schema-editor-empty {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.schema-editor-empty p {
+  margin: 0 0 12px;
+}
+
+.schema-fields-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.schema-field-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.schema-field-card-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.schema-field-name-input {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #0f172a;
+  flex: 1;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 140px;
+  padding: 6px 10px;
+}
+
+.schema-field-type-select {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.schema-icon-btn {
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  color: #475569;
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  width: 30px;
+}
+
+.schema-icon-btn:hover { background: #e2e8f0; }
+
+.schema-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.schema-icon-danger {
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.schema-icon-danger:hover { background: #fee2e2; }
+
+.schema-field-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.schema-form-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.schema-form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.schema-form-col.full {
+  grid-column: 1 / -1;
+}
+
+.schema-form-label {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.schema-form-col input,
+.schema-form-col select,
+.schema-form-col textarea {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  padding: 6px 10px;
+  width: 100%;
+}
+
+.schema-form-col input:focus,
+.schema-form-col select:focus,
+.schema-form-col textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  outline: none;
+}
+
+.schema-toggle {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.schema-toggle input {
+  cursor: pointer;
+  height: 14px;
+  width: 14px;
+}
+
+.schema-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schema-option-row {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 100px 1fr 1fr 30px;
+}
+
+.schema-option-value {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+}
+
+.schema-add-form {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+}
+
+.schema-add-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 160px auto auto;
+}
+
+.schema-hint-error {
+  color: #dc2626;
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+
+.catalog-editor-tab-count {
+  background: #dbeafe;
+  border-radius: 9999px;
+  color: #1d4ed8;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 6px;
+  padding: 1px 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .schema-editor-empty { background: #0f172a; border-color: #334155; }
+  .schema-field-card { background: #1e293b; border-color: #334155; }
+  .schema-field-name-input { background: #0f172a; border-color: #334155; color: #e2e8f0; }
+  .schema-field-type-select { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+  .schema-icon-btn { background: #1e293b; border-color: #334155; color: #cbd5e1; }
+  .schema-icon-btn:hover { background: #334155; }
+  .schema-form-label { color: #94a3b8; }
+  .schema-form-col input,
+  .schema-form-col select,
+  .schema-form-col textarea {
+    background: #1e293b; border-color: #334155; color: #e2e8f0;
+  }
+  .schema-add-form { background: #082f49; border-color: #0e7490; }
+  .catalog-editor-tab-count { background: #1e3a8a; color: #bfdbfe; }
+}
+
+
+/* 取消选中按钮（在 impact panel 的每一项上） */
+.impact-item-remove {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: #94a3b8;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  height: 24px;
+  justify-content: center;
+  line-height: 1;
+  margin-left: 8px;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+  width: 24px;
+}
+
+.impact-item-remove:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.impact-item-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+@media (prefers-color-scheme: dark) {
+  .impact-item-remove:hover {
+    background: #4c1d1d;
+    color: #fca5a5;
+  }
+}
+
+
+/* ── Distro badge + 兼容性反馈 ─────────────────────────── */
+
+.distro-badge {
+  background: #e0e7ff;
+  border-radius: 9999px;
+  color: #3730a3;
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 10px;
+}
+
+.distro-family-debian-family { background: #fee2e2; color: #991b1b; }
+.distro-family-rhel-family { background: #dbeafe; color: #1e40af; }
+.distro-family-suse-family { background: #dcfce7; color: #166534; }
+.distro-family-arch-family { background: #f3e8ff; color: #6b21a8; }
+.distro-family-alpine { background: #fef3c7; color: #92400e; }
+.distro-family-unknown { background: #f1f5f9; color: #475569; }
+
+/* catalog 卡片上的 compatibility banner */
+.catalog-compat-banner {
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 6px 0 4px;
+  padding: 6px 10px;
+}
+
+.banner-compatible {
+  background: #f0f9ff;
+  border-left: 3px solid #38bdf8;
+  color: #0c4a6e;
+}
+
+.banner-unsupported {
+  background: #fef2f2;
+  border-left: 3px solid #dc2626;
+  color: #991b1b;
+}
+
+/* 卡片的 unsupported 状态下整体置灰提醒 */
+.catalog-card.catalog-compat-unsupported {
+  opacity: 0.78;
+}
+
+.catalog-card.catalog-compat-unsupported .catalog-art {
+  filter: grayscale(0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  .distro-badge { background: #312e81; color: #c7d2fe; }
+  .distro-family-debian-family { background: #4c1d1d; color: #fca5a5; }
+  .distro-family-rhel-family { background: #1e3a8a; color: #bfdbfe; }
+  .distro-family-suse-family { background: #14532d; color: #bbf7d0; }
+  .distro-family-arch-family { background: #581c87; color: #d8b4fe; }
+  .distro-family-alpine { background: #78350f; color: #fcd34d; }
+  .distro-family-unknown { background: #334155; color: #cbd5e1; }
+  .banner-compatible { background: #082f49; border-left-color: #38bdf8; color: #bae6fd; }
+  .banner-unsupported { background: #4c1d1d; border-left-color: #dc2626; color: #fca5a5; }
+}

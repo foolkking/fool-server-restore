@@ -852,6 +852,81 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  /**
+   * GET /api/connections/:id/distro
+   * 探测目标机器的发行版信息（仅 SSH 连一次跑 cat /etc/os-release + 检测 PM）。
+   * 用途：Market 页让用户在选目标机器后立刻看到目标的 distro，并对照 catalog item 的
+   * compatibility 字段标出每个 Playbook 的兼容性级别。
+   */
+  app.get("/api/connections/:id/distro", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try {
+      const { detectDistroInfo } = await import("./distro-compat.js");
+      const { Ssh2Executor } = await import("./engine/ssh-executor.js");
+      const client = await connectSshForUser(conn, user.id);
+      const executor = new Ssh2Executor(client);
+      try {
+        const distro = await detectDistroInfo(executor);
+        return { distro };
+      } finally { client.end(); }
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Distro detection failed" };
+    }
+  });
+
+  /**
+   * POST /api/compatibility/check
+   * 给定 connectionId + 一组 catalogIds，返回每个 catalog item 的兼容性级别。
+   * 不像上面的端点是单纯 distro 探测，这个会真正对照 Playbook 的 compatibility 声明。
+   *
+   * Body: { connectionId, catalogIds: string[] }
+   * Response: {
+   *   distro: DistroInfo,
+   *   results: Array<{
+   *     catalogId: string;
+   *     level: "verified" | "compatible" | "untested" | "unsupported";
+   *     reasonZh: string; reasonEn: string;
+   *   }>
+   * }
+   */
+  app.post("/api/compatibility/check", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as { connectionId?: string; catalogIds?: string[] };
+    if (!body.connectionId || !Array.isArray(body.catalogIds)) {
+      reply.code(400);
+      return { error: "connectionId and catalogIds[] are required." };
+    }
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === body.connectionId && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try {
+      const { detectDistroInfo, evaluateCompatibility } = await import("./distro-compat.js");
+      const { Ssh2Executor } = await import("./engine/ssh-executor.js");
+      const items = await listCatalogFromDatabase();
+      const client = await connectSshForUser(conn, user.id);
+      const executor = new Ssh2Executor(client);
+      try {
+        const distro = await detectDistroInfo(executor);
+        const results = body.catalogIds.map((cid) => {
+          const item = items.find((c) => c.id === cid);
+          const evalResult = evaluateCompatibility(item?.compatibility, distro);
+          return { catalogId: cid, ...evalResult };
+        });
+        return { distro, results };
+      } finally { client.end(); }
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Compatibility check failed" };
+    }
+  });
+
   // Verify: re-probe target after a task completes; meant to be paired with task-history diff
   app.post("/api/connections/:id/verify", async (request, reply) => {
     const user = await getUserByToken(readBearerToken(request.headers.authorization));
@@ -1451,12 +1526,28 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
     const yamlOverride = await loadOverrideYaml(id);
     const overrideStatus = (db.catalogOverrides ?? []).find((o) => (o.baseId ?? o.id) === id);
+
+    // Pull vars schema (override first, then baseline). Returns null when neither exists.
+    let varsSchema: unknown = null;
+    let hasSchemaOverride = false;
+    try {
+      const { loadVarsSchema } = await import("./catalog-vars-schema.js");
+      varsSchema = await loadVarsSchema(id);
+      // Detect override-vs-baseline by reading override path directly
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const overridePath = path.join(getConfig().dataDir, "catalog-overrides", "schemas", `${id}.vars.json`);
+      try { await fs.access(overridePath); hasSchemaOverride = true; } catch { /* no override */ }
+    } catch { /* schema loader threw — schema invalid; surface as null */ }
+
     return {
       item,
       yaml,
       markdown,
+      varsSchema,
       hasYamlOverride: yamlOverride !== null,
       hasMarkdownOverride: overrideMd !== null,
+      hasSchemaOverride,
       isUserAdded: overrideStatus ? !overrideStatus.baseId : false
     };
   });
@@ -1550,6 +1641,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       rating?: number;
       playbookYaml?: string;
       guideMarkdown?: string;
+      /**
+       * Optional vars schema override. `null` means "delete the override (revert to baseline)".
+       * Object means "save as override". Undefined means "don't touch".
+       */
+      varsSchema?: unknown;
       components?: Array<{ type: "software" | "system-command" | "system-config"; label: string; labelEn: string; detail: string }>;
       deployModes?: Array<"system" | "docker">;
       hidden?: boolean;
@@ -1614,6 +1710,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if ("error" in result) { reply.code(404); return result; }
     if (body.playbookYaml) await saveOverrideYaml(id, body.playbookYaml);
     if (body.guideMarkdown !== undefined) await saveOverrideMarkdown(id, body.guideMarkdown);
+    // varsSchema: null → delete override; object → save override; undefined → no change
+    if (body.varsSchema !== undefined) {
+      const { saveOverrideSchema, deleteOverrideSchema } = await import("./catalog-vars-schema.js");
+      if (body.varsSchema === null) {
+        await deleteOverrideSchema(id);
+      } else {
+        try {
+          await saveOverrideSchema(id, body.varsSchema as Parameters<typeof saveOverrideSchema>[1]);
+        } catch (err) {
+          reply.code(400);
+          return { error: `Invalid vars schema: ${err instanceof Error ? err.message : err}` };
+        }
+      }
+    }
     return { ok: true };
   });
 
@@ -1666,6 +1776,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
     const { id } = request.params as { id: string };
     const { deleteOverrideYaml, deleteOverrideMarkdown } = await import("./catalog-overrides.js");
+    const { deleteOverrideSchema } = await import("./catalog-vars-schema.js");
     const { readDatabase } = await import("./database.js");
     const baseline = (await readDatabase()).catalog;
     const baselineHas = baseline.some((b) => b.id === id);
@@ -1675,6 +1786,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
     await deleteOverrideYaml(id);
     await deleteOverrideMarkdown(id);
+    await deleteOverrideSchema(id);
     return { ok: true };
   });
 }

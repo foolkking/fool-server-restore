@@ -2,17 +2,22 @@ import React, { useState, useEffect } from "react";
 import {
   batchExecute,
   cancelTaskRequest,
+  checkCompatibility,
   executeProfile,
   fetchBatchImpact,
   fetchDockerCompose,
   fetchCatalogGuide,
   fetchPlaybookPreview,
+  fetchTargetDistro,
   fetchVarsSchema,
   runPreflightCheck,
   streamTask,
   type BatchImpactResult,
   type CatalogGuide,
   type CatalogItem,
+  type CompatibilityLevel,
+  type CompatibilityResult,
+  type DistroInfo,
   type ExecutionTask,
   type PreflightReport,
   type VarsSchema
@@ -82,6 +87,47 @@ export function MarketPage({
   const [configureLoading, setConfigureLoading] = useState(false);
   const [configureSubmitting, setConfigureSubmitting] = useState(false);
   const [configureFieldErrors, setConfigureFieldErrors] = useState<Record<string, string> | undefined>();
+
+  // 跨发行版兼容：选中目标机器后探测 distro，挑选 catalog item 时按结果着色
+  const [targetDistro, setTargetDistro] = useState<DistroInfo | null>(null);
+  const [compatibilityMap, setCompatibilityMap] = useState<Map<string, CompatibilityResult>>(new Map());
+
+  // 监听 activeConnectionId 变化，立刻探测 distro
+  useEffect(() => {
+    if (!authToken || !activeConnectionId) {
+      setTargetDistro(null);
+      setCompatibilityMap(new Map());
+      return;
+    }
+    let cancelled = false;
+    void fetchTargetDistro(authToken, activeConnectionId)
+      .then((d) => { if (!cancelled) setTargetDistro(d); })
+      .catch(() => { if (!cancelled) setTargetDistro(null); });
+    return () => { cancelled = true; };
+  }, [authToken, activeConnectionId]);
+
+  // 选中变化时（debounced），对所有选中项做兼容性检查
+  useEffect(() => {
+    if (!authToken || !activeConnectionId || selected.size === 0) {
+      setCompatibilityMap(new Map());
+      return;
+    }
+    const ids = items.filter((i) => selected.has(i.id)).map((i) => i.id);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const result = await checkCompatibility(authToken, activeConnectionId, ids);
+        if (!cancelled) {
+          const map = new Map<string, CompatibilityResult>();
+          for (const r of result.results) map.set(r.catalogId, r);
+          setCompatibilityMap(map);
+          setTargetDistro(result.distro);
+        }
+      } catch { /* silent — 端点失败时不阻断主流程 */ }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [authToken, activeConnectionId, selected.size, items]);
 
   // Auto-fetch impact when selection changes (debounced)
   useEffect(() => {
@@ -349,6 +395,13 @@ export function MarketPage({
             {locale === "zh"
               ? `共 ${items.length} 项·已选 ${selected.size} 项`
               : `${items.length} items · ${selected.size} selected`}
+            {targetDistro && (
+              <span className={`distro-badge distro-family-${targetDistro.family}`} style={{ marginLeft: 10 }}>
+                {targetDistro.family === "unknown"
+                  ? (locale === "zh" ? "🔍 发行版未识别" : "🔍 Unknown distro")
+                  : `🐧 ${targetDistro.prettyName}`}
+              </span>
+            )}
           </p>
         </div>
         <div className="market-header-actions">
@@ -449,6 +502,16 @@ export function MarketPage({
                     {r.impact.needsSudo ? (
                       <span className="impact-sudo-badge">sudo</span>
                     ) : null}
+                    <button
+                      type="button"
+                      className="impact-item-remove"
+                      onClick={() => onToggle(r.catalogId)}
+                      disabled={batchInstalling}
+                      title={locale === "zh" ? `从已选中移除 ${r.name}` : `Remove ${r.name} from selection`}
+                      aria-label={locale === "zh" ? "移除" : "Remove"}
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>
@@ -476,8 +539,14 @@ export function MarketPage({
         {items.filter((item) => categoryFilter === "all" || item.category === categoryFilter).map((item) => {
           const Icon = categoryIcons[item.category];
           const isSelected = selected.has(item.id);
+          const compat = compatibilityMap.get(item.id);
+          // 仅当用户已选中此项才需要兼容性反馈（避免对所有 70 项一起检查导致 SSH 风暴）
           return (
-              <article className={`catalog-card ${isSelected ? "catalog-card-selected" : ""}`} key={item.id} onClick={() => onToggle(item.id)}>
+              <article
+                className={`catalog-card ${isSelected ? "catalog-card-selected" : ""} ${compat ? `catalog-compat-${compat.level}` : ""}`}
+                key={item.id}
+                onClick={() => onToggle(item.id)}
+              >
                 <div className={`catalog-art ${item.imageTone}`}>
                   <div className="catalog-check">
                     <input type="checkbox" checked={isSelected} onChange={() => onToggle(item.id)} onClick={(e) => e.stopPropagation()} />
@@ -512,6 +581,11 @@ export function MarketPage({
                       ⚙
                     </button>
                   </div>
+                  {compat && compat.level !== "verified" && compat.level !== "untested" && (
+                    <div className={`catalog-compat-banner banner-${compat.level}`}>
+                      {compat.level === "compatible" ? "ℹ" : "⚠"} {locale === "zh" ? compat.reasonZh : compat.reasonEn}
+                    </div>
+                  )}
                   <p>{locale === "zh" ? item.summary : item.summaryEn}</p>
                   <div className="catalog-meta">
                     <span>★ {item.rating.toFixed(1)}</span>
