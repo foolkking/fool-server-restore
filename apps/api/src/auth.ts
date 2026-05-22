@@ -32,10 +32,8 @@ export async function registerUser(input: { name?: string; email?: string; passw
   const passwordSalt = randomBytes(16).toString("hex");
   const passwordHash = await hashPassword(password, passwordSalt);
   const cfg = getConfig();
-  const role: "user" | "admin" =
-    cfg.adminEmails.includes(email) || cfg.adminNames.includes(name.toLowerCase())
-      ? "admin"
-      : "user";
+  // Admin promotion is by email allow-list only. Username has no special meaning.
+  const role: "user" | "admin" = cfg.adminEmails.includes(email) ? "admin" : "user";
   const user: StoredUser = {
     id: createId("user"),
     name,
@@ -72,11 +70,10 @@ export async function loginUser(input: { email?: string; password?: string }): P
   const token = createSessionToken();
   const expiresAt = new Date(Date.now() + getSessionTtlMs()).toISOString();
 
-  // Promote existing users on login if they match the admin allow-list (e.g. fool registered
-  // before the env var was set). Idempotent: only writes when role actually changes.
+  // Promote existing user on login only if their email matches the configured admin allow-list.
+  // Username-based promotion has been removed — username carries no auth meaning.
   const cfg = getConfig();
-  const shouldBeAdmin =
-    cfg.adminEmails.includes(user.email) || cfg.adminNames.includes(user.name.toLowerCase());
+  const shouldBeAdmin = cfg.adminEmails.includes(user.email);
   const needsPromotion = shouldBeAdmin && user.role !== "admin";
 
   await updateRuntimeDatabase((next) => {

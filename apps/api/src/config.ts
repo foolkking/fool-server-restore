@@ -15,8 +15,6 @@ export interface AppConfig {
   sessionTtlHours: number;
   /** Emails (lowercase) that should automatically receive admin role on registration */
   adminEmails: string[];
-  /** Names (lowercase) that should automatically receive admin role on registration */
-  adminNames: string[];
 }
 
 export function getConfig(): AppConfig {
@@ -34,9 +32,7 @@ export function getConfig(): AppConfig {
     serveWeb: isEnabled(process.env.SERVE_WEB),
     webDistDir: resolveConfiguredPath(process.env.WEB_DIST_DIR, "apps/web/dist"),
     sessionTtlHours: toPositiveNumber(process.env.SESSION_TTL_HOURS, 24),
-    adminEmails: parseList(process.env.ENVFORGE_ADMIN_EMAILS),
-    // Default: any user named "fool" (case-insensitive) is an admin.
-    adminNames: parseList(process.env.ENVFORGE_ADMIN_NAMES ?? "fool")
+    adminEmails: parseList(process.env.ENVFORGE_ADMIN_EMAILS)
   };
 }
 

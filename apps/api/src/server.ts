@@ -3,6 +3,7 @@ import { getConfig } from "./config.js";
 import { registerRoutes } from "./routes.js";
 import { registerStaticWeb } from "./static-web.js";
 import { startScheduler } from "./scheduler.js";
+import { runMigrations } from "./migrations.js";
 
 const config = getConfig();
 
@@ -28,6 +29,11 @@ try {
   if (config.serveWeb) {
     app.log.info(`Serving Web UI from ${config.webDistDir}`);
   }
+  // Apply one-shot data migrations (idempotent).
+  await runMigrations({
+    info: (msg) => app.log.info(msg),
+    warn: (msg) => app.log.warn(msg)
+  });
   // Start the cron-style scheduler (idempotent).
   startScheduler();
   app.log.info("Scheduler started");

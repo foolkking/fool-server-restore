@@ -9,11 +9,11 @@
 1. **三级角色模型激活**
    - `guest`（未登录）/ `user`（默认登录）/ `admin`（系统管理员）
    - 角色徽章在 MePage 显示（🛡️ 系统管理员 / 普通用户）
-2. **Admin 自动提升**
-   - 用户名为 `fool`（不区分大小写）注册时自动 `role = "admin"`
+2. **Admin 设定方案**
    - 邮箱在 `ENVFORGE_ADMIN_EMAILS` 列表里的，注册时自动为 admin
-   - **登录时也会重新检查**：已存在的 fool 用户在登录时会被自动 promote（无需重新注册）
-   - 管理员名单和邮箱通过 `.env` 配置，可运行时调整
+   - **登录时也会重新检查**：已存在的用户邮箱后来被加入清单时，登录时自动 promote
+   - 通过 `.env` 配置，可运行时调整
+   - **历史用户名为 fool 的账户**：服务器启动时通过一次性数据库迁移（`migrations.ts`）将其设为 admin。这是一次性操作，新注册的"fool"不会自动成为 admin。
 3. **任务并发控制（Per-VM FIFO 队列）**
    - 模块：`apps/api/src/task-queue.ts`
    - 同一 connectionId 同时只能有一个 Playbook 运行

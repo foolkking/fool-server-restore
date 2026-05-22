@@ -126,6 +126,6 @@ docker compose -f docker-compose.demo.yml up -d
 
 ## 历史交付（前几轮）
 
-- v3：三级角色（guest/user/admin）+ per-VM 任务队列 + fool 用户自动 admin
+- v3：三级角色（guest/user/admin）+ per-VM 任务队列 + 现存 fool 用户一次性迁移为 admin
 - v2 P0-P3：敏感字段扫描、冲突文件备份、配置文件 diff、Preflight、Verify、系统清单扩展、vm-snapshot 四阶段、安装后 Markdown 弹窗、真实安装计数、模板变量
 - 配置市场 72 个 Playbook、Ansible-Compatible 引擎（13 模块）、SSE 实时进度、Docker 化部署
