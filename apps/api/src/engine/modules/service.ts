@@ -85,6 +85,80 @@ async function isEnabled(executor: SshExecutor, name: string): Promise<boolean> 
   return r.exitCode === 0;
 }
 
+/** Capture systemd-side diagnostic info to surface the real failure reason to the user. */
+async function captureSystemdDiagnostics(executor: SshExecutor, name: string): Promise<{ status: string; journal: string }> {
+  // `systemctl status` shows the last few log lines plus the unit state. Always exits non-zero
+  // when the service is failed, so we ignore the exit code.
+  const status = await executor.exec(`systemctl status ${name} --no-pager -l 2>&1 | tail -n 25`);
+  // journalctl gives the actual application stderr (nginx config errors, port-in-use, etc).
+  const journal = await executor.exec(`sudo journalctl -u ${name} --no-pager -n 20 2>&1`);
+  return {
+    status: (status.stdout || status.stderr || "(no status output)").trim(),
+    journal: (journal.stdout || journal.stderr || "(no journal output)").trim()
+  };
+}
+
+/**
+ * Pattern-match common service-start failures to give the user an actionable hint.
+ * Returns undefined when we can't identify a known cause.
+ */
+function identifyRootCause(diag: { status: string; journal: string }): string | undefined {
+  const text = `${diag.status}\n${diag.journal}`.toLowerCase();
+
+  // Port already in use (very common with nginx if Apache/Caddy/another nginx is running)
+  if (text.includes("address already in use") || text.includes("bind() to") && text.includes("failed")) {
+    const portMatch = text.match(/0\.0\.0\.0:(\d+)|:::(\d+)|port\s+(\d+)/);
+    const port = portMatch?.[1] ?? portMatch?.[2] ?? portMatch?.[3];
+    return port
+      ? `端口 ${port} 已被占用。运行 'sudo ss -tlnp | grep :${port}' 查看占用进程，停止后再试。如果是另一个 web 服务（apache2/caddy），请先停止它。`
+      : `端口已被其他进程占用。运行 'sudo ss -tlnp' 查看占用情况。`;
+  }
+
+  // nginx config syntax error
+  if (text.includes("[emerg]") || text.includes("nginx: configuration file") || text.includes("invalid directive") || text.includes("unknown directive")) {
+    const emergMatch = diag.journal.match(/\[emerg\][^\n]*/i);
+    return emergMatch
+      ? `nginx 配置文件语法错误：${emergMatch[0].slice(0, 200)}。运行 'sudo nginx -t' 查看详情。`
+      : `nginx 配置文件语法错误。运行 'sudo nginx -t' 查看详情。`;
+  }
+
+  // SELinux denial (common on RHEL/Anolis)
+  if (text.includes("permission denied") && (text.includes("selinux") || text.includes("avc"))) {
+    return `SELinux 拒绝访问。运行 'sudo ausearch -m avc -ts recent' 查看详情，或临时关闭：'sudo setenforce 0' 后重试。`;
+  }
+
+  // Missing directory / file
+  if (text.includes("no such file or directory") || text.includes("does not exist")) {
+    const fileMatch = diag.journal.match(/(?:open|access|stat)\s*\(?["']?([\/a-zA-Z0-9._-]+)["']?\)?:\s*No such/i);
+    return fileMatch
+      ? `缺少文件或目录：${fileMatch[1]}。请检查包是否完整安装，或手动创建。`
+      : `服务依赖的文件或目录不存在。查看上方 journalctl 输出定位具体路径。`;
+  }
+
+  // Permission denied (non-SELinux)
+  if (text.includes("permission denied")) {
+    return `权限被拒绝。可能是文件 owner / mode 不正确，检查 systemd 单元的 User= 配置和资源文件权限。`;
+  }
+
+  // Failed to bind / listen / socket
+  if (text.includes("can't bind") || text.includes("could not bind")) {
+    return `无法绑定监听地址。可能是端口被占用、IP 地址不正确，或 SELinux/AppArmor 拦截。`;
+  }
+
+  // Out of memory
+  if (text.includes("out of memory") || text.includes("cannot allocate memory")) {
+    return `内存不足。释放内存或增加 swap 后重试。`;
+  }
+
+  // Generic exit code from main process
+  const exitMatch = diag.status.match(/main process exited.*?status=(\d+)/i);
+  if (exitMatch) {
+    return `服务主进程异常退出（退出码 ${exitMatch[1]}）。查看上方 journalctl 输出定位原因。`;
+  }
+
+  return undefined;
+}
+
 export const serviceModule: AnsibleModule<ServiceArgs> = {
   name: "service",
   async run(executor, args, dryRun): Promise<ModuleResult> {
@@ -164,12 +238,17 @@ export const serviceModule: AnsibleModule<ServiceArgs> = {
       allStdout += stdout;
       allStderr += stderr;
       if (exitCode !== 0) {
+        // Capture systemd diagnostics so the user sees the real reason instead
+        // of the unhelpful "Job for X failed because the control process exited".
+        const diag = await captureSystemdDiagnostics(executor, serviceName);
+        const cause = identifyRootCause(diag);
+        const causeNote = cause ? `\n🔍 ${cause}` : "";
         return {
           changed: false,
           failed: true,
-          msg: `Failed: ${cmd}${renameNote}`,
+          msg: `🔧 Failed: ${cmd}${renameNote}${causeNote}\n\n--- systemctl status ---\n${diag.status}\n--- journalctl (last 20 lines) ---\n${diag.journal}`,
           stdout: allStdout,
-          stderr: allStderr
+          stderr: allStderr + "\n" + diag.status + "\n" + diag.journal
         };
       }
       changed = true;
