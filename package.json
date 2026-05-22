@@ -13,6 +13,8 @@
     "build:server": "npm run build --workspace @fool/core && npm run build --workspace @fool/collectors && npm run build --workspace @fool/restorers && npm run build --workspace @fool/api",
     "bootstrap": "node packages/cli/dist/index.js bootstrap",
     "preflight": "node scripts/preflight.mjs",
+    "audit:catalog": "node scripts/audit-catalog.mjs",
+    "generate:guides": "node scripts/generate-stub-guides.mjs",
     "dev": "npm run dev:api",
     "dev:api": "npm run build:server && npm run start --workspace @fool/api",
     "dev:web": "npm run dev --workspace @fool/web",
