@@ -6,19 +6,22 @@ import {
   fetchBatchImpact,
   fetchDockerCompose,
   fetchCatalogGuide,
+  fetchVarsSchema,
   runPreflightCheck,
   streamTask,
   type BatchImpactResult,
   type CatalogGuide,
   type CatalogItem,
   type ExecutionTask,
-  type PreflightReport
+  type PreflightReport,
+  type VarsSchema
 } from "../api";
 import type { Locale } from "../lib/types";
 import { categoryIcons } from "../lib/types";
 import { ComponentPreview, getCatalogComponents } from "../components/ComponentPreview";
 import { PreflightPanel } from "../components/PreflightPanel";
 import { MarkdownOverlay } from "../components/MarkdownOverlay";
+import { ConfigureRunPanel } from "../components/ConfigureRunPanel";
 
 const text = {
   zh: {
@@ -69,6 +72,15 @@ export function MarketPage({
   const [preflightReport, setPreflightReport] = useState<PreflightReport | null>(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
   const [postInstallGuide, setPostInstallGuide] = useState<CatalogGuide | null>(null);
+
+  // Configurable Playbook flow: when the user clicks "configure & install" on a
+  // card, we fetch the schema + guide in parallel and open the split-pane modal.
+  const [configureItem, setConfigureItem] = useState<CatalogItem | null>(null);
+  const [configureSchema, setConfigureSchema] = useState<VarsSchema | null>(null);
+  const [configureGuide, setConfigureGuide] = useState<CatalogGuide | null>(null);
+  const [configureLoading, setConfigureLoading] = useState(false);
+  const [configureSubmitting, setConfigureSubmitting] = useState(false);
+  const [configureFieldErrors, setConfigureFieldErrors] = useState<Record<string, string> | undefined>();
 
   // Auto-fetch impact when selection changes (debounced)
   useEffect(() => {
@@ -224,6 +236,94 @@ export function MarketPage({
     a.download = `${dockerComposeId}.yaml`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Open the configure-and-run modal for a Playbook. Fetches the vars schema
+   * and the guide markdown in parallel; if the Playbook has no schema, falls
+   * back to a direct install with default values (preserving the simpler UX
+   * for the 70+ Playbooks that don't need configuration).
+   */
+  async function handleOpenConfigure(item: CatalogItem) {
+    if (!canExecute) {
+      setTaskError(executeTooltip ?? "");
+      return;
+    }
+    setConfigureLoading(true);
+    setConfigureItem(item);
+    setConfigureFieldErrors(undefined);
+    try {
+      const [schema, guide] = await Promise.all([
+        fetchVarsSchema(item.id),
+        fetchCatalogGuide(item.id).catch(() => null)
+      ]);
+      if (!schema) {
+        // No schema → just run directly with defaults. This keeps existing
+        // Playbooks working unchanged; only configurable ones get the modal.
+        setConfigureItem(null);
+        setConfigureLoading(false);
+        void handleExecute(item.id, false);
+        return;
+      }
+      setConfigureSchema(schema);
+      setConfigureGuide(guide);
+    } catch (err) {
+      setTaskError(err instanceof Error ? err.message : "Failed to load configuration");
+      setConfigureItem(null);
+    } finally {
+      setConfigureLoading(false);
+    }
+  }
+
+  function handleCloseConfigure() {
+    if (configureSubmitting) return; // don't close mid-submit
+    setConfigureItem(null);
+    setConfigureSchema(null);
+    setConfigureGuide(null);
+    setConfigureFieldErrors(undefined);
+  }
+
+  /**
+   * User submitted the configure form. Send vars to /api/execute, stream the
+   * task progress through the standard flow, and on completion swap the modal
+   * for the post-install guide (so the user sees how to use what they just installed).
+   */
+  async function handleConfigureSubmit(vars: Record<string, unknown>) {
+    if (!configureItem || !authToken || !activeConnectionId) return;
+    setConfigureSubmitting(true);
+    setConfigureFieldErrors(undefined);
+    try {
+      const result = await executeProfile(authToken, activeConnectionId, configureItem.id, false, vars);
+      if (result.fieldErrors) {
+        // Server-side validation failed — surface per-field errors back into the form
+        setConfigureFieldErrors(result.fieldErrors);
+        setConfigureSubmitting(false);
+        return;
+      }
+      setActiveTaskId(result.taskId);
+      // Close the configure modal once the task starts streaming; the bottom
+      // terminal panel takes over from here.
+      const itemForGuide = configureItem;
+      setConfigureItem(null);
+      setConfigureSchema(null);
+      setConfigureGuide(null);
+      const unsubscribe = streamTask(result.taskId, (task) => {
+        onTaskUpdate(task);
+        if (task.status === "succeeded" || task.status === "failed" || task.status === "cancelled") {
+          unsubscribe();
+          // Show post-install guide on success
+          if (task.status === "succeeded") {
+            void fetchCatalogGuide(itemForGuide.id)
+              .then((g) => setPostInstallGuide(g))
+              .catch(() => { /* no guide is fine */ });
+          }
+        }
+      }, authToken);
+    } catch (err) {
+      setTaskError(err instanceof Error ? err.message : "Execution failed");
+    } finally {
+      setConfigureSubmitting(false);
+    }
   }
 
   const componentLabels = {
@@ -400,6 +500,16 @@ export function MarketPage({
                         🐳
                       </button>
                     ) : null}
+                    <button
+                      className="catalog-md-link"
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); void handleOpenConfigure(item); }}
+                      title={locale === "zh" ? "配置参数并安装" : "Configure & install"}
+                      disabled={!canExecute || configureLoading}
+                      style={{ marginLeft: 4 }}
+                    >
+                      ⚙
+                    </button>
                   </div>
                   <p>{locale === "zh" ? item.summary : item.summaryEn}</p>
                   <div className="catalog-meta">
@@ -483,6 +593,19 @@ export function MarketPage({
             </pre>
           </div>
         </div>
+      ) : null}
+
+      {/* 配置并运行 split-pane modal — only renders when a Playbook has a vars schema */}
+      {configureItem && configureSchema ? (
+        <ConfigureRunPanel
+          guide={configureGuide}
+          schema={configureSchema}
+          locale={locale}
+          onClose={handleCloseConfigure}
+          onSubmit={handleConfigureSubmit}
+          submitting={configureSubmitting}
+          fieldErrors={configureFieldErrors}
+        />
       ) : null}
 
       {/* 安装完成后弹出 Markdown 引导 */}

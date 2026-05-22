@@ -557,13 +557,56 @@ export interface ExecutionTask {
   error?: string;
 }
 
-export async function executeProfile(token: string, connectionId: string, profileId: string, dryRun = true): Promise<{ taskId: string; steps: TaskStep[] }> {
+export async function executeProfile(
+  token: string,
+  connectionId: string,
+  profileId: string,
+  dryRun = true,
+  /** Optional form values for configurable Playbooks (vars.schema.json) */
+  vars?: Record<string, unknown>
+): Promise<{ taskId: string; steps: TaskStep[]; fieldErrors?: Record<string, string> }> {
   const response = await fetch("/api/execute", {
     method: "POST",
     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ connectionId, profileId, dryRun })
+    body: JSON.stringify({ connectionId, profileId, dryRun, vars })
   });
+  // 400 with fieldErrors means the form failed validation — surface that to the caller
+  if (response.status === 400) {
+    const data = await response.json().catch(() => ({}));
+    if (data && typeof data === "object" && "fieldErrors" in data) {
+      return { taskId: "", steps: [], fieldErrors: data.fieldErrors as Record<string, string> };
+    }
+  }
   return readJsonOrThrow<{ taskId: string; steps: TaskStep[] }>(response, "Execute failed");
+}
+
+// ─── Vars schema (configurable Playbooks) ────────────────────────────────
+
+export type VarsSchemaField =
+  | { type: "string"; label: string; labelEn?: string; help?: string; helpEn?: string;
+      default?: string; required?: boolean; validate?: string; placeholder?: string; show_when?: string; }
+  | { type: "number"; label: string; labelEn?: string; help?: string; helpEn?: string;
+      default?: number; required?: boolean; min?: number; max?: number; step?: number; show_when?: string; }
+  | { type: "boolean"; label: string; labelEn?: string; help?: string; helpEn?: string;
+      default: boolean; required?: boolean; show_when?: string; }
+  | { type: "choice"; label: string; labelEn?: string; help?: string; helpEn?: string;
+      default?: string; required?: boolean; options: Array<{ value: string; label: string; labelEn?: string }>; show_when?: string; }
+  | { type: "password"; label: string; labelEn?: string; help?: string; helpEn?: string;
+      generate_length?: number; reveal_after_run?: boolean; required?: boolean; validate?: string; show_when?: string; }
+  | { type: "port"; label: string; labelEn?: string; help?: string; helpEn?: string;
+      default?: number; required?: boolean; show_when?: string; };
+
+export type VarsSchema = Record<string, VarsSchemaField>;
+
+/**
+ * Fetch a Playbook's vars schema. Returns null when the Playbook has no schema
+ * (caller should fall back to the simple "run with defaults" button).
+ */
+export async function fetchVarsSchema(id: string): Promise<VarsSchema | null> {
+  const response = await fetch(`/api/catalog/${encodeURIComponent(id)}/vars-schema`);
+  if (!response.ok) return null;
+  const data = await response.json().catch(() => ({}));
+  return (data?.schema ?? null) as VarsSchema | null;
 }
 
 export async function batchExecute(

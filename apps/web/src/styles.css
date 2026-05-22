@@ -5131,3 +5131,241 @@ button:disabled {
     color: #fde68a;
   }
 }
+
+
+/* ── ConfigureRunPanel: split-pane configurable Playbook modal ───────────── */
+
+.configure-run-panel {
+  background: white;
+  border-radius: 22px;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.24);
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: min(880px, 92vh);
+  max-width: 1200px;
+  overflow: hidden;
+  padding: 22px 24px 18px;
+  width: min(1200px, 96vw);
+}
+
+.configure-run-panel header {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.configure-run-panel h2 {
+  font-size: 26px;
+  margin: 0;
+}
+
+.configure-run-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+
+.configure-run-guide {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  overflow-y: auto;
+  padding: 18px 22px;
+}
+
+.configure-run-guide .markdown-preview {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.configure-run-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.form-fields {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field-label {
+  align-items: baseline;
+  color: #0f172a;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 6px;
+}
+
+.form-required {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.form-var-name {
+  background: #f1f5f9;
+  border-radius: 4px;
+  color: #64748b;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+}
+
+.form-field input[type="text"],
+.form-field input[type="password"],
+.form-field input[type="number"],
+.form-field select {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  padding: 8px 12px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+
+.form-field input:focus,
+.form-field select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  outline: none;
+}
+
+.form-field.has-error input,
+.form-field.has-error select {
+  border-color: #dc2626;
+}
+
+.form-field.has-error input:focus,
+.form-field.has-error select:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+}
+
+.form-toggle {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  gap: 8px;
+}
+
+.form-toggle input {
+  cursor: pointer;
+  height: 16px;
+  width: 16px;
+}
+
+.form-password-wrap {
+  display: flex;
+  position: relative;
+}
+
+.form-password-wrap input {
+  flex: 1;
+  padding-right: 38px;
+}
+
+.form-password-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 6px;
+}
+
+.form-password-toggle:hover {
+  color: #0f172a;
+}
+
+.form-field-help {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.form-field-error {
+  color: #dc2626;
+  font-size: 12px;
+  margin: 0;
+}
+
+.form-actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.form-summary-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #991b1b;
+  font-size: 13px;
+  margin: 0;
+  padding: 8px 12px;
+}
+
+.muted {
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .configure-run-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 240px 1fr;
+  }
+  .configure-run-panel {
+    height: 95vh;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .configure-run-panel { background: #1e293b; }
+  .configure-run-guide { background: #0f172a; border-color: #334155; }
+  .form-fields { background: #0f172a; border-color: #334155; }
+  .form-field-label { color: #e2e8f0; }
+  .form-field input[type="text"],
+  .form-field input[type="password"],
+  .form-field input[type="number"],
+  .form-field select { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+  .form-var-name { background: #1e293b; color: #94a3b8; }
+  .form-field-help { color: #94a3b8; }
+  .form-summary-error { background: #4c1d1d; border-color: #7f1d1d; color: #fca5a5; }
+  .muted { color: #64748b; }
+}
