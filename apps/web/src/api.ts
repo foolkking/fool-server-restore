@@ -1166,3 +1166,86 @@ export async function fetchModuleDocs(): Promise<ModuleDoc[]> {
   const r = await fetch("/api/modules/docs");
   return (await readJsonOrThrow<{ modules: ModuleDoc[] }>(r, "Fetch module docs failed")).modules;
 }
+
+
+// ── Admin: catalog management ─────────────────────────────
+
+export type CatalogStatus = "baseline" | "modified" | "added" | "hidden";
+
+export interface AdminCatalogList {
+  items: CatalogItem[];
+  status: Record<string, CatalogStatus>;
+}
+
+export interface AdminCatalogDetail {
+  item: CatalogItem;
+  yaml: string;
+  markdown: string;
+  hasYamlOverride: boolean;
+  hasMarkdownOverride: boolean;
+  isUserAdded: boolean;
+}
+
+export interface AdminCatalogInput {
+  id?: string;
+  kind?: "software" | "combo";
+  name?: string;
+  nameEn?: string;
+  category?: "runtime" | "developer" | "database" | "container" | "security" | "network" | "service";
+  summary?: string;
+  summaryEn?: string;
+  imageTone?: string;
+  sensitivity?: "safe" | "review" | "privileged";
+  rating?: number;
+  playbookYaml?: string;
+  guideMarkdown?: string;
+  components?: Array<{ type: "software" | "system-command" | "system-config"; label: string; labelEn: string; detail: string }>;
+  deployModes?: Array<"system" | "docker">;
+  hidden?: boolean;
+}
+
+export async function fetchAdminCatalog(token: string): Promise<AdminCatalogList> {
+  const r = await fetch("/api/admin/catalog", { headers: { "Authorization": `Bearer ${token}` } });
+  return readJsonOrThrow(r, "Fetch admin catalog failed");
+}
+
+export async function fetchAdminCatalogItem(token: string, id: string): Promise<AdminCatalogDetail> {
+  const r = await fetch(`/api/admin/catalog/${encodeURIComponent(id)}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Fetch catalog item failed");
+}
+
+export async function createAdminCatalog(token: string, input: AdminCatalogInput): Promise<{ id: string }> {
+  const r = await fetch("/api/admin/catalog", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow(r, "Create catalog failed");
+}
+
+export async function updateAdminCatalog(token: string, id: string, input: AdminCatalogInput): Promise<{ ok: true }> {
+  const r = await fetch(`/api/admin/catalog/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow(r, "Update catalog failed");
+}
+
+export async function deleteAdminCatalog(token: string, id: string): Promise<void> {
+  const r = await fetch(`/api/admin/catalog/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow(r, "Delete catalog failed");
+}
+
+export async function resetAdminCatalog(token: string, id: string): Promise<void> {
+  const r = await fetch(`/api/admin/catalog/${encodeURIComponent(id)}/reset`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow(r, "Reset catalog failed");
+}

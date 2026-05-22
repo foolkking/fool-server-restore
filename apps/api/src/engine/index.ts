@@ -16,21 +16,16 @@ export type { Playbook, Task, ModuleResult, TaskExecutionLog } from "./types.js"
 export type { RunOptions, RunResult };
 export { parsePlaybook, runPlaybook };
 
-/** 读取 catalog 中的 playbook YAML 文件 */
+/** 读取 catalog 中的 playbook YAML 文件（优先 admin override，回退到基线） */
 export async function loadPlaybookFromCatalog(playbookId: string): Promise<string> {
-  const filePath = resolveFromRoot(path.join("configs/catalog/playbooks", `${playbookId}.yaml`));
-  return await fs.readFile(filePath, "utf8");
+  const { resolvePlaybookYaml } = await import("../catalog-overrides.js");
+  return await resolvePlaybookYaml(playbookId);
 }
 
-/** 检查 catalog 中是否存在对应的 playbook */
+/** 检查 catalog 中是否存在对应的 playbook（含 override） */
 export async function hasPlaybook(playbookId: string): Promise<boolean> {
-  const filePath = resolveFromRoot(path.join("configs/catalog/playbooks", `${playbookId}.yaml`));
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
+  const { hasResolvedPlaybook } = await import("../catalog-overrides.js");
+  return await hasResolvedPlaybook(playbookId);
 }
 
 /** 通过已保存的连接执行 Playbook YAML */

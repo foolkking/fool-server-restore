@@ -440,6 +440,7 @@ function App() {
             connections={connections}
             playbooks={userPlaybooks}
             catalog={catalog}
+            isAdmin={authUser.role === "admin"}
           />
         ) : page === "settings" ? (
           <p className="empty-hint">{locale === "zh" ? "请先登录以使用高级设置。" : "Login to access settings."}</p>

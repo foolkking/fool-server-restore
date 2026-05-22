@@ -43,7 +43,11 @@ function normalizeDatabase(database: AppDatabase): AppDatabase {
 }
 
 export async function listCatalogFromDatabase(): Promise<CatalogItem[]> {
-  return (await readDatabase()).catalog;
+  const baseline = (await readDatabase()).catalog;
+  const { mergeCatalog } = await import("./catalog-overrides.js");
+  const { readRuntimeDatabase } = await import("./runtime-store.js");
+  const rdb = await readRuntimeDatabase();
+  return mergeCatalog(baseline, rdb.catalogOverrides);
 }
 
 export async function getCatalogItemFromDatabase(id: string): Promise<CatalogItem | undefined> {
@@ -59,8 +63,18 @@ export async function readCatalogGuide(id: string): Promise<{
     throw new Error(`Catalog item not found: ${id}`);
   }
 
-  const markdown = await fs.readFile(resolveFromRoot(item.guidePath), "utf8");
-  return { item, markdown };
+  // Override-aware: prefer admin-edited markdown, fall back to baseline guidePath
+  const { loadOverrideMarkdown } = await import("./catalog-overrides.js");
+  const overrideMd = await loadOverrideMarkdown(id);
+  if (overrideMd !== null) return { item, markdown: overrideMd };
+
+  try {
+    const markdown = await fs.readFile(resolveFromRoot(item.guidePath), "utf8");
+    return { item, markdown };
+  } catch {
+    // No baseline guide either — return empty
+    return { item, markdown: "" };
+  }
 }
 
 export async function listMigrationStrategies(): Promise<MigrationStrategy[]> {

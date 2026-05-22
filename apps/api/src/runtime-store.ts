@@ -154,6 +154,8 @@ export interface RuntimeDatabase {
   webhooks?: StoredWebhook[];
   /** API tokens for CI/CD integration */
   apiTokens?: StoredApiToken[];
+  /** Admin overrides on top of the static catalog baseline */
+  catalogOverrides?: CatalogOverride[];
 }
 
 /** 用户保存的 Playbook（支持版本历史） */
@@ -244,6 +246,43 @@ export interface StoredWebhook {
   lastDeliveryAt?: string;
   lastDeliveryStatus?: "success" | "failed";
   lastDeliveryError?: string;
+}
+
+/** Admin override on a catalog item — adds, modifies, or hides items */
+export interface CatalogOverride {
+  /** baseId set when overriding/hiding a baseline item; undefined when this is a brand-new user-added item */
+  baseId?: string;
+  /** id for new items (matches CatalogItem.id) */
+  id: string;
+  /** Hide a baseline item from the market */
+  hidden?: boolean;
+  /** Field-level overrides applied on top of the baseline (for modify) or full item body (for new) */
+  overrides?: Partial<{
+    kind: "software" | "combo";
+    name: string;
+    nameEn: string;
+    category: "runtime" | "developer" | "database" | "container" | "security" | "network" | "service";
+    summary: string;
+    summaryEn: string;
+    imageTone: string;
+    sensitivity: "safe" | "review" | "privileged";
+    rating: number;
+    installs: string;
+    assets: string[];
+    sourceKind: string;
+    components: Array<{
+      type: "software" | "system-command" | "system-config";
+      label: string;
+      labelEn: string;
+      detail: string;
+    }>;
+    deployModes: Array<"system" | "docker">;
+  }>;
+  /** Created/updated timestamps */
+  createdAt: string;
+  updatedAt: string;
+  /** User who made this override (admin only) */
+  modifiedBy: string;
 }
 
 /** API token for CI/CD integration (separate from session tokens) */

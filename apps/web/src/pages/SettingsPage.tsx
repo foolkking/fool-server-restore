@@ -17,21 +17,24 @@ import {
   type ConnectionProfile, type StoredPlaybook, type CatalogItem
 } from "../api";
 import type { Locale } from "../lib/types";
+import { CatalogAdminPanel } from "../components/CatalogAdminPanel";
 
-type Tab = "schedules" | "webhooks" | "tokens" | "modules" | "drift";
+type Tab = "schedules" | "webhooks" | "tokens" | "modules" | "drift" | "catalog";
 
 export function SettingsPage({
   locale,
   authToken,
   connections,
   playbooks,
-  catalog
+  catalog,
+  isAdmin
 }: {
   locale: Locale;
   authToken: string;
   connections: ConnectionProfile[];
   playbooks: StoredPlaybook[];
   catalog: CatalogItem[];
+  isAdmin: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("schedules");
 
@@ -62,6 +65,11 @@ export function SettingsPage({
         <button className={tab === "modules" ? "active" : ""} onClick={() => setTab("modules")} type="button">
           📚 {locale === "zh" ? "模块文档" : "Module docs"}
         </button>
+        {isAdmin && (
+          <button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")} type="button">
+            🛡️ {locale === "zh" ? "配置市场（管理员）" : "Catalog (admin)"}
+          </button>
+        )}
       </nav>
       <div className="settings-body">
         {tab === "schedules" && (
@@ -78,6 +86,9 @@ export function SettingsPage({
         )}
         {tab === "modules" && (
           <ModuleDocsPanel locale={locale} />
+        )}
+        {tab === "catalog" && isAdmin && (
+          <CatalogAdminPanel locale={locale} authToken={authToken} />
         )}
       </div>
     </div>

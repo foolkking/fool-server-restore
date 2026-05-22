@@ -1273,6 +1273,281 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!removed) { reply.code(404); return { error: "Token not found." }; }
     return { ok: true };
   });
+
+  // ── Admin: catalog management ──────────────────────────
+
+  // List all catalog items (merged baseline + overrides) plus a status map
+  app.get("/api/admin/catalog", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { readDatabase } = await import("./database.js");
+    const { mergeCatalog, annotateOverrides } = await import("./catalog-overrides.js");
+    const db = await readRuntimeDatabase();
+    const baseline = (await readDatabase()).catalog;
+    const merged = mergeCatalog(baseline, db.catalogOverrides);
+    const status = Object.fromEntries(annotateOverrides(baseline, db.catalogOverrides));
+    return { items: merged, status };
+  });
+
+  // Get a single catalog item with its YAML and Markdown body for editing
+  app.get("/api/admin/catalog/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { id } = request.params as { id: string };
+    const { isValidCatalogId, loadOverrideYaml, loadOverrideMarkdown, resolvePlaybookYaml, hasResolvedPlaybook } = await import("./catalog-overrides.js");
+    if (!isValidCatalogId(id)) { reply.code(400); return { error: "Invalid catalog id." }; }
+    const { readDatabase } = await import("./database.js");
+    const { mergeCatalog } = await import("./catalog-overrides.js");
+    const db = await readRuntimeDatabase();
+    const baseline = (await readDatabase()).catalog;
+    const merged = mergeCatalog(baseline, db.catalogOverrides);
+    const item = merged.find((c) => c.id === id);
+    if (!item) { reply.code(404); return { error: "Catalog item not found." }; }
+    // Pull YAML (override or baseline)
+    let yaml = "";
+    try {
+      if (await hasResolvedPlaybook(id)) yaml = await resolvePlaybookYaml(id);
+    } catch { /* ignore */ }
+    // Pull markdown (override first, then baseline)
+    let markdown = "";
+    const overrideMd = await loadOverrideMarkdown(id);
+    if (overrideMd !== null) markdown = overrideMd;
+    else {
+      try {
+        const fs = await import("node:fs/promises");
+        const path = await import("node:path");
+        const { resolveFromRoot } = await import("./repo.js");
+        markdown = await fs.readFile(resolveFromRoot(path.join(item.guidePath)), "utf8");
+      } catch { /* no baseline guide */ }
+    }
+    const yamlOverride = await loadOverrideYaml(id);
+    const overrideStatus = (db.catalogOverrides ?? []).find((o) => (o.baseId ?? o.id) === id);
+    return {
+      item,
+      yaml,
+      markdown,
+      hasYamlOverride: yamlOverride !== null,
+      hasMarkdownOverride: overrideMd !== null,
+      isUserAdded: overrideStatus ? !overrideStatus.baseId : false
+    };
+  });
+
+  // Create a new catalog item (admin-only)
+  app.post("/api/admin/catalog", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const body = (request.body ?? {}) as {
+      id?: string;
+      kind?: "software" | "combo";
+      name?: string;
+      nameEn?: string;
+      category?: "runtime" | "developer" | "database" | "container" | "security" | "network" | "service";
+      summary?: string;
+      summaryEn?: string;
+      imageTone?: string;
+      sensitivity?: "safe" | "review" | "privileged";
+      rating?: number;
+      playbookYaml?: string;
+      guideMarkdown?: string;
+      components?: Array<{ type: "software" | "system-command" | "system-config"; label: string; labelEn: string; detail: string }>;
+      deployModes?: Array<"system" | "docker">;
+    };
+    const { isValidCatalogId, saveOverrideYaml, saveOverrideMarkdown } = await import("./catalog-overrides.js");
+    if (!body.id || !isValidCatalogId(body.id)) {
+      reply.code(400); return { error: "id is required and must match [a-z0-9-]{1,60}" };
+    }
+    if (!body.name?.trim()) { reply.code(400); return { error: "name is required" }; }
+    if (!body.playbookYaml?.trim()) { reply.code(400); return { error: "playbookYaml is required" }; }
+    // Validate YAML by attempting to parse it
+    try {
+      const { parsePlaybook } = await import("./engine/index.js");
+      parsePlaybook(body.playbookYaml);
+    } catch (err) {
+      reply.code(400);
+      return { error: `Invalid playbook YAML: ${err instanceof Error ? err.message : err}` };
+    }
+    // Make sure the id isn't already in use (baseline OR another override)
+    const { readDatabase } = await import("./database.js");
+    const { mergeCatalog } = await import("./catalog-overrides.js");
+    const db = await readRuntimeDatabase();
+    const baseline = (await readDatabase()).catalog;
+    const merged = mergeCatalog(baseline, db.catalogOverrides);
+    if (merged.some((m) => m.id === body.id)) {
+      reply.code(400); return { error: `Catalog id already exists: ${body.id}` };
+    }
+    const now = new Date().toISOString();
+    await updateRuntimeDatabase((rdb) => {
+      if (!rdb.catalogOverrides) rdb.catalogOverrides = [];
+      rdb.catalogOverrides.push({
+        id: body.id!,
+        // No baseId → user-added
+        overrides: {
+          kind: body.kind ?? "software",
+          name: body.name!,
+          nameEn: body.nameEn ?? body.name!,
+          category: body.category ?? "service",
+          summary: body.summary ?? "",
+          summaryEn: body.summaryEn ?? body.summary ?? "",
+          imageTone: body.imageTone ?? "slate",
+          sensitivity: body.sensitivity ?? "safe",
+          rating: body.rating ?? 0,
+          components: body.components ?? [],
+          deployModes: body.deployModes ?? ["system"]
+        },
+        createdAt: now,
+        updatedAt: now,
+        modifiedBy: user.id
+      });
+    });
+    await saveOverrideYaml(body.id, body.playbookYaml);
+    if (body.guideMarkdown) await saveOverrideMarkdown(body.id, body.guideMarkdown);
+    return { ok: true, id: body.id };
+  });
+
+  // Update a catalog item (creates an override on a baseline item, or edits a user-added one)
+  app.patch("/api/admin/catalog/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as {
+      kind?: "software" | "combo";
+      name?: string;
+      nameEn?: string;
+      category?: "runtime" | "developer" | "database" | "container" | "security" | "network" | "service";
+      summary?: string;
+      summaryEn?: string;
+      imageTone?: string;
+      sensitivity?: "safe" | "review" | "privileged";
+      rating?: number;
+      playbookYaml?: string;
+      guideMarkdown?: string;
+      components?: Array<{ type: "software" | "system-command" | "system-config"; label: string; labelEn: string; detail: string }>;
+      deployModes?: Array<"system" | "docker">;
+      hidden?: boolean;
+    };
+    const { isValidCatalogId, saveOverrideYaml, saveOverrideMarkdown } = await import("./catalog-overrides.js");
+    if (!isValidCatalogId(id)) { reply.code(400); return { error: "Invalid catalog id." }; }
+
+    // Validate YAML if provided
+    if (body.playbookYaml) {
+      try {
+        const { parsePlaybook } = await import("./engine/index.js");
+        parsePlaybook(body.playbookYaml);
+      } catch (err) {
+        reply.code(400);
+        return { error: `Invalid playbook YAML: ${err instanceof Error ? err.message : err}` };
+      }
+    }
+
+    const { readDatabase } = await import("./database.js");
+    const baseline = (await readDatabase()).catalog;
+    const baselineHas = baseline.some((b) => b.id === id);
+
+    const now = new Date().toISOString();
+    const result = await updateRuntimeDatabase((rdb) => {
+      if (!rdb.catalogOverrides) rdb.catalogOverrides = [];
+      // Find existing override
+      let ov = rdb.catalogOverrides.find((o) => (o.baseId ?? o.id) === id);
+      if (!ov) {
+        // First time editing a baseline item
+        if (baselineHas) {
+          ov = {
+            id,
+            baseId: id,
+            overrides: {},
+            createdAt: now,
+            updatedAt: now,
+            modifiedBy: user.id
+          };
+          rdb.catalogOverrides.push(ov);
+        } else {
+          return { error: "Catalog item not found" } as { error: string };
+        }
+      }
+      // Apply field updates
+      if (body.hidden !== undefined) ov.hidden = body.hidden;
+      ov.overrides = ov.overrides ?? {};
+      if (body.kind !== undefined) ov.overrides.kind = body.kind;
+      if (body.name !== undefined) ov.overrides.name = body.name;
+      if (body.nameEn !== undefined) ov.overrides.nameEn = body.nameEn;
+      if (body.category !== undefined) ov.overrides.category = body.category;
+      if (body.summary !== undefined) ov.overrides.summary = body.summary;
+      if (body.summaryEn !== undefined) ov.overrides.summaryEn = body.summaryEn;
+      if (body.imageTone !== undefined) ov.overrides.imageTone = body.imageTone;
+      if (body.sensitivity !== undefined) ov.overrides.sensitivity = body.sensitivity;
+      if (body.rating !== undefined) ov.overrides.rating = body.rating;
+      if (body.components !== undefined) ov.overrides.components = body.components;
+      if (body.deployModes !== undefined) ov.overrides.deployModes = body.deployModes;
+      ov.updatedAt = now;
+      ov.modifiedBy = user.id;
+      return { ok: true };
+    });
+    if ("error" in result) { reply.code(404); return result; }
+    if (body.playbookYaml) await saveOverrideYaml(id, body.playbookYaml);
+    if (body.guideMarkdown !== undefined) await saveOverrideMarkdown(id, body.guideMarkdown);
+    return { ok: true };
+  });
+
+  // Delete: hide a baseline item OR fully remove a user-added one
+  app.delete("/api/admin/catalog/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { id } = request.params as { id: string };
+    const { deleteOverrideYaml, deleteOverrideMarkdown } = await import("./catalog-overrides.js");
+    const { readDatabase } = await import("./database.js");
+    const baseline = (await readDatabase()).catalog;
+    const baselineHas = baseline.some((b) => b.id === id);
+
+    const now = new Date().toISOString();
+    await updateRuntimeDatabase((rdb) => {
+      if (!rdb.catalogOverrides) rdb.catalogOverrides = [];
+      if (baselineHas) {
+        // Hide the baseline item via override
+        const existing = rdb.catalogOverrides.find((o) => o.baseId === id);
+        if (existing) {
+          existing.hidden = true;
+          existing.updatedAt = now;
+          existing.modifiedBy = user.id;
+        } else {
+          rdb.catalogOverrides.push({
+            id,
+            baseId: id,
+            hidden: true,
+            createdAt: now,
+            updatedAt: now,
+            modifiedBy: user.id
+          });
+        }
+      } else {
+        // Remove user-added entry entirely
+        rdb.catalogOverrides = rdb.catalogOverrides.filter((o) => o.id !== id);
+      }
+    });
+    if (!baselineHas) {
+      // Drop body files for user-added items
+      await deleteOverrideYaml(id);
+      await deleteOverrideMarkdown(id);
+    }
+    return { ok: true };
+  });
+
+  // Reset: drop the override entirely so the baseline shines through again
+  app.post("/api/admin/catalog/:id/reset", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { id } = request.params as { id: string };
+    const { deleteOverrideYaml, deleteOverrideMarkdown } = await import("./catalog-overrides.js");
+    const { readDatabase } = await import("./database.js");
+    const baseline = (await readDatabase()).catalog;
+    const baselineHas = baseline.some((b) => b.id === id);
+    if (!baselineHas) { reply.code(400); return { error: "Reset only applies to baseline items. Delete user-added items instead." }; }
+    await updateRuntimeDatabase((rdb) => {
+      rdb.catalogOverrides = (rdb.catalogOverrides ?? []).filter((o) => o.baseId !== id);
+    });
+    await deleteOverrideYaml(id);
+    await deleteOverrideMarkdown(id);
+    return { ok: true };
+  });
 }
 
 function readBearerToken(header: string | undefined): string | undefined {
