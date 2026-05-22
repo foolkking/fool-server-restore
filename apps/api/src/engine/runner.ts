@@ -195,7 +195,10 @@ export async function runPlaybook(
 
       if (result.failed) {
         log.status = "failed";
-        // Enrich error message with classification
+        // Enrich error message with classification — but PRESERVE the module's
+        // detailed msg if it already gave a structured report (📦/🔧 prefix).
+        // The classifier produces a one-line user hint that can be confusing
+        // when the module already explained per-package failures.
         if (result.stderr || result.stdout) {
           const classified = classifyError(
             result.stderr ?? "",
@@ -203,7 +206,15 @@ export async function runPlaybook(
             result.data?.exitCode as number ?? 1,
             resolvedArgs.cmd as string ?? resolvedArgs.name as string ?? rawTask.module
           );
-          result.msg = classified.messageZh + (classified.fixHintZh ? `\n💡 ${classified.fixHintZh}` : "");
+          const moduleAlreadyDetailed = typeof result.msg === "string"
+            && (result.msg.startsWith("📦") || result.msg.startsWith("🔧") || result.msg.includes("preflight:"));
+          if (moduleAlreadyDetailed) {
+            // Append the hint as a tail line so user gets both detail + suggestion
+            const hint = classified.fixHintZh ? `\n💡 ${classified.fixHintZh}` : "";
+            result.msg = `${result.msg}${hint}`;
+          } else {
+            result.msg = classified.messageZh + (classified.fixHintZh ? `\n💡 ${classified.fixHintZh}` : "");
+          }
         }
         failed++;
         if (!rawTask.ignore_errors) {

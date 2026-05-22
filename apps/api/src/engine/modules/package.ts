@@ -1,5 +1,5 @@
 /**
- * package — 幂等的 apt/yum/dnf 安装/卸载
+ * package — 幂等的 apt/yum/dnf 安装/卸载（含跨发行版兼容）
  *
  * Args:
  *   name: string | string[]      要安装的包名（一个或多个）
@@ -11,8 +11,13 @@
  *   1. 检测包管理器（apt / yum / dnf）
  *   2. 跨发行版名称翻译（redis-server → redis 等）
  *   3. 已安装的跳过（幂等）
- *   4. 一次尝试批量安装；如果失败，逐个安装并收集每个的成败
- *   5. RHEL/CentOS 系统：nginx/redis 等失败时自动尝试启用 EPEL 后重试
+ *   4. 【新】对 dnf/yum 系统执行 PREFLIGHT 阶段（主动而非被动）：
+ *        - 解析 /etc/os-release 获取 distro family + major version
+ *        - 探测 /etc/dnf/dnf.conf 中是否有 exclude= 配置（Aliyun Anolis 等定制镜像常见）
+ *        - 如果待装包有需要 EPEL 的，主动安装 epel-release（按主版本号选 URL）
+ *        - 如果待装包有需要 dnf module 的（nginx/redis/php/postgresql/mariadb），主动 enable
+ *   5. 一次尝试批量安装；如有 exclude 配置则始终带上 --disableexcludes=all
+ *   6. 批量失败后逐个安装，收集详细失败原因（每个包都给出可读信息）
  */
 
 import type { AnsibleModule, ModuleResult, SshExecutor } from "../types.js";
@@ -60,19 +65,31 @@ const PACKAGE_ALIASES: Record<string, { rhel?: string; fedora?: string }> = {
 
 /**
  * Packages on RHEL/CentOS that commonly need EPEL repository enabled.
- * If install fails for one of these, we attempt to enable EPEL and retry.
+ * If our package list contains any of these, we proactively install EPEL during preflight.
  */
 const NEEDS_EPEL = new Set([
   "bat", "btop", "fd-find", "ripgrep", "zoxide", "git-lfs",
   "fish", "neofetch", "ncdu", "fzf", "tldr",
-  "caddy", "cockpit"
+  "caddy", "cockpit", "fail2ban", "certbot"
 ]);
 
 /**
  * Packages that come from RHEL/Anolis AppStream module streams (dnf module enable required).
- * Format: pkg → module name (defaults to pkg name).
+ * On EL8/EL9, these names map 1:1 to module names.
  */
 const NEEDS_DNF_MODULE = new Set(["nginx", "postgresql", "postgresql-server", "redis", "mariadb", "mariadb-server", "php"]);
+
+/** Information collected during the PREFLIGHT phase, included in the final user-facing msg. */
+interface PreflightInfo {
+  /** distro family parsed from /etc/os-release ID/ID_LIKE */
+  family: "rhel" | "anolis" | "rocky" | "alma" | "centos" | "fedora" | "unknown";
+  /** major version (e.g. 8, 9, 10) */
+  major: number;
+  /** Whether `/etc/dnf/dnf.conf` (or yum.conf) has an `exclude=` line that filters out our packages */
+  excludeDetected: boolean;
+  /** Status messages from preflight (EPEL install, module enables, etc.) */
+  log: string[];
+}
 
 function translatePackageName(pkg: string, pm: "apt" | "yum" | "dnf"): { name: string; skipped?: boolean } {
   if (pm === "apt") return { name: pkg };
@@ -84,8 +101,7 @@ function translatePackageName(pkg: string, pm: "apt" | "yum" | "dnf"): { name: s
 }
 
 async function detectPackageManager(executor: SshExecutor): Promise<"apt" | "yum" | "dnf" | null> {
-  // Apt is preferred when present (Debian/Ubuntu where apt+dnf both exist is rare,
-  // but if so, apt is the right choice for a Debian-rooted system).
+  // Apt is preferred when present (Debian/Ubuntu).
   const apt = await executor.exec("command -v apt-get >/dev/null 2>&1");
   if (apt.exitCode === 0) return "apt";
   const dnf = await executor.exec("command -v dnf >/dev/null 2>&1");
@@ -93,6 +109,42 @@ async function detectPackageManager(executor: SshExecutor): Promise<"apt" | "yum
   const yum = await executor.exec("command -v yum >/dev/null 2>&1");
   if (yum.exitCode === 0) return "yum";
   return null;
+}
+
+/** Parse /etc/os-release to identify distro family and major version. */
+async function detectDistro(executor: SshExecutor): Promise<{ family: PreflightInfo["family"]; major: number }> {
+  const r = await executor.exec("cat /etc/os-release 2>/dev/null");
+  if (r.exitCode !== 0) return { family: "unknown", major: 0 };
+  const text = r.stdout;
+  const idMatch = text.match(/^ID=("?)([a-z]+)\1/m);
+  const verMatch = text.match(/^VERSION_ID=("?)([\d.]+)\1/m);
+  const idLikeMatch = text.match(/^ID_LIKE=("?)([^"\n]+)\1/m);
+  const id = idMatch?.[2]?.toLowerCase() ?? "";
+  const idLike = idLikeMatch?.[2]?.toLowerCase() ?? "";
+  const major = verMatch?.[2] ? parseInt(verMatch[2].split(".")[0], 10) : 0;
+
+  let family: PreflightInfo["family"] = "unknown";
+  if (id === "anolis") family = "anolis";
+  else if (id === "rocky") family = "rocky";
+  else if (id === "almalinux" || id === "alma") family = "alma";
+  else if (id === "centos") family = "centos";
+  else if (id === "fedora") family = "fedora";
+  else if (id === "rhel" || id === "redhat") family = "rhel";
+  else if (idLike.includes("rhel") || idLike.includes("centos") || idLike.includes("fedora")) family = "rhel";
+
+  return { family, major };
+}
+
+/**
+ * Detect whether dnf/yum has an `exclude=` config that may filter out our packages.
+ * Aliyun Anolis custom images are well-known for shipping `exclude=nginx*` to
+ * push their custom-built version. Returns true if we should pass --disableexcludes=all.
+ */
+async function detectDnfExclude(executor: SshExecutor): Promise<boolean> {
+  const r = await executor.exec(
+    "grep -hE '^[[:space:]]*exclude[[:space:]]*=' /etc/dnf/dnf.conf /etc/yum.conf 2>/dev/null | grep -v '^[[:space:]]*#'"
+  );
+  return r.exitCode === 0 && r.stdout.trim().length > 0;
 }
 
 async function isInstalled(executor: SshExecutor, pm: "apt" | "yum" | "dnf", pkg: string): Promise<boolean> {
@@ -104,9 +156,10 @@ async function isInstalled(executor: SshExecutor, pm: "apt" | "yum" | "dnf", pkg
   return r.exitCode === 0;
 }
 
-/** Try to install a single package on the given pm; returns ok=true on success.
- *  When `disableExcludes=true` (dnf only) we add `--disableexcludes=all` to bypass
- *  /etc/dnf/dnf.conf exclude lists (common on Anolis/Aliyun customised images). */
+/**
+ * Try to install a single package on the given pm; returns ok=true on success.
+ * `disableExcludes` adds --disableexcludes=all to bypass /etc/dnf/dnf.conf exclude lists.
+ */
 async function installOne(
   executor: SshExecutor,
   pm: "apt" | "yum" | "dnf",
@@ -138,7 +191,6 @@ async function removeOne(executor: SshExecutor, pm: "apt" | "yum" | "dnf", pkg: 
   return { ok: exitCode === 0, stdout, stderr };
 }
 
-/** Detect whether the failure mode looks like "package not in any enabled repo" (EPEL might fix). */
 function looksLikeMissingRepo(stderr: string, stdout: string): boolean {
   const msg = `${stderr}\n${stdout}`.toLowerCase();
   return msg.includes("no match for argument") ||
@@ -148,45 +200,104 @@ function looksLikeMissingRepo(stderr: string, stdout: string): boolean {
          msg.includes("excluded by exclude filtering");
 }
 
-/** Detect whether the failure is specifically "all matches filtered out by exclude config". */
 function looksLikeExcludeFilter(stderr: string, stdout: string): boolean {
   const msg = `${stderr}\n${stdout}`.toLowerCase();
   return msg.includes("all matches were filtered out") ||
          msg.includes("excluded by exclude filtering");
 }
 
-/** Best-effort: enable EPEL on RHEL/CentOS/Anolis. Idempotent. Returns true if newly enabled. */
-async function tryEnableEpel(executor: SshExecutor, pm: "apt" | "yum" | "dnf"): Promise<boolean> {
-  if (pm === "apt") return false;
+/**
+ * Best-effort: enable EPEL on RHEL/CentOS/Anolis.
+ * Picks the URL matching the OS major version when known, plus a few fallbacks.
+ * Idempotent: returns true if already installed or if newly installed.
+ */
+async function tryEnableEpel(executor: SshExecutor, pm: "apt" | "yum" | "dnf", major: number): Promise<{ ok: boolean; note: string }> {
+  if (pm === "apt") return { ok: false, note: "skipped (apt-based)" };
   // Already installed?
   const check = await executor.exec("rpm -q epel-release >/dev/null 2>&1");
-  if (check.exitCode === 0) return false;
-  // Try multiple strategies: dnf install epel-release (works on RHEL 8/9, Rocky, Alma, Anolis)
-  const strategies = [
-    "sudo dnf install -y epel-release",
-    "sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm",
-    "sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm",
-    "sudo yum install -y epel-release"
-  ];
+  if (check.exitCode === 0) return { ok: true, note: "already installed" };
+
+  // Build strategy list, putting the version-matched URL first when known.
+  const strategies: string[] = ["sudo dnf install -y epel-release", "sudo yum install -y epel-release"];
+  if (major === 9) {
+    strategies.unshift("sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm");
+  } else if (major === 8) {
+    strategies.unshift("sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm");
+  } else if (major === 10) {
+    strategies.unshift("sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm");
+  } else {
+    // Unknown major — try both 8 and 9 in order
+    strategies.push(
+      "sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm",
+      "sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm"
+    );
+  }
+
   for (const cmd of strategies) {
     const r = await executor.exec(cmd);
-    if (r.exitCode === 0) return true;
+    if (r.exitCode === 0) return { ok: true, note: `installed via ${cmd.includes("http") ? "fedoraproject.org" : "default repo"}` };
   }
-  return false;
+  return { ok: false, note: "all install strategies failed" };
 }
 
 /**
  * Best-effort: enable a dnf module stream (e.g. nginx, php, postgresql).
- * On RHEL/Anolis 8+, packages like nginx come from a "module stream" that must be
- * enabled before the package becomes installable. Idempotent.
+ * On RHEL/Anolis 8+, these come from "module streams" that must be enabled first.
  */
 async function tryEnableDnfModule(executor: SshExecutor, pm: "apt" | "yum" | "dnf", moduleName: string): Promise<boolean> {
   if (pm !== "dnf") return false;
-  // Check if dnf supports modules at all (dnf >= 4)
   const supports = await executor.exec("sudo dnf module list >/dev/null 2>&1");
   if (supports.exitCode !== 0) return false;
   const r = await executor.exec(`sudo dnf module enable -y ${moduleName} 2>&1`);
   return r.exitCode === 0;
+}
+
+/**
+ * PROACTIVE preflight phase for dnf/yum systems.
+ * Runs BEFORE the install attempt: detects distro, installs EPEL upfront if needed,
+ * enables any required dnf module streams, and detects exclude config.
+ */
+async function runPreflight(
+  executor: SshExecutor,
+  pm: "apt" | "yum" | "dnf",
+  packagesToInstall: string[]
+): Promise<PreflightInfo> {
+  const log: string[] = [];
+
+  if (pm === "apt") {
+    return { family: "unknown", major: 0, excludeDetected: false, log };
+  }
+
+  const distro = await detectDistro(executor);
+  log.push(`distro: ${distro.family}${distro.major ? ` ${distro.major}` : ""}`);
+
+  // Detect exclude config that may filter out our packages
+  const excludeDetected = await detectDnfExclude(executor);
+  if (excludeDetected) log.push("dnf exclude= detected → will use --disableexcludes=all");
+
+  // Pre-install EPEL if any package in our list lives there
+  const needsEpel = packagesToInstall.some((p) => NEEDS_EPEL.has(p));
+  if (needsEpel) {
+    const epel = await tryEnableEpel(executor, pm, distro.major);
+    log.push(`EPEL: ${epel.note}`);
+  }
+
+  // Pre-enable any dnf module streams our packages need
+  const modules = packagesToInstall.filter((p) => NEEDS_DNF_MODULE.has(p));
+  if (modules.length > 0 && pm === "dnf") {
+    for (const m of modules) {
+      const ok = await tryEnableDnfModule(executor, pm, m);
+      log.push(`module ${m}: ${ok ? "enabled" : "skip (already enabled or unavailable)"}`);
+    }
+  }
+
+  // Refresh metadata once so newly-enabled repos/modules are visible
+  if (needsEpel || modules.length > 0 || excludeDetected) {
+    await executor.exec(`sudo ${pm} makecache --refresh -y >/dev/null 2>&1 || sudo ${pm} makecache >/dev/null 2>&1`);
+    log.push("metadata: refreshed");
+  }
+
+  return { family: distro.family, major: distro.major, excludeDetected, log };
 }
 
 export const packageModule: AnsibleModule<PackageArgs> = {
@@ -251,74 +362,83 @@ export const packageModule: AnsibleModule<PackageArgs> = {
       };
     }
 
+    // ── PREFLIGHT (only relevant for present + dnf/yum) ──
+    let preflight: PreflightInfo | null = null;
+    if (state === "present" && pm !== "apt") {
+      preflight = await runPreflight(executor, pm, needAction.map((t) => t.name));
+    }
+
     // For apt, refresh the cache once before installing
     if (state === "present" && pm === "apt" && args.update_cache !== false) {
       await executor.exec("sudo apt-get update -qq");
     }
 
-    // Try batch install/remove first (fast path). Fall through to per-package on failure.
+    // Try batch install/remove (with --disableexcludes=all if exclude config was detected)
     const targets = needAction.map((t) => t.name);
+    const disableExcludes = preflight?.excludeDetected ?? false;
     const succeeded: string[] = [];
     const failed: Array<{ name: string; reason: string }> = [];
 
-    const op = state === "present" ? installOne : removeOne;
     const batchCmd = state === "present"
       ? (pm === "apt" ? `sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ${targets.join(" ")}` :
-         pm === "dnf" ? `sudo dnf install -y ${targets.join(" ")}` :
-                        `sudo yum install -y ${targets.join(" ")}`)
+         pm === "dnf" ? `sudo dnf install -y${disableExcludes ? " --disableexcludes=all" : ""} ${targets.join(" ")}` :
+                        `sudo yum install -y${disableExcludes ? " --disableexcludes=all" : ""} ${targets.join(" ")}`)
       : (pm === "apt" ? `sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y ${targets.join(" ")}` :
          pm === "dnf" ? `sudo dnf remove -y ${targets.join(" ")}` :
                         `sudo yum remove -y ${targets.join(" ")}`);
 
     const batch = await executor.exec(batchCmd);
+    const op = state === "present" ? installOne : removeOne;
+
     if (batch.exitCode === 0) {
-      // Batch worked
       succeeded.push(...targets);
     } else {
-      // Batch failed — try one-by-one, with progressive recovery strategies on RHEL/dnf:
-      //   1. Plain retry (transient failures)
-      //   2. If excluded by config → retry with --disableexcludes=all
-      //   3. If "no match" + known dnf module → enable module, retry
-      //   4. If "no match" + known EPEL package → install EPEL, retry
-      let epelTried = false;
-      const dnfModulesTried = new Set<string>();
+      // Batch failed — try one-by-one. Each package gets up to 3 recovery attempts:
+      //   (a) plain retry (transient failure)
+      //   (b) bypass dnf exclude filter (if not already passing --disableexcludes=all)
+      //   (c) install EPEL or enable dnf module on demand (if preflight didn't already)
+      let lateEpelTried = false;
+      const lateModulesTried = new Set<string>();
       for (const t of needAction) {
-        let result = await op(executor, pm, t.name);
+        // First attempt with the same exclude flag the batch used.
+        let result = state === "present"
+          ? await installOne(executor, pm, t.name, disableExcludes)
+          : await op(executor, pm, t.name);
 
         if (!result.ok && state === "present" && pm !== "apt" && looksLikeMissingRepo(result.stderr, result.stdout)) {
-          // Strategy 1: bypass dnf exclude config (common on Anolis/Aliyun custom images)
-          if (looksLikeExcludeFilter(result.stderr, result.stdout)) {
-            result = await installOne(executor, pm, t.name, /*disableExcludes*/ true);
+          // (b) If we weren't bypassing excludes yet, try with bypass.
+          if (!disableExcludes && looksLikeExcludeFilter(result.stderr, result.stdout)) {
+            result = await installOne(executor, pm, t.name, true);
           }
-          // Strategy 2: enable a dnf module stream (nginx, php, postgresql, redis, mariadb)
-          if (!result.ok && NEEDS_DNF_MODULE.has(t.name) && !dnfModulesTried.has(t.name)) {
-            dnfModulesTried.add(t.name);
-            const moduleEnabled = await tryEnableDnfModule(executor, pm, t.name);
-            if (moduleEnabled) {
-              result = await op(executor, pm, t.name);
-              if (!result.ok && looksLikeExcludeFilter(result.stderr, result.stdout)) {
+          // (c) Late-stage EPEL install (only if preflight didn't already, or if it failed).
+          if (!result.ok && !lateEpelTried && (NEEDS_EPEL.has(t.name) || NEEDS_EPEL.has(t.original))) {
+            lateEpelTried = true;
+            const epel = await tryEnableEpel(executor, pm, preflight?.major ?? 0);
+            if (epel.ok) {
+              result = await installOne(executor, pm, t.name, disableExcludes);
+              if (!result.ok && !disableExcludes && looksLikeExcludeFilter(result.stderr, result.stdout)) {
                 result = await installOne(executor, pm, t.name, true);
               }
             }
           }
-          // Strategy 3: enable EPEL once if any failing package commonly lives there
-          if (!result.ok && !epelTried && (NEEDS_EPEL.has(t.name) || NEEDS_EPEL.has(t.original))) {
-            epelTried = true;
-            const enabled = await tryEnableEpel(executor, pm);
-            if (enabled) {
-              result = await op(executor, pm, t.name);
-              if (!result.ok && looksLikeExcludeFilter(result.stderr, result.stdout)) {
+          // (c) Late-stage module enable (only if preflight didn't already)
+          if (!result.ok && NEEDS_DNF_MODULE.has(t.name) && !lateModulesTried.has(t.name)) {
+            lateModulesTried.add(t.name);
+            const moduleEnabled = await tryEnableDnfModule(executor, pm, t.name);
+            if (moduleEnabled) {
+              result = await installOne(executor, pm, t.name, disableExcludes);
+              if (!result.ok && !disableExcludes && looksLikeExcludeFilter(result.stderr, result.stdout)) {
                 result = await installOne(executor, pm, t.name, true);
               }
             }
           }
         }
+
         if (result.ok) {
           succeeded.push(t.name);
         } else {
-          // Extract the most informative line
           const reason = looksLikeExcludeFilter(result.stderr, result.stdout)
-            ? "excluded by dnf exclude config"
+            ? "excluded by dnf config (use --disableexcludes=all manually if intentional)"
             : looksLikeMissingRepo(result.stderr, result.stdout)
             ? "not in any enabled repo (try EPEL or check distro compatibility)"
             : (result.stderr || result.stdout || "exit non-zero").split("\n").filter((l) => l.trim()).slice(-1)[0]?.slice(0, 200) || "failed";
@@ -327,7 +447,11 @@ export const packageModule: AnsibleModule<PackageArgs> = {
       }
     }
 
+    // Build the user-facing message. We use 📦 as a marker so runner.ts can preserve it.
     const noteParts: string[] = [];
+    if (preflight && preflight.log.length > 0) {
+      noteParts.push(`preflight: ${preflight.log.join("; ")}`);
+    }
     if (renamedPairs.length > 0) noteParts.push(`renamed for ${pm}: ${renamedPairs.join(", ")}`);
     if (skippedByDistro.length > 0) noteParts.push(`skipped on ${pm}: ${skippedByDistro.join(", ")}`);
     if (alreadyOk.length > 0) noteParts.push(`already ${state}: ${alreadyOk.join(", ")}`);
@@ -335,22 +459,21 @@ export const packageModule: AnsibleModule<PackageArgs> = {
     const note = noteParts.length > 0 ? ` [${noteParts.join("; ")}]` : "";
 
     if (succeeded.length === 0 && failed.length > 0) {
-      // Total failure
+      // Total failure — include detailed per-package reasons + preflight log
       return {
         changed: false,
         failed: true,
-        msg: `Package ${state} failed for all ${failed.length} packages${note}`,
+        msg: `📦 Package ${state} failed for all ${failed.length} packages${note}`,
         stdout: batch.stdout,
         stderr: batch.stderr
       };
     }
 
     if (failed.length > 0 && !ignoreMissing) {
-      // Some succeeded, some failed, and user requires all-or-nothing
       return {
         changed: succeeded.length > 0,
         failed: true,
-        msg: `Partial: ${succeeded.length} succeeded, ${failed.length} failed${note}`,
+        msg: `📦 Partial: ${succeeded.length} succeeded, ${failed.length} failed${note}`,
         stdout: batch.stdout,
         stderr: batch.stderr
       };
@@ -360,10 +483,9 @@ export const packageModule: AnsibleModule<PackageArgs> = {
     const action = state === "present" ? "Installed" : "Removed";
     return {
       changed: succeeded.length > 0,
-      // failed only if completely failed; partial = success with note
       msg: failed.length > 0
-        ? `${action} ${succeeded.length}/${succeeded.length + failed.length} via ${pm}: ${succeeded.join(", ") || "(none)"}${note}`
-        : `${action} via ${pm}: ${succeeded.join(", ")}${note}`,
+        ? `📦 ${action} ${succeeded.length}/${succeeded.length + failed.length} via ${pm}: ${succeeded.join(", ") || "(none)"}${note}`
+        : `📦 ${action} via ${pm}: ${succeeded.join(", ")}${note}`,
       stdout: batch.stdout,
       stderr: batch.stderr
     };

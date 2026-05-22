@@ -26,6 +26,7 @@
 | 暗色模式 + 移动端响应式 | ✅ |
 | Docker 化部署 + 沙盒 demo | ✅ |
 | 90 个引擎单元测试 | ✅ |
+| 跨发行版兼容（Ubuntu→RHEL/Anolis 包名/服务名翻译 + dnf 模块/EPEL 主动启用） | ✅ |
 
 ### 引擎模块（13 个）
 
@@ -102,12 +103,12 @@ node --test apps/api/dist/engine/tests/*.test.js
 ```
 
 ```
-# tests 90
-# pass 90
+# tests 116
+# pass 116
 # fail 0
 ```
 
-测试套件覆盖：runner / errors / 各模块（package / service / shell / lineinfile 等）/ 任务队列 / 敏感扫描 / cron 解析器 / migrations / catalog overrides。
+测试套件覆盖：runner / errors / 各模块（package / service / shell / lineinfile 等）/ 任务队列 / 敏感扫描 / cron 解析器 / migrations / catalog overrides / 跨发行版翻译 / 包模块 preflight 阶段 (EPEL/module/exclude 探测)。
 
 ## 启动命令
 
