@@ -115,6 +115,8 @@ node --test apps/api/dist/engine/tests/*.test.js
 ### 本地
 
 ```bash
+git clone https://github.com/foolkking/envforge.git
+cd envforge
 npm install
 echo "ENVFORGE_MASTER_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" > .env
 npm run build

@@ -40,7 +40,7 @@ sudo usermod -aG docker $USER && newgrp docker
 
 # 2. 拉代码
 sudo mkdir -p /opt/envforge && sudo chown $USER /opt/envforge && cd /opt/envforge
-git clone https://github.com/your-org/EnvForge.git .
+git clone https://github.com/foolkking/envforge.git .
 
 # 3. 配置 master key + admin 邮箱
 cp .env.example .env

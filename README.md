@@ -11,6 +11,8 @@
 
 自托管的 Linux 服务器配置管理平台。通过 SSH 连接虚拟机，一键安装软件、管理配置、保留环境，把整套系统状态变成可重用的 Playbook。
 
+> 项目仓库：<https://github.com/foolkking/envforge>
+
 ## 核心能力
 
 - **SSH 连接管理** — 密码 / 密钥（Web 上传，AES-256-GCM 加密存储），连接标签分组
@@ -28,6 +30,8 @@
 ## 快速开始
 
 ```bash
+git clone https://github.com/foolkking/envforge.git
+cd envforge
 npm install
 echo "ENVFORGE_MASTER_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" > .env
 npm run build

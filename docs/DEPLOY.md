@@ -124,14 +124,14 @@ cd /opt/envforge
 ### 4.2 git clone
 
 ```bash
-git clone https://github.com/your-org/EnvForge.git .
+git clone https://github.com/foolkking/envforge.git .
 # 注意末尾的 . —— 把仓库内容直接拉到 /opt/envforge，不再多一层目录
 
 # 或者拉某个稳定 tag（推荐生产环境用 tag 而不是 main 分支）：
-# git clone -b v0.1.0 https://github.com/your-org/EnvForge.git .
+# git clone -b v0.1.0 https://github.com/foolkking/envforge.git .
 ```
 
-> ⚠️ 仓库 URL 替换成你的真实仓库地址。如果是私有仓库，先在服务器上配好 SSH key 或 GitHub PAT。
+> 私有 fork 或镜像？把上面 URL 替换成你的仓库地址即可。私有仓库需要先在服务器上配好 SSH key 或 GitHub PAT。
 
 验证关键文件存在：
 
