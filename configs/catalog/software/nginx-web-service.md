@@ -102,6 +102,24 @@ sudo ss -tlnp | grep :80                 # 看谁占着
 sudo systemctl disable --now apache2     # 例：停掉 apache2
 ```
 
+#### 孤儿 nginx 进程（systemctl status 显示 inactive 但端口仍被 nginx 占）
+
+之前手工跑过 `sudo nginx`（不带 systemctl），那个 master 不在 systemd 控制下，
+systemctl restart 不会停它。表现：
+- `systemctl is-active nginx` → `failed` 或 `inactive`
+- `sudo ss -tlnp \| grep :80` → 显示 `users:(("nginx",pid=N,...))`
+- 重启时 journal 里反复出现 `bind() to 0.0.0.0:80 failed (98: Address already in use)`
+
+EnvForge 现在会自动检测并清理（commit `*` 之后），但手工修：
+```bash
+sudo nginx -s quit                       # 先优雅关
+sleep 3
+pgrep -f '^nginx: master' && sudo pkill -KILL -f '^nginx:'   # 还在就强杀
+sudo rm -f /run/nginx.pid                # 清过期 pid 文件
+sudo systemctl start nginx               # systemd 接管
+sudo systemctl enable nginx              # 设开机自启
+```
+
 ## 隐私说明
 
 证书私钥不进入 Playbook 模板，由 Certbot 在目标机器上独立生成。

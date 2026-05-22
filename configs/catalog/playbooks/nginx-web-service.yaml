@@ -46,6 +46,63 @@ tasks:
         fi
         # 都不存在时（重装或精简版）静默通过
 
+  # 孤儿 nginx 清理：systemd 之外手工跑过 `sudo nginx`（或 nginx 服务异常退出
+  # 但 worker 残留）会留下 systemd 不认识的进程，导致 systemctl restart 时
+  # 老 master 仍占着端口、新进程 bind 失败。
+  # 检测：systemctl 认为 nginx 不 active，但 pgrep 还能找到 nginx master。
+  # 处置：先 nginx -s quit 优雅关；超时后 SIGTERM；再超时 SIGKILL。
+  # 必须早于 Pre-check 跑——否则孤儿占着端口 80（用户可能填了 8080），
+  # Pre-check 看不到冲突，但 service: restarted 时新进程会撞上孤儿绑的端口。
+  - name: Reclaim orphan nginx processes (not managed by systemd)
+    module: shell
+    args:
+      cmd: |
+        if systemctl is-active --quiet nginx; then
+          echo "✓ nginx is managed by systemd — no orphan check needed"
+          exit 0
+        fi
+        # systemd 视角不 active；看是否有孤儿进程
+        ORPHAN_PIDS=$(pgrep -f '^nginx: master' 2>/dev/null || true)
+        if [ -z "$ORPHAN_PIDS" ]; then
+          echo "✓ No orphan nginx process"
+          exit 0
+        fi
+        echo "⚠ Found orphan nginx master process(es): $ORPHAN_PIDS"
+        echo "  这些是 systemd 管不到的进程（之前手工跑过 sudo nginx 留下的）。"
+        echo "  正在尝试优雅关闭…"
+        # 1. 先用 nginx -s quit 优雅关闭（让 worker 处理完当前请求）
+        sudo nginx -s quit 2>/dev/null || true
+        # 2. 等最多 5 秒
+        for i in 1 2 3 4 5; do
+          STILL=$(pgrep -f '^nginx: master' 2>/dev/null || true)
+          [ -z "$STILL" ] && break
+          sleep 1
+        done
+        # 3. 还活着 → SIGTERM
+        STILL=$(pgrep -f '^nginx: master' 2>/dev/null || true)
+        if [ -n "$STILL" ]; then
+          echo "  优雅关闭超时，发送 SIGTERM..."
+          sudo pkill -TERM -f '^nginx:' 2>/dev/null || true
+          sleep 2
+        fi
+        # 4. 还活着 → SIGKILL
+        STILL=$(pgrep -f '^nginx: master' 2>/dev/null || true)
+        if [ -n "$STILL" ]; then
+          echo "  强制 SIGKILL..."
+          sudo pkill -KILL -f '^nginx:' 2>/dev/null || true
+          sleep 1
+        fi
+        # 5. 验证
+        STILL=$(pgrep -f '^nginx: master' 2>/dev/null || true)
+        if [ -n "$STILL" ]; then
+          echo "✗ 仍有 nginx 进程未能清理: $STILL"
+          echo "  请手工执行: sudo kill -9 $STILL"
+          exit 1
+        fi
+        # 也清掉过期的 pid 文件（nginx 启动会写 /run/nginx.pid，老进程留下可能误导）
+        sudo rm -f /run/nginx.pid /var/run/nginx.pid 2>/dev/null || true
+        echo "✓ Orphan nginx cleaned up"
+
   # 预检：端口 listen_port 是否已被 nginx 之外的服务占用
   # 提前在这里 fail，比之后 systemctl start 报 "bind() to 0.0.0.0:80 failed"
   # 有用得多——能直接告诉用户是谁占着端口、怎么处理。
@@ -132,6 +189,52 @@ tasks:
     module: shell
     args:
       cmd: "sudo nginx -t"
+
+  # 全配置端口扫描：nginx -t 通过后，扫描所有 server 块声明的 listen 端口。
+  # 仅检查用户填的 listen_port 不够——发行版自带的 default.conf 可能漏了，
+  # 或者 /etc/nginx/conf.d/ 里有用户自己留下的别的配置文件占着 80 端口。
+  # 扫到非 nginx 占用 → fail，列出占用者；扫到 nginx 自己占着 → 已经在预检
+  # task 里清过孤儿，这里复查一次稳妥。
+  - name: Scan all nginx-configured ports for conflicts
+    module: shell
+    args:
+      cmd: |
+        # 从 nginx -T 输出抓所有 listen 端口（去重）
+        PORTS=$(sudo nginx -T 2>/dev/null \
+          | awk '/^\s*listen\s+/ {
+              for(i=2;i<=NF;i++) {
+                if (match($i, /:?([0-9]+)/, m)) { print m[1]; break }
+              }
+            }' \
+          | sort -u)
+        if [ -z "$PORTS" ]; then
+          echo "⚠ Could not parse listen ports from nginx -T (unusual)"
+          exit 0
+        fi
+        echo "Nginx will listen on: $(echo $PORTS | tr '\n' ' ')"
+        BAD=0
+        for P in $PORTS; do
+          OCC=$(sudo ss -tlnp 2>/dev/null | awk -v p=":${P}$" 'NR>1 && $4 ~ p { print; exit }')
+          if [ -z "$OCC" ]; then
+            echo "  ✓ port $P: free"
+            continue
+          fi
+          if echo "$OCC" | grep -q '"nginx"'; then
+            echo "  ✓ port $P: held by nginx itself (will be reclaimed by systemctl restart)"
+            continue
+          fi
+          echo "  ✗ port $P: occupied by another process"
+          echo "    $OCC"
+          BAD=1
+        done
+        if [ "$BAD" = "1" ]; then
+          echo ""
+          echo "请先停止占用进程，或编辑 /etc/nginx/conf.d/*.conf 移除多余的 listen 端口。"
+          echo "常见检查："
+          echo "  sudo grep -rn 'listen' /etc/nginx/ | grep -v envforge.bak"
+          exit 1
+        fi
+        echo "✓ All ports free or held by nginx itself"
 
   # SELinux 预检：RHEL/CentOS/Anolis 上 SELinux 默认拒绝 nginx 连本地非常用端口
   # （只放行 80/443/8080 等少数端口）。如果用户开了反代但 upstream 端口非白名单，
