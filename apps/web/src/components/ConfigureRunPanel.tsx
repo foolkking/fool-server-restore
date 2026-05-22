@@ -48,10 +48,9 @@ function initialValues(schema: VarsSchema | null): Record<string, unknown> {
   if (!schema) return {};
   const out: Record<string, unknown> = {};
   for (const [name, field] of Object.entries(schema)) {
+    // boolean 字段在 schema 类型定义里 default 是必填，所以一定走这条路径。
     if ("default" in field && field.default !== undefined) {
       out[name] = field.default;
-    } else if (field.type === "boolean") {
-      out[name] = false; // safety net — should never trigger because schema requires default
     } else if (field.type === "password") {
       out[name] = ""; // empty → server auto-generates on submit
     } else {
