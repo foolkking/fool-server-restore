@@ -1,25 +1,134 @@
 # Playbook: PostgreSQL 数据库
-name: Install PostgreSQL database
+#
+# 跨发行版策略：
+#   - Ubuntu/Debian: apt 装 postgresql + postgresql-contrib，初始化由 deb 包自动完成
+#   - RHEL/CentOS/Anolis: dnf 装 postgresql-server（PACKAGE_ALIASES 已映射）+
+#     首次启动前必须 postgresql-setup --initdb 才能初始化数据目录
+#
+# 数据目录差异（user 不需要关心，Playbook 在两边都正确处理）：
+#   /var/lib/postgresql/<version>/main      (Debian/Ubuntu)
+#   /var/lib/pgsql/data                     (RHEL family)
+name: Install and configure PostgreSQL database
 hosts: all
 
+vars:
+  listen_addresses: "localhost"
+  port: 5432
+  max_connections: 100
+  postgres_password: "change-me-please"
+  enable_remote: false
+
 tasks:
-  - name: Install PostgreSQL packages
+  - name: Install PostgreSQL server + contrib
     module: package
     args:
-      name:
-        - postgresql
-        - postgresql-contrib
+      name: ["postgresql", "postgresql-contrib"]
       state: present
 
-  - name: Enable postgresql service
+  # RHEL 系统第一次启动前必须 initdb；Ubuntu 的 deb 包会自动 initdb，所以
+  # 这一步在 apt 系统上是 no-op（postgresql-setup 命令不存在 → exit 1 但 ignore_errors）。
+  - name: Initialise database cluster (RHEL/Anolis 首次安装才需要)
+    module: shell
+    args:
+      cmd: |
+        if command -v postgresql-setup >/dev/null 2>&1; then
+          if [ ! -f /var/lib/pgsql/data/PG_VERSION ]; then
+            sudo postgresql-setup --initdb
+          fi
+        fi
+      creates: /var/lib/pgsql/data/PG_VERSION
+
+  - name: Set listen_addresses (Ubuntu path)
+    module: lineinfile
+    args:
+      path: /etc/postgresql/16/main/postgresql.conf
+      regexp: "^#?listen_addresses\\s*="
+      line: "listen_addresses = '{{ listen_addresses }}'"
+    ignore_errors: true
+
+  - name: Set listen_addresses (RHEL path)
+    module: lineinfile
+    args:
+      path: /var/lib/pgsql/data/postgresql.conf
+      regexp: "^#?listen_addresses\\s*="
+      line: "listen_addresses = '{{ listen_addresses }}'"
+    ignore_errors: true
+
+  - name: Set port (Ubuntu path)
+    module: lineinfile
+    args:
+      path: /etc/postgresql/16/main/postgresql.conf
+      regexp: "^#?port\\s*="
+      line: "port = {{ port }}"
+    ignore_errors: true
+
+  - name: Set port (RHEL path)
+    module: lineinfile
+    args:
+      path: /var/lib/pgsql/data/postgresql.conf
+      regexp: "^#?port\\s*="
+      line: "port = {{ port }}"
+    ignore_errors: true
+
+  - name: Set max_connections (Ubuntu path)
+    module: lineinfile
+    args:
+      path: /etc/postgresql/16/main/postgresql.conf
+      regexp: "^#?max_connections\\s*="
+      line: "max_connections = {{ max_connections }}"
+    ignore_errors: true
+
+  - name: Set max_connections (RHEL path)
+    module: lineinfile
+    args:
+      path: /var/lib/pgsql/data/postgresql.conf
+      regexp: "^#?max_connections\\s*="
+      line: "max_connections = {{ max_connections }}"
+    ignore_errors: true
+
+  - name: Enable and start PostgreSQL
     module: service
     args:
       name: postgresql
       enabled: true
       state: started
 
-  - name: Verify PostgreSQL is running
+  - name: Set postgres user password
     module: shell
     args:
-      cmd: "sudo -u postgres pg_isready && echo 'PostgreSQL is ready'"
+      cmd: |
+        sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD '{{ postgres_password }}';"
+
+  - name: Allow remote MD5 auth in pg_hba.conf (only when enable_remote)
+    module: lineinfile
+    args:
+      path: /etc/postgresql/16/main/pg_hba.conf
+      line: "host    all             all             0.0.0.0/0               md5"
+    when: enable_remote
     ignore_errors: true
+
+  - name: Allow remote MD5 auth in pg_hba.conf (RHEL path, only when enable_remote)
+    module: lineinfile
+    args:
+      path: /var/lib/pgsql/data/pg_hba.conf
+      line: "host    all             all             0.0.0.0/0               md5"
+    when: enable_remote
+    ignore_errors: true
+
+  - name: Restart PostgreSQL to apply config
+    module: service
+    args:
+      name: postgresql
+      state: restarted
+
+verify:
+  - name: PostgreSQL service is active
+    cmd: "systemctl is-active --quiet postgresql"
+    hint: "服务未启动。检查 'sudo journalctl -u postgresql -n 30' 看具体原因（数据目录权限、端口冲突）。"
+  - name: Server accepts connections on port {{ port }}
+    cmd: "sudo -u postgres psql -p {{ port }} -c 'SELECT version();' 2>&1 | grep -i postgresql"
+    expect_stdout: "PostgreSQL"
+    hint: "psql 连不上：可能端口被改了但 PostgreSQL 没重启，或 listen_addresses 没生效。"
+  - name: postgres password is set
+    cmd: "PGPASSWORD='{{ postgres_password }}' psql -h 127.0.0.1 -p {{ port }} -U postgres -c 'SELECT 1;' 2>&1 | grep -E '\\?column\\?|^\\s+1'"
+    hint: "本地密码登录失败：可能 pg_hba.conf 还是 peer/trust，需要改为 md5/scram-sha-256 后重启。"

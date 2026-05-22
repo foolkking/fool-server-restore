@@ -1,31 +1,108 @@
-# Playbook: Elasticsearch 搜索引擎
-name: Install Elasticsearch
+# Playbook: Elasticsearch 8.x 搜索引擎
+#
+# Elastic 8 默认开启了 TLS + 安全认证，安装时随机生成 elastic 用户密码，写到日志。
+# EnvForge 的策略：用 reset-password 工具把 elastic 密码改成用户填写的值，
+# 这样安装完成立刻就能用确定的凭据登录。
+#
+# 内存设定：默认 JVM heap 用 1g（适合 1-2GB 内存的小机器）；生产环境调到内存 50%。
+# /etc/elasticsearch/jvm.options.d/heap.options 是覆盖路径。
+name: Install Elasticsearch 8.x with security
 hosts: all
+
+vars:
+  cluster_name: "envforge-cluster"
+  node_name: "node-1"
+  http_port: 9200
+  bind_host: "127.0.0.1"
+  heap_size: "1g"
+  elastic_password: "change-me"
 
 tasks:
   - name: Install prerequisites
     module: package
     args:
-      name:
-        - apt-transport-https
-        - gnupg
-        - curl
+      name: ["curl", "gnupg", "apt-transport-https"]
       state: present
 
-  - name: Add Elasticsearch GPG key and repository
+  - name: Add Elastic GPG key + apt repo (Debian/Ubuntu)
     module: shell
     args:
       cmd: |
-        curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg --yes
-        echo "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
-        sudo apt-get update -qq
+        if command -v apt-get >/dev/null 2>&1; then
+          curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elastic.gpg --yes
+          echo "deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
+          sudo apt-get update -qq
+        fi
       creates: /etc/apt/sources.list.d/elastic-8.x.list
+
+  - name: Add Elastic yum repo (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/elastic-8.x.repo ]; then
+          sudo rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
+          cat > /tmp/elastic-8.x.repo <<'EOF'
+        [elasticsearch]
+        name=Elasticsearch repository for 8.x packages
+        baseurl=https://artifacts.elastic.co/packages/8.x/yum
+        gpgcheck=1
+        gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        enabled=1
+        autorefresh=1
+        type=rpm-md
+        EOF
+          sudo mv /tmp/elastic-8.x.repo /etc/yum.repos.d/elastic-8.x.repo
+        fi
+      creates: /etc/yum.repos.d/elastic-8.x.repo
 
   - name: Install Elasticsearch
     module: package
     args:
       name: elasticsearch
       state: present
+
+  - name: Configure cluster.name
+    module: lineinfile
+    args:
+      path: /etc/elasticsearch/elasticsearch.yml
+      regexp: "^#?cluster\\.name:"
+      line: "cluster.name: {{ cluster_name }}"
+
+  - name: Configure node.name
+    module: lineinfile
+    args:
+      path: /etc/elasticsearch/elasticsearch.yml
+      regexp: "^#?node\\.name:"
+      line: "node.name: {{ node_name }}"
+
+  - name: Configure network.host
+    module: lineinfile
+    args:
+      path: /etc/elasticsearch/elasticsearch.yml
+      regexp: "^#?network\\.host:"
+      line: "network.host: {{ bind_host }}"
+
+  - name: Configure http.port
+    module: lineinfile
+    args:
+      path: /etc/elasticsearch/elasticsearch.yml
+      regexp: "^#?http\\.port:"
+      line: "http.port: {{ http_port }}"
+
+  - name: Configure JVM heap
+    module: copy
+    args:
+      dest: /etc/elasticsearch/jvm.options.d/heap.options
+      content: |
+        -Xms{{ heap_size }}
+        -Xmx{{ heap_size }}
+
+  - name: Set discovery.type single-node (single-host install)
+    module: lineinfile
+    args:
+      path: /etc/elasticsearch/elasticsearch.yml
+      regexp: "^#?discovery\\.type:"
+      line: "discovery.type: single-node"
 
   - name: Enable and start Elasticsearch
     module: service
@@ -34,8 +111,25 @@ tasks:
       enabled: true
       state: started
 
-  - name: Verify Elasticsearch
+  - name: Wait for Elasticsearch to be ready
     module: shell
     args:
-      cmd: "curl -s http://localhost:9200 | head -5 && echo 'Elasticsearch OK'"
+      cmd: "for i in $(seq 1 30); do curl -fsSk -u elastic: 'https://localhost:{{ http_port }}/_cluster/health' >/dev/null 2>&1 && exit 0; sleep 3; done; exit 1"
     ignore_errors: true
+
+  - name: Reset elastic user password
+    module: shell
+    args:
+      cmd: |
+        echo y | sudo /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -i <<EOF
+        {{ elastic_password }}
+        {{ elastic_password }}
+        EOF
+
+verify:
+  - name: elasticsearch service is active
+    cmd: "systemctl is-active --quiet elasticsearch"
+    hint: "服务未启动。常见原因：堆内存设置过大（>= 50% 物理内存触发 OOM）/ vm.max_map_count 太小（要求 >= 262144，sudo sysctl -w vm.max_map_count=262144）。"
+  - name: cluster health is reachable with elastic password
+    cmd: "curl -fsSk -u elastic:'{{ elastic_password }}' 'https://127.0.0.1:{{ http_port }}/_cluster/health' 2>&1 | grep -E 'green|yellow|red'"
+    hint: "API 没响应：可能服务还在启动（首次启动需 30-60 秒），或者密码 reset 失败。手动跑 sudo /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic 重设。"

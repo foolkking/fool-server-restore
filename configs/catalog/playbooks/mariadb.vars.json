@@ -1,0 +1,50 @@
+{
+  "root_password": {
+    "type": "password",
+    "label": "root 用户密码",
+    "labelEn": "MariaDB root password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "MariaDB 根账号密码。留空自动生成 24 位强密码（运行结束显示一次）。"
+  },
+  "bind_address": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "bind-address",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机，推荐）" },
+      { "value": "0.0.0.0", "label": "0.0.0.0（所有网卡，需配防火墙）" }
+    ],
+    "help": "默认仅本机访问。改 0.0.0.0 是高危，必须先配好防火墙限制 3306 来源 IP。"
+  },
+  "port": {
+    "type": "port",
+    "label": "监听端口",
+    "labelEn": "Port",
+    "default": 3306,
+    "help": "默认 3306（与 MySQL 同）。"
+  },
+  "remove_test_db": {
+    "type": "boolean",
+    "label": "删除 test 库",
+    "labelEn": "Drop test database",
+    "default": true,
+    "help": "默认自带的 test 数据库，任何人都能访问，安全建议删除。"
+  },
+  "remove_anonymous": {
+    "type": "boolean",
+    "label": "删除匿名用户",
+    "labelEn": "Remove anonymous users",
+    "default": true,
+    "help": "默认自带 ''@'%' 匿名账号，删除以减少攻击面。"
+  },
+  "disallow_root_remote": {
+    "type": "boolean",
+    "label": "禁止 root 远程登录",
+    "labelEn": "Disallow root remote login",
+    "default": true,
+    "help": "保留 root 仅本机登录。远程管理请单建带 IP 白名单的管理员账号。"
+  }
+}

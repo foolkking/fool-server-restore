@@ -1,0 +1,67 @@
+{
+  "redis_password": {
+    "type": "password",
+    "label": "Redis 访问密码",
+    "labelEn": "Redis access password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "强烈建议设置密码——Redis 历史上是被勒索攻击最多的服务之一。留空则自动生成 24 位密码（运行结束显示一次）。如果你确定 Redis 只在 127.0.0.1 上、且本机所有进程都可信，可以填空字符串跳过密码（不推荐）。",
+    "validate": "^[A-Za-z0-9_-]*$"
+  },
+  "bind_address": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "Bind address",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机，最安全，推荐）" },
+      { "value": "0.0.0.0", "label": "0.0.0.0（所有网卡，需配防火墙）" }
+    ],
+    "help": "Redis 默认（6.0+）就是只听 127.0.0.1。改 0.0.0.0 是高危操作，必须先设密码 + 防火墙限制来源 IP。"
+  },
+  "port": {
+    "type": "port",
+    "label": "监听端口",
+    "labelEn": "Port",
+    "default": 6379,
+    "help": "默认 6379。改非标端口能挡掉一部分蠕虫扫描，但所有客户端配置都需要同步改。"
+  },
+  "maxmemory": {
+    "type": "choice",
+    "label": "最大内存",
+    "labelEn": "Max memory",
+    "default": "256mb",
+    "options": [
+      { "value": "0", "label": "无限（吃满系统内存，慎用）" },
+      { "value": "128mb", "label": "128 MB（小型缓存）" },
+      { "value": "256mb", "label": "256 MB（默认，单应用）" },
+      { "value": "512mb", "label": "512 MB" },
+      { "value": "1gb", "label": "1 GB" },
+      { "value": "2gb", "label": "2 GB" },
+      { "value": "4gb", "label": "4 GB" },
+      { "value": "8gb", "label": "8 GB" }
+    ],
+    "help": "强烈建议设上限——Redis 默认是不限制的，遇到内存泄漏会把整台服务器吃满后被 OOMKill。"
+  },
+  "maxmemory_policy": {
+    "type": "choice",
+    "label": "内存满淘汰策略",
+    "labelEn": "Eviction policy",
+    "default": "allkeys-lru",
+    "options": [
+      { "value": "noeviction", "label": "noeviction（满了拒绝写入，适合纯缓存）" },
+      { "value": "allkeys-lru", "label": "allkeys-lru（淘汰最久未用，推荐缓存场景）" },
+      { "value": "allkeys-lfu", "label": "allkeys-lfu（淘汰最少访问，适合热点不变）" },
+      { "value": "volatile-lru", "label": "volatile-lru（仅淘汰有 TTL 的）" },
+      { "value": "volatile-ttl", "label": "volatile-ttl（淘汰最快过期的）" }
+    ],
+    "help": "缓存场景用 allkeys-lru（最经典）；如果 Redis 用作主存储不是缓存，选 noeviction 避免数据被淘汰。"
+  },
+  "appendonly": {
+    "type": "boolean",
+    "label": "启用 AOF 持久化",
+    "labelEn": "Enable AOF persistence",
+    "default": false,
+    "help": "AOF 是按操作日志持久化（数据更安全，掉电几乎无丢失）。RDB 快照默认开。两者可以共存——纯缓存场景两个都关，重要数据建议开 AOF。"
+  }
+}

@@ -1,17 +1,23 @@
-# Playbook: SQLite 嵌入式数据库
-name: Install SQLite3 with CLI tools
+# Playbook: SQLite3 嵌入式数据库
+#
+# SQLite 是嵌入式数据库（库不是 server），没有服务、没有端口、没有配置。
+# 此 Playbook 只装 sqlite3 命令行工具 + libsqlite3-dev / sqlite-devel 开发头文件。
+name: Install SQLite3 client and dev libraries
 hosts: all
 
 tasks:
-  - name: Install SQLite3
+  - name: Install SQLite3 CLI + dev libraries
     module: package
     args:
-      name:
-        - sqlite3
-        - libsqlite3-dev
+      name: ["sqlite3", "libsqlite3-dev"]
       state: present
 
-  - name: Verify SQLite version
-    module: shell
-    args:
-      cmd: "sqlite3 --version"
+verify:
+  - name: sqlite3 command works
+    cmd: "sqlite3 --version"
+    expect_stdout: "."
+    hint: "sqlite3 命令找不到。包名在 RHEL 上略不同（sqlite + sqlite-devel），EnvForge 已自动翻译。"
+  - name: can create and query a test database
+    cmd: "echo 'CREATE TABLE t(x); INSERT INTO t VALUES(1); SELECT * FROM t;' | sqlite3 /tmp/envforge-test.db && rm -f /tmp/envforge-test.db"
+    expect_stdout: "1"
+    hint: "SQLite 写不动文件：可能 /tmp 没写权限（unlikely）。"

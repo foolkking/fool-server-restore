@@ -1,0 +1,45 @@
+{
+  "postgres_password": {
+    "type": "password",
+    "label": "postgres 用户密码",
+    "labelEn": "postgres user password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "默认管理员账号 'postgres' 的密码。留空则自动生成 24 位强密码（运行结束会显示一次）。生产环境务必启用，因为不少系统的 pg_hba.conf 默认 host 段是 md5，没密码登不上。"
+  },
+  "listen_addresses": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "listen_addresses",
+    "default": "localhost",
+    "options": [
+      { "value": "localhost", "label": "localhost（仅本机，最安全）" },
+      { "value": "*", "label": "* （所有网卡，需自行做好防火墙）" }
+    ],
+    "help": "只有应用和数据库不在同一台机器时才需要选 *。改成 * 时务必配合 firewall + pg_hba.conf 限制来源 IP。"
+  },
+  "port": {
+    "type": "port",
+    "label": "监听端口",
+    "labelEn": "Port",
+    "default": 5432,
+    "help": "PostgreSQL 默认 5432。改成非标端口可减少自动扫描，但备份/工具配置都需要同步改。"
+  },
+  "max_connections": {
+    "type": "number",
+    "label": "最大连接数",
+    "labelEn": "max_connections",
+    "default": 100,
+    "min": 10,
+    "max": 10000,
+    "help": "默认 100。每个连接占用约 5-10MB 内存。生产环境建议配 PgBouncer 做连接池而不是直接调高这个数。"
+  },
+  "enable_remote": {
+    "type": "boolean",
+    "label": "允许远程登录",
+    "labelEn": "Allow remote login",
+    "default": false,
+    "help": "勾选后会在 pg_hba.conf 加上 'host all all 0.0.0.0/0 md5' 一行，允许任意 IP 用密码登录。务必先在防火墙上限制来源，否则等同于把数据库挂在公网。"
+  }
+}

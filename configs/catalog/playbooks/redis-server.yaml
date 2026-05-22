@@ -1,36 +1,144 @@
 # Playbook: Redis 内存数据库
-name: Install Redis in-memory database
+#
+# 跨发行版包名:
+#   apt: redis-server         （PACKAGE_ALIASES → redis 用于 dnf）
+#   dnf/yum: redis            (在 RHEL 上 redis 来自 AppStream module，preflight 已处理)
+#
+# 配置文件路径:
+#   /etc/redis/redis.conf     (Debian/Ubuntu)
+#   /etc/redis.conf           (RHEL/CentOS/Anolis)
+#
+# 服务名（service.ts 中的 SERVICE_ALIASES 已处理 redis-server → redis 在 RHEL 上）
+name: Install and configure Redis in-memory store
 hosts: all
+
 vars:
-  redis_port: 6379
+  redis_password: ""
+  bind_address: "127.0.0.1"
+  port: 6379
+  maxmemory: "256mb"
+  maxmemory_policy: "allkeys-lru"
+  appendonly: false
 
 tasks:
-  - name: Install redis-server package
+  - name: Install Redis server
     module: package
     args:
       name: redis-server
       state: present
 
-  - name: Enable redis-server service to start on boot
+  - name: Set bind address (Debian path)
+    module: lineinfile
+    args:
+      path: /etc/redis/redis.conf
+      regexp: "^#?\\s*bind\\s+"
+      line: "bind {{ bind_address }} -::1"
+    ignore_errors: true
+
+  - name: Set bind address (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/redis.conf
+      regexp: "^#?\\s*bind\\s+"
+      line: "bind {{ bind_address }} -::1"
+    ignore_errors: true
+
+  - name: Set port (Debian path)
+    module: lineinfile
+    args:
+      path: /etc/redis/redis.conf
+      regexp: "^#?\\s*port\\s+\\d"
+      line: "port {{ port }}"
+    ignore_errors: true
+
+  - name: Set port (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/redis.conf
+      regexp: "^#?\\s*port\\s+\\d"
+      line: "port {{ port }}"
+    ignore_errors: true
+
+  - name: Set requirepass (Debian path)
+    module: lineinfile
+    args:
+      path: /etc/redis/redis.conf
+      regexp: "^#?\\s*requirepass\\s+"
+      line: "requirepass {{ redis_password }}"
+    when: "redis_password"
+    ignore_errors: true
+
+  - name: Set requirepass (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/redis.conf
+      regexp: "^#?\\s*requirepass\\s+"
+      line: "requirepass {{ redis_password }}"
+    when: "redis_password"
+    ignore_errors: true
+
+  - name: Set maxmemory (Debian path)
+    module: lineinfile
+    args:
+      path: /etc/redis/redis.conf
+      regexp: "^#?\\s*maxmemory\\s+"
+      line: "maxmemory {{ maxmemory }}"
+    ignore_errors: true
+
+  - name: Set maxmemory (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/redis.conf
+      regexp: "^#?\\s*maxmemory\\s+"
+      line: "maxmemory {{ maxmemory }}"
+    ignore_errors: true
+
+  - name: Set maxmemory-policy (Debian path)
+    module: lineinfile
+    args:
+      path: /etc/redis/redis.conf
+      regexp: "^#?\\s*maxmemory-policy\\s+"
+      line: "maxmemory-policy {{ maxmemory_policy }}"
+    ignore_errors: true
+
+  - name: Set maxmemory-policy (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/redis.conf
+      regexp: "^#?\\s*maxmemory-policy\\s+"
+      line: "maxmemory-policy {{ maxmemory_policy }}"
+    ignore_errors: true
+
+  - name: Enable AOF persistence (Debian path)
+    module: lineinfile
+    args:
+      path: /etc/redis/redis.conf
+      regexp: "^#?\\s*appendonly\\s+"
+      line: "appendonly yes"
+    when: appendonly
+    ignore_errors: true
+
+  - name: Enable AOF persistence (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/redis.conf
+      regexp: "^#?\\s*appendonly\\s+"
+      line: "appendonly yes"
+    when: appendonly
+    ignore_errors: true
+
+  - name: Enable and start Redis service
     module: service
     args:
       name: redis-server
       enabled: true
-      state: started
-
-  - name: Bind Redis to localhost only
-    module: lineinfile
-    args:
-      path: /etc/redis/redis.conf
-      regexp: "^bind "
-      line: "bind 127.0.0.1 ::1"
-      create: true
-      backup: true
-    register: bind_changed
-
-  - name: Restart redis if bind changed
-    module: service
-    args:
-      name: redis-server
       state: restarted
-    when: bind_changed.changed
+
+verify:
+  - name: Redis service is active
+    cmd: "systemctl is-active --quiet redis || systemctl is-active --quiet redis-server"
+    hint: "服务未启动。常见原因：bind 配置语法错误 / port 被占 / 内存配置非法。看 'sudo journalctl -u redis -n 30'。"
+  - name: Redis responds to PING
+    cmd: "if [ -n '{{ redis_password }}' ]; then redis-cli -p {{ port }} -a '{{ redis_password }}' --no-auth-warning ping; else redis-cli -p {{ port }} ping; fi"
+    expect_stdout: "PONG"
+    hint: "PING 返回不是 PONG：可能服务还没启动完成、密码不对、或 bind 限制了 127.0.0.1 之外的访问。"

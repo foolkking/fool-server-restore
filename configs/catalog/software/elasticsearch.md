@@ -1,48 +1,129 @@
 # Elasticsearch 搜索引擎
 
-Elasticsearch 8.x 分布式搜索和分析引擎。
-
-*Elasticsearch 8.x distributed search and analytics engine.*
+Elasticsearch 8.x 单节点部署，自动启用 TLS + 安全认证（这是 ES 8 的默认行为）。
+EnvForge 用 `elasticsearch-reset-password` 把 elastic 用户密码改成你填的值，安装
+完成立刻能用确定凭据登录。
 
 ## 你将得到什么
 
-- 📦 **elasticsearch** _(Elasticsearch)_ — 通过 apt
+- 📦 **elasticsearch** 8.x（来自官方 elastic.co APT/YUM 仓库）
+- ✅ TLS 证书自动生成（自签名，仅本机访问够用；公网暴露请加反向代理）
+- ✅ elastic 超级用户密码已设（默认 24 位随机，可表单填）
+- ✅ JVM 堆大小按表单生效（写到 `/etc/elasticsearch/jvm.options.d/heap.options`）
+- ✅ `discovery.type: single-node` — 单机部署，启动不等待集群其他节点
+- ✅ 服务自动启动并设开机自启
 
-## 自动化步骤
+## 表单字段说明
 
-EnvForge 在目标机器上依次执行以下任务：
+### elastic 用户密码 `elastic_password`
 
-1. Install prerequisites
-2. Add Elasticsearch GPG key and repository
-3. Install Elasticsearch
-4. Enable and start Elasticsearch
-5. Verify Elasticsearch
+ES 8 必须有认证，elastic 是内置超级用户。EnvForge 会在 ES 首次启动后用
+`elasticsearch-reset-password` 把密码改成你填的值。
+
+留空自动生成 24 位密码（运行结束显示一次）。
+
+### 集群名 `cluster_name` / 节点名 `node_name`
+
+单机部署时不重要，随便起个名字方便识别。多机集群时所有节点要用同一个 cluster_name。
+
+### 监听地址 `bind_host`
+
+**ES 不建议直接公网暴露**。建议方案：
+- 应用在同机：`127.0.0.1` 即可
+- 跨机访问：前面挂 nginx 做 basic auth，或者防火墙限定来源 IP
+
+### JVM 堆大小 `heap_size`
+
+经验法则：**物理内存的 50%**（其余给 OS file cache，ES 重度依赖它）。
+**不要超过 32GB**——超过后 JVM 失去 compressed oops 优化，性能反而下降。
+
+| 物理内存 | 推荐 heap |
+|---|---|
+| 1-2 GB | 512m |
+| 2-4 GB | 1g |
+| 4-8 GB | 2g |
+| 8-16 GB | 4g |
+| 16-32 GB | 8g |
+| 30+ GB | 16g（再多没用） |
+
+## 安装后
+
+### 第一次访问（认证 + TLS）
+
+```bash
+curl -k -u elastic:你的密码 https://127.0.0.1:9200/
+```
+
+`-k` 表示忽略自签证书警告。如果想信任证书：
+```bash
+sudo cp /etc/elasticsearch/certs/http_ca.crt /usr/local/share/ca-certificates/elastic-ca.crt
+sudo update-ca-certificates  # Ubuntu
+sudo update-ca-trust         # RHEL
+```
+
+### 创建只读用户
+
+```bash
+curl -k -u elastic:你的密码 -X POST https://127.0.0.1:9200/_security/user/readonly \
+  -H "Content-Type: application/json" \
+  -d '{
+    "password": "viewonly-pwd",
+    "roles": ["viewer"]
+  }'
+```
+
+### 创建索引 + 写文档
+
+```bash
+curl -k -u elastic:... -X POST https://127.0.0.1:9200/myindex/_doc \
+  -H "Content-Type: application/json" \
+  -d '{"title":"hello","timestamp":"2024-01-01"}'
+```
+
+### Kibana 配套（如需）
+
+ES 主要配 Kibana 当 UI。Kibana 也是 elastic 仓库提供的：
+```bash
+sudo apt-get install kibana    # 或 dnf
+sudo systemctl enable --now kibana
+# 然后用 elasticsearch-create-enrollment-token 生成 token，配到 Kibana
+```
 
 ## ⚠️ 敏感性
 
-此 Playbook 标记为 **review**：会安装系统服务并改动配置文件。如果对该机器有现有依赖，请先确认不会冲突。
+**review** — Elasticsearch 是历史上数据泄露最频繁的服务之一（默认无认证 +
+被搜索引擎 shodan 抓到）。ES 8 默认开认证后情况好多了，但还是建议：
+1. **不要 0.0.0.0 暴露**
+2. heap 别配太大触发 OOM
+3. `vm.max_map_count` 必须 >= 262144（系统级参数）
 
 ## 验证安装
 
 ```bash
-# 检查包是否已安装
-dpkg -l | grep elasticsearch      # Ubuntu/Debian
-rpm -q elasticsearch                # RHEL/CentOS/Anolis
-
-# 检查服务是否运行（如果有 systemd 单元）
 systemctl status elasticsearch --no-pager
+curl -k -u elastic:你的密码 https://127.0.0.1:9200/_cluster/health
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **服务启动失败 + `vm.max_map_count` 报错** — ES 要求这个内核参数 >= 262144。EnvForge 没自动处理（需要 sysctl 模块）。手动：
+  ```bash
+  sudo sysctl -w vm.max_map_count=262144
+  echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.d/99-elasticsearch.conf
+  sudo systemctl restart elasticsearch
+  ```
+- **服务启动后立刻 OOM** — heap_size 配得超过物理内存了，下调一档。
+- **`Connection refused`** — ES 启动慢（30-60 秒首次启动），多等一会儿。
+- **重置密码失败** — 服务还没起来，等一分钟手动跑 `sudo /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic`。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。已安装不会重装。但每次会重写 cluster.name / node.name /
+network.host / http.port / discovery.type / heap，覆盖手动调整。**密码每次都会
+重置**——如果你担心日志里的旧密码被人看到，安装完毕后用 reset-password 工具再改一次。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+- elastic 密码会在任务日志里出现一次。
+- 自签 CA 证书在 `/etc/elasticsearch/certs/`，不会上传或同步。
+- 索引数据在 `/var/lib/elasticsearch/`。

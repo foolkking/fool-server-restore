@@ -1,0 +1,46 @@
+{
+  "admin_username": {
+    "type": "string",
+    "label": "管理员用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "required": true,
+    "validate": "^[a-zA-Z][a-zA-Z0-9_]{2,32}$",
+    "show_when": "enable_auth == true",
+    "help": "MongoDB admin 数据库的管理员账号。建议不要用 'root'（不是 MongoDB 习惯）或 'admin'（被爆破字典常见）。"
+  },
+  "admin_password": {
+    "type": "password",
+    "label": "管理员密码",
+    "labelEn": "Admin password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "show_when": "enable_auth == true",
+    "help": "留空则自动生成 24 位强密码（运行结束显示一次）。"
+  },
+  "enable_auth": {
+    "type": "boolean",
+    "label": "启用认证",
+    "labelEn": "Enable authentication",
+    "default": true,
+    "help": "强烈建议保持开启。MongoDB 默认不开认证，是历史上数据泄露事件最多的数据库之一。关闭仅用于：本机开发测试 + 不在公网暴露端口。"
+  },
+  "bind_ip": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "bindIp",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机，推荐）" },
+      { "value": "0.0.0.0", "label": "0.0.0.0（所有网卡，需配防火墙）" }
+    ],
+    "help": "MongoDB 7+ 默认就是 127.0.0.1。改 0.0.0.0 是高危操作，必须先开认证 + 防火墙限制 27017 来源 IP。"
+  },
+  "port": {
+    "type": "port",
+    "label": "监听端口",
+    "labelEn": "Port",
+    "default": 27017,
+    "help": "MongoDB 默认 27017。改非标端口能挡掉一些扫描，但应用配置都要同步改。"
+  }
+}

@@ -1,30 +1,87 @@
-# Playbook: MongoDB 文档数据库
-name: Install MongoDB Community Edition
+# Playbook: MongoDB 7.0 文档数据库
+#
+# 跨发行版策略：
+#   Ubuntu/Debian: 添加 mongodb-org-7.0 apt 仓库 + GPG，装 mongodb-org 元包
+#   RHEL/Anolis: 走 yum 仓库 (https://www.mongodb.org/static/pgp/server-7.0.asc)
+#   两条路径任一失败时另一条会被忽略（ignore_errors 模式 + creates 标记）
+name: Install and configure MongoDB 7.0
 hosts: all
+
+vars:
+  bind_ip: "127.0.0.1"
+  port: 27017
+  enable_auth: true
+  admin_username: "admin"
+  admin_password: "change-me"
 
 tasks:
   - name: Install prerequisites
     module: package
     args:
-      name:
-        - gnupg
-        - curl
+      name: ["gnupg", "curl"]
       state: present
 
-  - name: Add MongoDB GPG key and repository
+  - name: Add MongoDB GPG key + apt repo (Debian/Ubuntu)
     module: shell
     args:
       cmd: |
-        curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg --yes
-        echo "deb [signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] http://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
-        sudo apt-get update -qq
+        if command -v apt-get >/dev/null 2>&1; then
+          curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg --yes
+          echo "deb [signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] http://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+          sudo apt-get update -qq
+        fi
       creates: /etc/apt/sources.list.d/mongodb-org-7.0.list
+
+  - name: Add MongoDB yum repo (RHEL/CentOS/Anolis)
+    module: copy
+    args:
+      dest: /etc/yum.repos.d/mongodb-org-7.0.repo
+      content: |
+        [mongodb-org-7.0]
+        name=MongoDB Repository
+        baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/7.0/x86_64/
+        gpgcheck=1
+        enabled=1
+        gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
+    when: false # placeholder; copy 模块在 RHEL 上能跑，但每次都覆盖不优雅。下面用 shell 兜底。
+    ignore_errors: true
+
+  - name: Add MongoDB yum repo via shell (RHEL fallback)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/mongodb-org-7.0.repo ]; then
+          cat > /tmp/mongodb-org-7.0.repo <<'EOF'
+        [mongodb-org-7.0]
+        name=MongoDB Repository
+        baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/7.0/x86_64/
+        gpgcheck=1
+        enabled=1
+        gpgkey=https://www.mongodb.org/static/pgp/server-7.0.asc
+        EOF
+          sudo mv /tmp/mongodb-org-7.0.repo /etc/yum.repos.d/mongodb-org-7.0.repo
+        fi
+      creates: /etc/yum.repos.d/mongodb-org-7.0.repo
 
   - name: Install MongoDB
     module: package
     args:
       name: mongodb-org
       state: present
+
+  - name: Set bind_ip in /etc/mongod.conf
+    module: lineinfile
+    args:
+      path: /etc/mongod.conf
+      regexp: "^\\s*bindIp:\\s*"
+      line: "  bindIp: {{ bind_ip }}"
+
+  - name: Set port in /etc/mongod.conf
+    module: lineinfile
+    args:
+      path: /etc/mongod.conf
+      regexp: "^\\s*port:\\s*"
+      line: "  port: {{ port }}"
 
   - name: Enable and start MongoDB
     module: service
@@ -33,8 +90,62 @@ tasks:
       enabled: true
       state: started
 
-  - name: Verify MongoDB is running
+  - name: Wait for MongoDB to be ready
     module: shell
     args:
-      cmd: "mongosh --eval 'db.runCommand({ping:1})' --quiet && echo 'MongoDB OK'"
-    ignore_errors: true
+      cmd: "for i in 1 2 3 4 5 6 7 8 9 10; do mongosh --quiet --eval 'db.runCommand({ping:1})' 127.0.0.1:{{ port }}/admin >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1"
+
+  - name: Create admin user (only when enable_auth)
+    module: shell
+    args:
+      cmd: |
+        mongosh --quiet 127.0.0.1:{{ port }}/admin <<EOF
+        if (db.getUser('{{ admin_username }}') === null) {
+          db.createUser({
+            user: '{{ admin_username }}',
+            pwd: '{{ admin_password }}',
+            roles: [{ role: 'root', db: 'admin' }]
+          });
+          print('admin user created');
+        } else {
+          print('admin user already exists, skipping');
+        }
+        EOF
+    when: enable_auth
+
+  - name: Enable authorization in /etc/mongod.conf
+    module: lineinfile
+    args:
+      path: /etc/mongod.conf
+      regexp: "^\\s*authorization:\\s*"
+      line: "  authorization: enabled"
+    when: enable_auth
+
+  - name: Add security section if missing (when auth enabled and section absent)
+    module: shell
+    args:
+      cmd: |
+        if ! grep -q "^security:" /etc/mongod.conf; then
+          echo "security:" | sudo tee -a /etc/mongod.conf >/dev/null
+          echo "  authorization: enabled" | sudo tee -a /etc/mongod.conf >/dev/null
+        fi
+    when: enable_auth
+
+  - name: Restart MongoDB to apply auth config
+    module: service
+    args:
+      name: mongod
+      state: restarted
+
+verify:
+  - name: mongod service is active
+    cmd: "systemctl is-active --quiet mongod"
+    hint: "服务未启动。检查 journalctl -u mongod -n 30。常见：dbPath 权限不对（mongodb:mongodb 应拥有 /var/lib/mongodb 和 /var/log/mongodb）。"
+  - name: ping MongoDB on port {{ port }}
+    cmd: "mongosh --quiet 127.0.0.1:{{ port }}/admin --eval 'db.runCommand({ping:1}).ok' 2>&1 | tail -1"
+    expect_stdout: "1"
+    hint: "ping 失败：服务可能还在初始化（需要再等几秒），或 bindIp/port 配置没生效。"
+  - name: admin user can authenticate (when enable_auth)
+    cmd: "if [ '{{ enable_auth }}' = 'true' ]; then mongosh --quiet -u '{{ admin_username }}' -p '{{ admin_password }}' --authenticationDatabase admin 127.0.0.1:{{ port }}/admin --eval 'db.runCommand({ping:1}).ok' 2>&1 | tail -1; else echo 1; fi"
+    expect_stdout: "1"
+    hint: "admin 账号登录失败：可能 createUser 没成功（首次安装的 init 脚本和 EnvForge 创建账号竞争），手动跑：mongosh --quiet 127.0.0.1:{{ port }}/admin 然后 db.createUser({user:'{{ admin_username }}',pwd:'...',roles:[{role:'root',db:'admin'}]})"

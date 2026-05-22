@@ -1,0 +1,38 @@
+{
+  "memory_mb": {
+    "type": "number",
+    "label": "缓存内存 (MB)",
+    "labelEn": "Cache size (MB)",
+    "default": 64,
+    "min": 16,
+    "max": 65536,
+    "help": "Memcached 能用的最大内存。默认 64MB——小到不会影响系统，但生产场景按需调高（512MB / 1GB / 2GB）。"
+  },
+  "bind_address": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "Bind address",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机，强烈推荐）" },
+      { "value": "0.0.0.0", "label": "0.0.0.0（所有网卡，需配防火墙）" }
+    ],
+    "help": "Memcached 没有内置认证！默认 11211 暴露到公网会立刻被滥用做 amplification 攻击。请保持 127.0.0.1。"
+  },
+  "port": {
+    "type": "port",
+    "label": "监听端口",
+    "labelEn": "Port",
+    "default": 11211,
+    "help": "默认 11211。改非标端口的意义不大，因为 Memcached 没认证，只能靠网络层隔离。"
+  },
+  "max_connections": {
+    "type": "number",
+    "label": "最大并发连接",
+    "labelEn": "Max connections",
+    "default": 1024,
+    "min": 100,
+    "max": 100000,
+    "help": "默认 1024。每个连接消耗少量内存，调高对资源占用影响不大。生产环境 4096-10000 常见。"
+  }
+}

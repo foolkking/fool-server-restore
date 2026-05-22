@@ -1,14 +1,28 @@
 # Playbook: MariaDB 数据库
-name: Install MariaDB (MySQL alternative)
+#
+# MariaDB 是 MySQL 的开源分支，命令、协议、客户端工具几乎完全兼容。
+# RHEL/Anolis 上 MySQL 5.7+ 不在默认仓库，MariaDB 反倒是默认提供的，所以
+# 在 RHEL 系列上 MariaDB 是更省心的选择。
+#
+# 包名与服务名跨发行版差异（runner 和 service.ts 已自动处理）：
+#   apt: mariadb-server / 服务 mariadb
+#   dnf: mariadb-server / 服务 mariadb
+name: Install and configure MariaDB database
 hosts: all
 
+vars:
+  root_password: "change-me"
+  bind_address: "127.0.0.1"
+  port: 3306
+  remove_test_db: true
+  remove_anonymous: true
+  disallow_root_remote: true
+
 tasks:
-  - name: Install MariaDB
+  - name: Install MariaDB server
     module: package
     args:
-      name:
-        - mariadb-server
-        - mariadb-client
+      name: mariadb-server
       state: present
 
   - name: Enable and start MariaDB
@@ -18,8 +32,92 @@ tasks:
       enabled: true
       state: started
 
-  - name: Verify MariaDB is running
+  - name: Set root password
     module: shell
     args:
-      cmd: "sudo mariadb -e 'SELECT VERSION();' && echo 'MariaDB OK'"
+      cmd: |
+        # MariaDB 默认 root 用 unix_socket 认证（apt）或无密码（rhel）
+        # 两种姿势都试一遍
+        if mysql -uroot -e "SELECT 1;" 2>/dev/null; then
+          mysql -uroot <<EOF
+        ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ root_password }}';
+        FLUSH PRIVILEGES;
+        EOF
+        elif sudo mysql -uroot -e "SELECT 1;" 2>/dev/null; then
+          sudo mysql -uroot <<EOF
+        ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ root_password }}';
+        FLUSH PRIVILEGES;
+        EOF
+        fi
+
+  - name: Set bind-address (Debian path)
+    module: lineinfile
+    args:
+      path: /etc/mysql/mariadb.conf.d/50-server.cnf
+      regexp: "^#?\\s*bind-address\\s*="
+      line: "bind-address            = {{ bind_address }}"
     ignore_errors: true
+
+  - name: Set bind-address (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/my.cnf.d/mariadb-server.cnf
+      regexp: "^#?\\s*bind-address\\s*="
+      line: "bind-address={{ bind_address }}"
+    ignore_errors: true
+
+  - name: Set port (Debian path)
+    module: lineinfile
+    args:
+      path: /etc/mysql/mariadb.conf.d/50-server.cnf
+      regexp: "^#?\\s*port\\s*="
+      line: "port            = {{ port }}"
+    ignore_errors: true
+
+  - name: Set port (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/my.cnf.d/mariadb-server.cnf
+      regexp: "^#?\\s*port\\s*="
+      line: "port={{ port }}"
+    ignore_errors: true
+
+  - name: Drop test database
+    module: shell
+    args:
+      cmd: "mysql -uroot -p'{{ root_password }}' -e 'DROP DATABASE IF EXISTS test;'"
+    when: remove_test_db
+    ignore_errors: true
+
+  - name: Remove anonymous users
+    module: shell
+    args:
+      cmd: "mysql -uroot -p'{{ root_password }}' -e \"DELETE FROM mysql.global_priv WHERE User=''; FLUSH PRIVILEGES;\" 2>/dev/null || mysql -uroot -p'{{ root_password }}' -e \"DELETE FROM mysql.user WHERE User=''; FLUSH PRIVILEGES;\""
+    when: remove_anonymous
+    ignore_errors: true
+
+  - name: Disallow root login remotely
+    module: shell
+    args:
+      cmd: |
+        mysql -uroot -p'{{ root_password }}' -e "DELETE FROM mysql.global_priv WHERE User='root' AND Host NOT IN ('localhost','127.0.0.1','::1'); FLUSH PRIVILEGES;" 2>/dev/null || \
+        mysql -uroot -p'{{ root_password }}' -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost','127.0.0.1','::1'); FLUSH PRIVILEGES;"
+    when: disallow_root_remote
+    ignore_errors: true
+
+  - name: Restart MariaDB to apply config
+    module: service
+    args:
+      name: mariadb
+      state: restarted
+
+verify:
+  - name: MariaDB service is active
+    cmd: "systemctl is-active --quiet mariadb"
+    hint: "服务未启动。看 'sudo journalctl -u mariadb -n 50'。"
+  - name: root password works
+    cmd: "mysql -uroot -p'{{ root_password }}' -e 'SELECT VERSION();' 2>&1 | grep -E 'MariaDB|^[0-9]'"
+    hint: "root 密码登不上。可能 ALTER USER 没成功，或者 mariadb 服务还在启动中。"
+  - name: listening on port {{ port }}
+    cmd: "sudo ss -tlnp | grep ':{{ port }} '"
+    hint: "MariaDB 没监听 {{ port }}：检查 bind-address 配置文件是否被正确修改。"

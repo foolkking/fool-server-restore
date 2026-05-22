@@ -1,0 +1,50 @@
+{
+  "root_password": {
+    "type": "password",
+    "label": "root 用户密码",
+    "labelEn": "MySQL root password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "MySQL 根账号密码。留空则自动生成 24 位强密码（运行结束显示一次）。MySQL 8 默认要求强密码（混合字符 + 大小写 + 数字 + 特殊字符）。"
+  },
+  "bind_address": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "bind-address",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机，推荐）" },
+      { "value": "0.0.0.0", "label": "0.0.0.0（所有网卡，需配防火墙）" }
+    ],
+    "help": "Ubuntu 默认就是 127.0.0.1。改成 0.0.0.0 是高危操作，必须先配好防火墙限制 3306 端口的来源 IP。"
+  },
+  "port": {
+    "type": "port",
+    "label": "监听端口",
+    "labelEn": "Port",
+    "default": 3306,
+    "help": "MySQL 默认 3306。3306 是被自动扫描器盯得很紧的端口之一。"
+  },
+  "remove_test_db": {
+    "type": "boolean",
+    "label": "删除 test 库",
+    "labelEn": "Drop test database",
+    "default": true,
+    "help": "MySQL 安装时自带的 test 库。任何用户都可访问，安全实践要求删除。"
+  },
+  "remove_anonymous": {
+    "type": "boolean",
+    "label": "删除匿名用户",
+    "labelEn": "Remove anonymous users",
+    "default": true,
+    "help": "MySQL 安装时会创建 ''@'%' 这种匿名用户，是历史遗留，强烈建议删除。"
+  },
+  "disallow_root_remote": {
+    "type": "boolean",
+    "label": "禁止 root 远程登录",
+    "labelEn": "Disallow root remote login",
+    "default": true,
+    "help": "保留 root 只能本机登录。远程管理建议建独立的管理员账号（带 IP 白名单）。"
+  }
+}

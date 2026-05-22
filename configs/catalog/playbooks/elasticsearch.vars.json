@@ -1,0 +1,60 @@
+{
+  "elastic_password": {
+    "type": "password",
+    "label": "elastic 用户密码",
+    "labelEn": "elastic user password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "Elasticsearch 8 默认开启认证，elastic 是超级用户。留空则自动生成 24 位密码（运行结束显示一次）。"
+  },
+  "cluster_name": {
+    "type": "string",
+    "label": "集群名称",
+    "labelEn": "Cluster name",
+    "default": "envforge-cluster",
+    "validate": "^[a-zA-Z0-9_-]{1,32}$",
+    "help": "Elasticsearch 集群名。多节点必须用同一个名字才能组成集群。单机部署用什么都行。"
+  },
+  "node_name": {
+    "type": "string",
+    "label": "节点名",
+    "labelEn": "Node name",
+    "default": "node-1",
+    "validate": "^[a-zA-Z0-9_-]{1,32}$",
+    "help": "节点名称（不同节点必须不同）。单机部署随便起个易读的名。"
+  },
+  "bind_host": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "network.host",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机，推荐）" },
+      { "value": "0.0.0.0", "label": "0.0.0.0（所有网卡，需配防火墙 + 集群跨主机）" }
+    ],
+    "help": "Elasticsearch 不应该直接公网暴露。如果需要远程访问，前面挂一个反向代理（nginx + basic auth），或者只让特定 IP 通过防火墙。"
+  },
+  "http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "http.port",
+    "default": 9200,
+    "help": "REST API 端口。默认 9200。9300 是节点间通信端口（集群时用），单机不用关心。"
+  },
+  "heap_size": {
+    "type": "choice",
+    "label": "JVM 堆大小",
+    "labelEn": "JVM heap",
+    "default": "1g",
+    "options": [
+      { "value": "512m", "label": "512 MB（开发测试，1-2GB 内存机器）" },
+      { "value": "1g", "label": "1 GB（默认，2-4GB 内存机器）" },
+      { "value": "2g", "label": "2 GB（4-8GB 内存机器）" },
+      { "value": "4g", "label": "4 GB（8-16GB 内存机器）" },
+      { "value": "8g", "label": "8 GB（16-32GB 内存机器）" },
+      { "value": "16g", "label": "16 GB（30+GB 内存机器，已是 ES 最佳实践上限）" }
+    ],
+    "help": "经验法则：物理内存的 50%，且不超过 32GB（再多 JVM 压缩指针失效，性能反而下降）。机器内存太小会启动失败。"
+  }
+}

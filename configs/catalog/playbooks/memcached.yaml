@@ -1,24 +1,79 @@
 # Playbook: Memcached 内存缓存
-name: Install Memcached in-memory cache
+#
+# Memcached 配置极简（一个命令行参数文件就完了），跨发行版差异：
+#   /etc/memcached.conf     (Debian/Ubuntu, sysv-style，被 systemd unit 解析)
+#   /etc/sysconfig/memcached  (RHEL，标准的 OPTIONS= 环境变量文件)
+name: Install and configure Memcached
 hosts: all
+
+vars:
+  bind_address: "127.0.0.1"
+  port: 11211
+  memory_mb: 64
+  max_connections: 1024
 
 tasks:
   - name: Install Memcached
     module: package
     args:
-      name:
-        - memcached
-        - libmemcached-tools
+      name: memcached
       state: present
 
-  - name: Enable Memcached
+  - name: Configure Memcached (Debian path)
+    module: copy
+    args:
+      dest: /etc/memcached.conf
+      content: |
+        # Managed by EnvForge — `memcached.conf` 是 Debian 风格，每行一个参数
+
+        # 日志路径
+        logfile /var/log/memcached.log
+
+        # 详细日志（默认关）
+        # -v
+        # -vv
+
+        # 内存上限 (MB)
+        -m {{ memory_mb }}
+
+        # 监听端口
+        -p {{ port }}
+
+        # 监听地址
+        -l {{ bind_address }}
+
+        # 并发连接数
+        -c {{ max_connections }}
+
+        # 运行用户
+        -u memcache
+
+        # daemonize（systemd 单元已经以前台方式跑，这里不要写 -d）
+
+  - name: Configure Memcached (RHEL path)
+    module: copy
+    args:
+      dest: /etc/sysconfig/memcached
+      content: |
+        # Managed by EnvForge
+        PORT="{{ port }}"
+        USER="memcached"
+        MAXCONN="{{ max_connections }}"
+        CACHESIZE="{{ memory_mb }}"
+        OPTIONS="-l {{ bind_address }} -U 0"
+
+  - name: Enable and start Memcached
     module: service
     args:
       name: memcached
       enabled: true
-      state: started
+      state: restarted
 
-  - name: Verify Memcached
-    module: shell
-    args:
-      cmd: "memcached --version"
+verify:
+  - name: memcached service is active
+    cmd: "systemctl is-active --quiet memcached"
+    hint: "服务未启动。看 'sudo journalctl -u memcached -n 30'。可能 -l 参数地址解析失败 / 端口被占。"
+  - name: memcached responds on port {{ port }}
+    cmd: "echo 'stats' | timeout 3 nc -w 1 {{ bind_address }} {{ port }} | head -5"
+    expect_stdout: "STAT"
+    hint: "memcached 没响应：可能 bind_address 是 0.0.0.0 但防火墙挡了，或服务没真正启动。"

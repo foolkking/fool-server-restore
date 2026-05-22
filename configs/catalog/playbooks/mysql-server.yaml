@@ -1,29 +1,124 @@
 # Playbook: MySQL 数据库
-name: Install MySQL database server
+#
+# Ubuntu/Debian: 安装 mysql-server 8.0 包，apt 安装时会随机生成 socket 凭据
+# RHEL/Anolis: 安装 mysql-community-server (来自 mysql-community repo) 或者
+#   走 dnf module mysql:8.0 (PACKAGE_ALIASES 里 mysql-server 维持原名)
+# 我们用 mysql_secure_installation 的非交互方式设 root 密码 + 删测试库
+name: Install and configure MySQL 8 database
 hosts: all
 
+vars:
+  root_password: "change-me"
+  bind_address: "127.0.0.1"
+  port: 3306
+  remove_test_db: true
+  remove_anonymous: true
+  disallow_root_remote: true
+
 tasks:
-  - name: Install mysql-server package
+  - name: Install MySQL server
     module: package
     args:
       name: mysql-server
       state: present
 
-  - name: Enable mysql service to start on boot
+  - name: Enable and start MySQL
     module: service
     args:
       name: mysql
       enabled: true
       state: started
 
-  - name: Secure MySQL - set root auth to socket
+  - name: Set root password (Ubuntu/Debian — auth_socket → password)
     module: shell
     args:
-      cmd: "sudo mysql -e \"ALTER USER 'root'@'localhost' IDENTIFIED WITH auth_socket;\" 2>/dev/null || true"
+      cmd: |
+        sudo mysql -uroot <<'EOF'
+        ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ root_password }}';
+        FLUSH PRIVILEGES;
+        EOF
     ignore_errors: true
 
-  - name: Verify MySQL is running
+  - name: Set root password (RHEL — first run, no existing password)
     module: shell
     args:
-      cmd: "sudo mysqladmin ping -u root --socket=/var/run/mysqld/mysqld.sock 2>/dev/null && echo 'MySQL is alive'"
+      cmd: |
+        # RHEL 默认 root 密码可能在 /var/log/mysqld.log（grep "temporary password"），
+        # 或者根本就没密码。试两种姿势。
+        if mysql -uroot -e "SELECT 1;" 2>/dev/null; then
+          mysql -uroot <<'EOF'
+        ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ root_password }}';
+        FLUSH PRIVILEGES;
+        EOF
+        fi
     ignore_errors: true
+
+  - name: Set bind-address
+    module: lineinfile
+    args:
+      path: /etc/mysql/mysql.conf.d/mysqld.cnf
+      regexp: "^#?\\s*bind-address\\s*="
+      line: "bind-address            = {{ bind_address }}"
+    ignore_errors: true
+
+  - name: Set bind-address (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/my.cnf.d/mysql-server.cnf
+      regexp: "^#?\\s*bind-address\\s*="
+      line: "bind-address={{ bind_address }}"
+    ignore_errors: true
+
+  - name: Set port
+    module: lineinfile
+    args:
+      path: /etc/mysql/mysql.conf.d/mysqld.cnf
+      regexp: "^#?\\s*port\\s*="
+      line: "port            = {{ port }}"
+    ignore_errors: true
+
+  - name: Set port (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/my.cnf.d/mysql-server.cnf
+      regexp: "^#?\\s*port\\s*="
+      line: "port={{ port }}"
+    ignore_errors: true
+
+  - name: Drop test database
+    module: shell
+    args:
+      cmd: "mysql -uroot -p'{{ root_password }}' -e 'DROP DATABASE IF EXISTS test;'"
+    when: remove_test_db
+    ignore_errors: true
+
+  - name: Remove anonymous users
+    module: shell
+    args:
+      cmd: "mysql -uroot -p'{{ root_password }}' -e \"DELETE FROM mysql.user WHERE User=''; FLUSH PRIVILEGES;\""
+    when: remove_anonymous
+    ignore_errors: true
+
+  - name: Disallow root login remotely
+    module: shell
+    args:
+      cmd: "mysql -uroot -p'{{ root_password }}' -e \"DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost','127.0.0.1','::1'); FLUSH PRIVILEGES;\""
+    when: disallow_root_remote
+    ignore_errors: true
+
+  - name: Restart MySQL to apply config
+    module: service
+    args:
+      name: mysql
+      state: restarted
+
+verify:
+  - name: MySQL service is active
+    cmd: "systemctl is-active --quiet mysql || systemctl is-active --quiet mysqld"
+    hint: "服务未启动。看 'sudo journalctl -u mysql -n 50'。"
+  - name: root password works
+    cmd: "mysql -uroot -p'{{ root_password }}' -e 'SELECT VERSION();' 2>&1 | grep -E 'MySQL|MariaDB|^[0-9]'"
+    hint: "root 密码登不上。可能 ALTER USER 没成功（initial 密码在 /var/log/mysqld.log 里）。"
+  - name: listening on configured port
+    cmd: "sudo ss -tlnp | grep ':{{ port }} '"
+    hint: "MySQL 没监听 {{ port }}：可能 bind-address 配置写到了错误路径，或者 mysqld 启动失败。"
