@@ -1,37 +1,103 @@
 # Playbook: Grafana 可视化面板
-name: Install Grafana dashboard
+#
+# Grafana 11+ 来自 Grafana Labs 官方仓库。比发行版自带的版本新很多，且能自动续 minor 升级。
+name: Install and configure Grafana
 hosts: all
 
+vars:
+  http_port: 3000
+  admin_user: "admin"
+  admin_password: "change-me"
+  domain: ""
+
 tasks:
-  - name: Install required tooling for Grafana repo
+  - name: Install dependencies
     module: package
     args:
-      name:
-        - apt-transport-https
-        - software-properties-common
-        - wget
-        - gnupg
+      name: ["curl", "gnupg", "ca-certificates"]
       state: present
 
-  - name: Add Grafana GPG key and APT repository
+  - name: Add Grafana apt repo
     module: shell
     args:
       cmd: |
-        sudo mkdir -p /etc/apt/keyrings
-        wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
-        echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
-        sudo apt-get update -qq
+        if command -v apt-get >/dev/null 2>&1; then
+          curl -fsSL https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/grafana.gpg --yes
+          echo "deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+          sudo apt-get update -qq
+        fi
       creates: /etc/apt/sources.list.d/grafana.list
 
-  - name: Install grafana package
+  - name: Add Grafana yum repo
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/grafana.repo ]; then
+          sudo tee /etc/yum.repos.d/grafana.repo > /dev/null <<'EOF'
+        [grafana]
+        name=grafana
+        baseurl=https://rpm.grafana.com
+        repo_gpgcheck=1
+        enabled=1
+        gpgcheck=1
+        gpgkey=https://rpm.grafana.com/gpg.key
+        sslverify=1
+        sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+        EOF
+        fi
+      creates: /etc/yum.repos.d/grafana.repo
+
+  - name: Install Grafana
     module: package
     args:
       name: grafana
       state: present
 
-  - name: Enable grafana-server service
+  - name: Set http_port
+    module: lineinfile
+    args:
+      path: /etc/grafana/grafana.ini
+      regexp: "^;?http_port\\s*="
+      line: "http_port = {{ http_port }}"
+
+  - name: Set admin_user
+    module: lineinfile
+    args:
+      path: /etc/grafana/grafana.ini
+      regexp: "^;?admin_user\\s*="
+      line: "admin_user = {{ admin_user }}"
+
+  - name: Set admin_password
+    module: lineinfile
+    args:
+      path: /etc/grafana/grafana.ini
+      regexp: "^;?admin_password\\s*="
+      line: "admin_password = {{ admin_password }}"
+
+  - name: Set domain (when provided)
+    module: lineinfile
+    args:
+      path: /etc/grafana/grafana.ini
+      regexp: "^;?domain\\s*="
+      line: "domain = {{ domain }}"
+    when: "domain"
+
+  - name: Enable and start grafana-server
     module: service
     args:
       name: grafana-server
       enabled: true
-      state: started
+      state: restarted
+
+verify:
+  - name: grafana-server is active
+    cmd: "systemctl is-active --quiet grafana-server"
+    hint: "服务未启动。看 'sudo journalctl -u grafana-server -n 30'。常见：grafana.ini 语法错 / 端口被占。"
+  - name: HTTP responds on port {{ http_port }}
+    cmd: "for i in 1 2 3 4 5; do curl -fsS -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:{{ http_port }}/login 2>/dev/null && exit 0; sleep 2; done; exit 1"
+    expect_stdout: "200"
+    hint: "Grafana 没响应：可能服务还在启动（首次启动需 5-15 秒），多等一会儿。"
+  - name: admin login works
+    cmd: "curl -fsS -m 5 -u '{{ admin_user }}:{{ admin_password }}' http://127.0.0.1:{{ http_port }}/api/org -o /dev/null -w '%{http_code}'"
+    expect_stdout: "200"
+    hint: "admin 凭据登不上。可能 grafana.ini 的 admin_password 没生效（grafana 第一次启动时初始化密码后续 ini 改不动），需手动在 grafana CLI 重设。"

@@ -1,0 +1,33 @@
+{
+  "http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 3100,
+    "help": "Loki API 端口。Grafana 添加 Loki 数据源时填这个。"
+  },
+  "bind_address": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "Bind address",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机，配 Grafana 时用）" },
+      { "value": "0.0.0.0", "label": "0.0.0.0（远程 Grafana / Promtail 推日志，需配防火墙）" }
+    ],
+    "help": "默认本机，如果 Grafana 和 Loki 在不同机器，或者要从其它机器收日志，改 0.0.0.0 后必须配防火墙限来源 IP。"
+  },
+  "retention_period": {
+    "type": "choice",
+    "label": "日志保留时长",
+    "labelEn": "Retention",
+    "default": "744h",
+    "options": [
+      { "value": "168h", "label": "7 天 (168h)" },
+      { "value": "744h", "label": "31 天 (744h, 默认)" },
+      { "value": "2160h", "label": "90 天 (2160h)" },
+      { "value": "8760h", "label": "1 年 (8760h)" }
+    ],
+    "help": "超过此时长的日志会被 compactor 自动删除。生产环境根据合规需求设。"
+  }
+}

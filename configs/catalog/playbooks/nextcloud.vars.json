@@ -1,0 +1,45 @@
+{
+  "admin_user": {
+    "type": "string",
+    "label": "管理员用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "required": true,
+    "validate": "^[a-zA-Z][a-zA-Z0-9_-]{2,32}$",
+    "help": "Nextcloud 管理员账号。建议改成不易猜的名字。"
+  },
+  "admin_password": {
+    "type": "password",
+    "label": "管理员密码",
+    "labelEn": "Admin password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "管理员密码。留空自动生成 24 位强密码（运行结束显示一次）。"
+  },
+  "domain": {
+    "type": "string",
+    "label": "域名（可选）",
+    "labelEn": "Domain",
+    "default": "",
+    "validate": "^[a-zA-Z0-9.-]*$",
+    "placeholder": "cloud.example.com",
+    "help": "你 Nextcloud 实例的访问域名。填上后会加到 trusted_domains 白名单。留空 = 仅 IP 访问。"
+  },
+  "enable_https": {
+    "type": "boolean",
+    "label": "启用 Let's Encrypt HTTPS",
+    "labelEn": "Enable HTTPS",
+    "default": false,
+    "help": "勾上自动申请 Let's Encrypt 证书。要求 domain 已经 DNS 指向本机 + 80/443 端口可达。"
+  },
+  "letsencrypt_email": {
+    "type": "string",
+    "label": "Let's Encrypt 邮箱",
+    "labelEn": "ACME email",
+    "default": "",
+    "validate": "^([^@]+@[^@]+\\.[^@]+)?$",
+    "show_when": "enable_https == true",
+    "help": "用于 ACME 注册和证书过期提醒。"
+  }
+}

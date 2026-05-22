@@ -1,0 +1,27 @@
+{
+  "edition": {
+    "type": "choice",
+    "label": "版本",
+    "labelEn": "Edition",
+    "default": "ce",
+    "options": [
+      { "value": "ce", "label": "Community Edition (免费，开源)" },
+      { "value": "ee", "label": "Business Edition (付费试用 5 节点)" }
+    ],
+    "help": "CE 个人/小团队足够用。BE 多了 RBAC、审计、AD 集成等企业功能（5 节点免费试用）。"
+  },
+  "http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 9000,
+    "help": "Portainer 默认 9000（HTTP）。生产建议挂反向代理后用 443。"
+  },
+  "https_port": {
+    "type": "port",
+    "label": "HTTPS 端口",
+    "labelEn": "HTTPS port",
+    "default": 9443,
+    "help": "Portainer 自带的 HTTPS 端口（自签证书）。"
+  }
+}

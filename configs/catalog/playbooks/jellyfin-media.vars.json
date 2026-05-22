@@ -1,0 +1,9 @@
+{
+  "http_port": {
+    "type": "port",
+    "label": "Web UI 端口",
+    "labelEn": "HTTP port",
+    "default": 8096,
+    "help": "Jellyfin 默认 8096。改了之后客户端 App 配 server 时也要写新端口。"
+  }
+}

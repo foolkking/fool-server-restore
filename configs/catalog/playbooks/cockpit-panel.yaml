@@ -1,26 +1,28 @@
 # Playbook: Cockpit Web 管理面板
-name: Install Cockpit web-based server management
+#
+# Cockpit 是 Red Hat 的 web 管理界面（systemd / 服务 / 日志 / 容器 / 存储 / 网络 全在一个界面）。
+# 在 RHEL 系统是默认推荐的，Ubuntu 也支持。占用极少，按需加载。
+name: Install Cockpit web management panel
 hosts: all
 
 tasks:
-  - name: Install Cockpit
+  - name: Install Cockpit + storage extension
     module: package
     args:
-      name:
-        - cockpit
-        - cockpit-storaged
-        - cockpit-networkmanager
+      name: ["cockpit", "cockpit-storaged"]
       state: present
 
-  - name: Enable and start Cockpit
+  - name: Enable cockpit.socket (systemd socket activation)
     module: service
     args:
-      name: cockpit.socket
+      name: "cockpit.socket"
       enabled: true
       state: started
 
-  - name: Verify Cockpit (port 9090)
-    module: shell
-    args:
-      cmd: "systemctl is-active cockpit.socket && echo 'Cockpit available at https://your-ip:9090'"
-    ignore_errors: true
+verify:
+  - name: cockpit.socket is active
+    cmd: "systemctl is-active --quiet cockpit.socket"
+    hint: "socket 没启动。看 'sudo systemctl status cockpit.socket'。"
+  - name: cockpit listening on 9090
+    cmd: "sudo ss -tlnp | grep ':9090 '"
+    hint: "9090 端口没监听：cockpit.socket 没启动 / 端口被 prometheus 之类占用了（Prometheus 默认也是 9090）。"

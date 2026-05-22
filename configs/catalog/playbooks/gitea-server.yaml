@@ -1,40 +1,59 @@
-# Playbook: Gitea 自托管 Git 服务
-name: Install Gitea Git server
+# Playbook: Gitea Git 服务器
+#
+# Gitea 自托管 Git，单二进制，资源占用低（200MB RAM 跑得动）。
+# 此 Playbook 装 binary + systemd unit + 创建 git 用户 + 数据目录。
+# 数据库默认 SQLite（单机够用），用户后续可在 web UI 切换 MySQL/PostgreSQL。
+name: Install Gitea self-hosted Git server
 hosts: all
+
+vars:
+  http_port: 3000
+  ssh_port: 22
+  domain: ""
+  data_dir: "/var/lib/gitea"
 
 tasks:
   - name: Install dependencies
     module: package
     args:
-      name:
-        - git
-        - curl
+      name: ["curl", "git"]
       state: present
 
-  - name: Create gitea user
+  - name: Create git user
     module: user
     args:
-      name: gitea
-      state: present
+      name: git
       shell: /bin/bash
+      home: /home/git
 
-  - name: Download Gitea binary
+  - name: Download Gitea binary (fixed version)
     module: shell
     args:
       cmd: |
-        GITEA_VERSION=$(curl -s https://api.github.com/repos/go-gitea/gitea/releases/latest | grep tag_name | cut -d'"' -f4 | sed 's/^v//')
-        sudo curl -fsSL "https://dl.gitea.com/gitea/${GITEA_VERSION}/gitea-${GITEA_VERSION}-linux-amd64" -o /usr/local/bin/gitea
-        sudo chmod +x /usr/local/bin/gitea
+        if [ ! -f /usr/local/bin/gitea ]; then
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64) BIN_ARCH=amd64 ;;
+            aarch64) BIN_ARCH=arm64 ;;
+            *) echo "unsupported arch: $ARCH"; exit 1 ;;
+          esac
+          VER="1.22.6"
+          curl -fsSL "https://dl.gitea.com/gitea/${VER}/gitea-${VER}-linux-${BIN_ARCH}" -o /tmp/gitea
+          sudo mv /tmp/gitea /usr/local/bin/gitea
+          sudo chmod +x /usr/local/bin/gitea
+        fi
       creates: /usr/local/bin/gitea
 
-  - name: Create Gitea directories
+  - name: Create directories
     module: shell
     args:
       cmd: |
-        sudo mkdir -p /var/lib/gitea/{custom,data,log} /etc/gitea
-        sudo chown -R gitea:gitea /var/lib/gitea /etc/gitea
+        sudo mkdir -p {{ data_dir }}/{custom,data,log} /etc/gitea
+        sudo chown -R git:git {{ data_dir }}
+        sudo chown root:git /etc/gitea
+        sudo chmod 770 /etc/gitea
 
-  - name: Create Gitea systemd service
+  - name: Render systemd unit
     module: copy
     args:
       dest: /etc/systemd/system/gitea.service
@@ -44,18 +63,30 @@ tasks:
         After=network.target
 
         [Service]
-        Type=simple
-        User=gitea
-        Group=gitea
-        WorkingDirectory=/var/lib/gitea
+        User=git
+        Group=git
+        WorkingDirectory={{ data_dir }}
         ExecStart=/usr/local/bin/gitea web --config /etc/gitea/app.ini
-        Restart=always
-        Environment=USER=gitea HOME=/home/gitea GITEA_WORK_DIR=/var/lib/gitea
+        Environment=USER=git HOME=/home/git GITEA_WORK_DIR={{ data_dir }}
+        Restart=on-failure
 
         [Install]
         WantedBy=multi-user.target
 
-  - name: Enable Gitea service
+  - name: Reload systemd + enable + start gitea
     module: shell
     args:
-      cmd: "sudo systemctl daemon-reload && sudo systemctl enable gitea"
+      cmd: "sudo systemctl daemon-reload && sudo systemctl enable --now gitea"
+
+verify:
+  - name: gitea service is active
+    cmd: "systemctl is-active --quiet gitea"
+    hint: "服务未启动。看 'sudo journalctl -u gitea -n 30'。常见：data_dir 权限不是 git:git / 端口被占。"
+  - name: HTTP responds on port {{ http_port }}
+    cmd: "for i in 1 2 3 4 5; do curl -fsS -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:{{ http_port }}/ 2>/dev/null && exit 0; sleep 3; done; exit 1"
+    expect_stdout: "200"
+    hint: "Gitea 没响应：服务可能还在启动（首次需 5-10 秒）。"
+  - name: install wizard is reachable
+    cmd: "curl -fsSL -m 5 http://127.0.0.1:{{ http_port }}/install -o /dev/null -w '%{http_code}'"
+    expect_stdout: "200"
+    hint: "安装向导不可达：可能服务已经初始化过了（这是好事），或者前面挂了反向代理改了路径。"

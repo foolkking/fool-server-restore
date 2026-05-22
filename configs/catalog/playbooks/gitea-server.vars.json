@@ -1,0 +1,33 @@
+{
+  "http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 3000,
+    "help": "Gitea web UI 端口。生产建议挂 nginx 反代后用 443 + 域名，3000 仅本机访问。"
+  },
+  "ssh_port": {
+    "type": "port",
+    "label": "Git SSH 端口",
+    "labelEn": "Git SSH port",
+    "default": 22,
+    "help": "git push/pull over SSH 用的端口。和系统 sshd 共用 22 端口（Gitea 默认让系统 sshd 处理 git 命令，不会冲突）。如果你想让 Gitea 自己起独立 SSH 服务，改成别的端口（如 2222）后在安装向导里设。"
+  },
+  "domain": {
+    "type": "string",
+    "label": "对外域名（可选）",
+    "labelEn": "Public domain",
+    "default": "",
+    "validate": "^[a-zA-Z0-9.-]*$",
+    "placeholder": "git.example.com",
+    "help": "Gitea 用这个生成 clone URL（HTTP/SSH）。留空用 IP。生产环境必填。"
+  },
+  "data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/var/lib/gitea",
+    "validate": "^/[a-zA-Z0-9/_.-]+$",
+    "help": "Gitea 数据目录（仓库 + 数据库 + 日志）。生产建议放在专用磁盘 / 频繁备份目录。"
+  }
+}

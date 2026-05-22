@@ -1,39 +1,58 @@
 # Playbook: Swap 交换空间配置
-name: Configure swap space (2GB)
+#
+# 创建一个 swap 文件（不是分区），按用户填的 GB 大小。改 swappiness。
+# 持久化到 /etc/fstab。
+name: Configure swap file
 hosts: all
 
+vars:
+  swap_size_gb: 2
+  swappiness: 10
+  swap_path: "/swapfile"
+
 tasks:
-  - name: Create 2GB swap file
+  - name: Create swap file (only if missing)
     module: shell
     args:
       cmd: |
-        sudo fallocate -l 2G /swapfile
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
-      creates: /swapfile
+        if [ ! -f {{ swap_path }} ]; then
+          # 用 fallocate 比 dd 快得多
+          sudo fallocate -l {{ swap_size_gb }}G {{ swap_path }} || sudo dd if=/dev/zero of={{ swap_path }} bs=1M count=$(( {{ swap_size_gb }} * 1024 )) status=progress
+          sudo chmod 600 {{ swap_path }}
+          sudo mkswap {{ swap_path }}
+        fi
+      creates: "{{ swap_path }}"
 
-  - name: Add swap to fstab for persistence
+  - name: Activate swap (idempotent)
+    module: shell
+    args:
+      cmd: |
+        if ! swapon --show=NAME --noheadings | grep -qx "{{ swap_path }}"; then
+          sudo swapon {{ swap_path }}
+        fi
+
+  - name: Persist swap to /etc/fstab
     module: lineinfile
     args:
       path: /etc/fstab
-      line: "/swapfile none swap sw 0 0"
-      create: true
+      regexp: "{{ swap_path }}\\s+swap"
+      line: "{{ swap_path }} none swap sw 0 0"
 
-  - name: Set swappiness to 10
-    module: lineinfile
+  - name: Set swappiness (live)
+    module: sysctl
     args:
-      path: /etc/sysctl.conf
-      regexp: "^vm.swappiness"
-      line: "vm.swappiness=10"
-      create: true
+      name: vm.swappiness
+      value: "{{ swappiness }}"
 
-  - name: Apply sysctl
-    module: shell
-    args:
-      cmd: "sudo sysctl -p"
-
-  - name: Verify swap
-    module: shell
-    args:
-      cmd: "free -h | grep Swap"
+verify:
+  - name: swap file exists
+    cmd: "test -f {{ swap_path }} && echo OK"
+    expect_stdout: "OK"
+    hint: "swap 文件创建失败：可能磁盘空间不足。'df -h /' 看可用空间。"
+  - name: swap is active
+    cmd: "swapon --show=NAME --noheadings | grep -qx '{{ swap_path }}' && echo OK"
+    expect_stdout: "OK"
+    hint: "swap 没激活：'sudo swapon {{ swap_path }}' 手动激活看是什么错。"
+  - name: swappiness applied
+    cmd: "sysctl vm.swappiness | grep -E 'vm.swappiness = {{ swappiness }}'"
+    hint: "swappiness 没生效：检查 /etc/sysctl.d/ 是否有冲突的配置。"

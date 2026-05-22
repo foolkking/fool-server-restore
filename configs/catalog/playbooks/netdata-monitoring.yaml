@@ -1,23 +1,62 @@
 # Playbook: Netdata 实时监控
+#
+# Netdata 是单机实时监控的"开箱即用"方案——装上就有 600+ 项指标 + 漂亮仪表盘，
+# 无需配置数据源/仪表盘。和 Prometheus+Grafana 组合互补：Netdata 适合单机即时排错，
+# Prometheus 适合长期趋势 + 告警 + 集群规模。
+#
+# 用 Netdata 官方 kickstart 脚本安装（最稳，跟进最新版）。
 name: Install Netdata real-time monitoring
 hosts: all
 
+vars:
+  bind_address: "127.0.0.1"
+  history: "3996"
+
 tasks:
-  - name: Install Netdata via official script
+  - name: Install dependencies
+    module: package
+    args:
+      name: ["curl", "ca-certificates"]
+      state: present
+
+  - name: Install Netdata via kickstart script
     module: shell
     args:
-      cmd: "curl -fsSL https://get.netdata.cloud/kickstart.sh | bash -s -- --dont-wait --no-updates"
-      creates: /usr/sbin/netdata
+      cmd: |
+        if ! command -v netdata >/dev/null 2>&1; then
+          # --stable-channel 用稳定版；--non-interactive 不询问
+          # --disable-telemetry 关闭遥测（默认会发匿名统计给 Netdata）
+          curl -fsSL https://get.netdata.cloud/kickstart.sh | sudo bash -s -- --stable-channel --non-interactive --disable-telemetry --dont-wait
+        fi
+      creates: /opt/netdata/bin/netdata
 
-  - name: Enable Netdata service
+  - name: Set bind address (only listen on configured)
+    module: lineinfile
+    args:
+      path: /etc/netdata/netdata.conf
+      regexp: "^\\s*#?\\s*bind to\\s*="
+      line: "    bind to = {{ bind_address }}"
+    ignore_errors: true
+
+  - name: Set history (number of seconds to keep in memory)
+    module: lineinfile
+    args:
+      path: /etc/netdata/netdata.conf
+      regexp: "^\\s*#?\\s*history\\s*="
+      line: "    history = {{ history }}"
+    ignore_errors: true
+
+  - name: Restart netdata
     module: service
     args:
       name: netdata
       enabled: true
-      state: started
+      state: restarted
 
-  - name: Verify Netdata is running (port 19999)
-    module: shell
-    args:
-      cmd: "curl -s http://localhost:19999/api/v1/info | head -c 100 && echo ' Netdata OK'"
-    ignore_errors: true
+verify:
+  - name: netdata service is active
+    cmd: "systemctl is-active --quiet netdata"
+    hint: "服务未启动。看 'sudo journalctl -u netdata -n 30'。常见：netdata.conf 语法错 / 19999 端口被占。"
+  - name: API responds
+    cmd: "curl -fsS -m 5 http://127.0.0.1:19999/api/v1/info | grep -E '\"version\"'"
+    hint: "Netdata API 不可达：可能服务还在启动（首次 5-10 秒），或 bind_address 不是 127.0.0.1。"

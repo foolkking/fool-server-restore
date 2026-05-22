@@ -1,0 +1,25 @@
+{
+  "zabbix_server": {
+    "type": "string",
+    "label": "Zabbix Server 地址",
+    "labelEn": "Zabbix Server",
+    "default": "127.0.0.1",
+    "required": true,
+    "help": "Zabbix Server 的 IP 或 hostname。Agent 会向此地址发数据 + 接收主动检查。如果你还没装 Server，先填占位值再后面改。"
+  },
+  "hostname": {
+    "type": "string",
+    "label": "Agent Hostname（在 Server 端用来识别此机器）",
+    "labelEn": "Agent hostname",
+    "default": "",
+    "validate": "^[a-zA-Z0-9._-]*$",
+    "help": "在 Zabbix Server 端，每个 Agent 用 Hostname 字段识别。**必须和 Server UI 里的 Hosts → Hostname 完全一致**，否则 Server 拒绝接收数据。留空则用本机 hostname。"
+  },
+  "agent_port": {
+    "type": "port",
+    "label": "Agent 监听端口",
+    "labelEn": "ListenPort",
+    "default": 10050,
+    "help": "Zabbix Agent 默认 10050（Server 主动从 Agent 拉数据用）。10051 是 Server 端口，不要混淆。"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "swap_size_gb": {
+    "type": "number",
+    "label": "Swap 大小 (GB)",
+    "labelEn": "Swap size (GB)",
+    "default": 2,
+    "min": 1,
+    "max": 256,
+    "help": "经验法则：物理内存 < 2GB → swap 设为内存的 2 倍；物理内存 2-8GB → 等量；> 8GB → 4GB 即可（除非要 hibernate）。"
+  },
+  "swappiness": {
+    "type": "number",
+    "label": "swappiness (0-100)",
+    "labelEn": "swappiness",
+    "default": 10,
+    "min": 0,
+    "max": 100,
+    "help": "0 = 几乎不用 swap（适合数据库服务器），60 = Linux 默认（桌面），100 = 积极用 swap。服务器一般 10。"
+  },
+  "swap_path": {
+    "type": "string",
+    "label": "Swap 文件路径",
+    "labelEn": "Swap path",
+    "default": "/swapfile",
+    "validate": "^/[a-zA-Z0-9/_.-]+$",
+    "help": "swap 文件位置。常见 /swapfile / /var/swap.img / /opt/swap。建议放根分区（不是 NFS / 加密分区）。"
+  }
+}

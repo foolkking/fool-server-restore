@@ -1,82 +1,119 @@
 # Grafana 可视化面板
 
-## 概述
+Grafana 是开源的监控可视化平台——把 Prometheus / Loki / InfluxDB / MySQL / 几十种数据源
+拼装成漂亮的仪表盘。EnvForge 用 Grafana Labs 官方仓库装 Grafana 11+（比发行版自带的版本新很多）。
 
-Grafana 是开源的数据可视化和监控平台，支持从 Prometheus、InfluxDB、Elasticsearch 等多种数据源创建丰富的仪表盘。是服务器运维和应用监控的标准可视化工具。
+## 你将得到什么
 
-## 安装内容
+- 📦 **grafana**（来自 grafana.com 官方仓库，自动跟进 minor 升级）
+- ✅ Web UI 在 `http://localhost:3000`
+- ✅ admin 账号密码已设
+- ✅ 服务自动启动并设开机自启
+- ✅ 数据存储默认 SQLite（小型部署够用，~10 dashboard 无压力）
 
-- `grafana` — Grafana 服务端（默认端口 3000）
-- 配置文件：`/etc/grafana/grafana.ini`
-- 数据目录：`/var/lib/grafana/`
-- 日志目录：`/var/log/grafana/`
+## 表单字段说明
 
-## 安装命令
+### 管理员账号 / 密码
 
+`admin_user` 和 `admin_password` 写到 `/etc/grafana/grafana.ini`。
+**重要警告**：`grafana.ini` 的 `admin_password` 只在**第一次启动 Grafana 时**初始化数据库密码。
+如果是 Grafana 已经初始化过、再次运行此 Playbook，密码不会被改。这种情况手动用 grafana-cli：
 ```bash
-sudo apt-get update -qq
-sudo apt-get install -y apt-transport-https software-properties-common
-# 添加 Grafana 官方仓库
-wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
-echo "deb https://packages.grafana.com/oss/deb stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
-sudo apt-get update -qq
-sudo apt-get install -y grafana
-sudo systemctl enable grafana-server
-sudo systemctl start grafana-server
+sudo grafana-cli admin reset-admin-password 新密码
 ```
 
-> 注意：如果 apt 仓库中已有 grafana 包，可直接 `sudo apt-get install -y grafana`。
+### HTTP 端口
 
-## 安装后配置
+默认 3000。生产环境推荐挂在 nginx/Traefik 后用 443 + 域名，3000 端口只在本机绑定。
 
-### 1. 首次登录
+### 域名
 
-- 访问：`http://your-server-ip:3000`
-- 默认用户名：`admin`
-- 默认密码：`admin`（首次登录后强制修改）
+仅当通过反向代理暴露时填上。Grafana 用它生成 OAuth 回调 URL 和邮件链接。
 
-### 2. 添加 Prometheus 数据源
+## 安装后
 
-1. 登录 Grafana → Configuration → Data Sources
-2. 点击 "Add data source"
-3. 选择 "Prometheus"
-4. URL 填写：`http://localhost:9090`
-5. 点击 "Save & Test"
+### 添加数据源
 
-### 3. 导入常用仪表盘
+打开 Web UI → Connections → Data sources → Add data source。常见数据源：
+- **Prometheus** — 监控指标（同 catalog 里有 prometheus-monitoring Playbook）
+- **Loki** — 日志聚合（同 catalog 里有 loki-logging）
+- **MySQL / PostgreSQL** — 业务数据库
+- **InfluxDB** — 时序数据
 
-推荐仪表盘 ID（从 grafana.com 导入）：
-- **1860** — Node Exporter Full（系统监控全面板）
-- **3662** — Prometheus 2.0 Overview
-- **11074** — Node Exporter for Prometheus
+### 创建仪表盘
 
-导入方法：Dashboards → Import → 输入 ID → Load
+两种方式：
+1. **手动**：Dashboards → New → 选数据源 + 写 PromQL/SQL
+2. **导入**：在 https://grafana.com/grafana/dashboards/ 找现成的（搜 "node exporter" / "nginx" 等），复制 dashboard ID，UI 里 Import 直接用
 
-### 4. 修改监听端口（可选）
+### 反向代理（Nginx 例子）
 
-编辑 `/etc/grafana/grafana.ini`：
+```nginx
+server {
+    listen 443 ssl;
+    server_name grafana.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # WebSocket 支持（实时仪表盘）
+    location /api/live/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+### 启用匿名访问（公开仪表盘）
+
+`/etc/grafana/grafana.ini`：
+```ini
+[auth.anonymous]
+enabled = true
+org_role = Viewer
+```
+
+### 配 SMTP 发告警邮件
 
 ```ini
-[server]
-http_port = 3000
+[smtp]
+enabled = true
+host = smtp.gmail.com:587
+user = you@gmail.com
+password = app-password
+from_address = grafana@yourdomain.com
 ```
 
-### 5. 启用 HTTPS（生产环境推荐）
+## ⚠️ 敏感性
 
-```ini
-[server]
-protocol = https
-cert_file = /etc/grafana/ssl/grafana.crt
-cert_key = /etc/grafana/ssl/grafana.key
-```
+**review** — Grafana 仪表盘可能展示敏感的业务指标（订单数、用户数、错误率）。务必：
+1. 不要 0.0.0.0 + 弱密码暴露公网
+2. 用反向代理 + HTTPS
+3. 创建专门的 Viewer 账号给非管理员，不要把 admin 给开发同学
 
-## 验证安装
+## 验证
 
 ```bash
-sudo systemctl status grafana-server
-curl -s http://localhost:3000/api/health
+systemctl status grafana-server --no-pager
+curl -u admin:你的密码 http://127.0.0.1:3000/api/org
 ```
+
+## 排错
+
+- **`Login failed`** — `grafana.ini` 改 admin_password 不生效。用 `sudo grafana-cli admin reset-admin-password` 重设。
+- **`Internal server error`** — 看 `sudo journalctl -u grafana-server -n 50`。常见：grafana.ini 语法错、SQLite 数据库损坏（`/var/lib/grafana/grafana.db`，删了重启会重新初始化）。
+- **跨发行版**：Grafana 不在默认仓库，Playbook 添加 grafana.com 官方源。
+
+## 多次运行
+
+`installMode: skip-existing`。已安装不重装，但 grafana.ini 每次重写。**密码不会重置**——见上面的"重要警告"。
 
 ## 隐私说明
 
-Grafana 的管理员密码和数据源连接信息为敏感数据，不会被自动同步。
+- admin 密码会在任务日志里出现一次。
+- Grafana 数据库 `/var/lib/grafana/grafana.db` 含所有仪表盘、数据源凭据、用户密码（hash 过）。

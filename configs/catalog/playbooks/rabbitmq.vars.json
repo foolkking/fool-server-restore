@@ -1,0 +1,34 @@
+{
+  "default_user": {
+    "type": "string",
+    "label": "管理员用户名",
+    "labelEn": "Admin username",
+    "default": "envforge",
+    "required": true,
+    "validate": "^[a-zA-Z][a-zA-Z0-9_-]{2,32}$",
+    "help": "RabbitMQ 管理员账号。**不要用 guest**——guest 是 RabbitMQ 默认账号，会被 EnvForge 删除。"
+  },
+  "default_password": {
+    "type": "password",
+    "label": "管理员密码",
+    "labelEn": "Admin password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "管理员密码。留空自动生成 24 位。AMQP 客户端连接和 management UI 登录都用这个。"
+  },
+  "amqp_port": {
+    "type": "port",
+    "label": "AMQP 端口",
+    "labelEn": "AMQP port",
+    "default": 5672,
+    "help": "应用 AMQP 协议连接的端口。默认 5672。"
+  },
+  "management_port": {
+    "type": "port",
+    "label": "Management UI 端口",
+    "labelEn": "Management port",
+    "default": 15672,
+    "help": "Web 管理界面端口。默认 15672。"
+  }
+}

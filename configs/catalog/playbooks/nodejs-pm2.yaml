@@ -1,26 +1,42 @@
-# Playbook: PM2 Node.js 进程管理器
-name: Install PM2 Node.js process manager
+# Playbook: PM2 Node.js 进程管理
+#
+# PM2 是 Node.js 生态的"systemd"——管理 node 进程，重启策略，集群模式，日志聚合。
+# 此 Playbook 装 pm2 全局，启用 startup script（开机自启用户的 PM2 进程）。
+name: Install PM2 process manager
 hosts: all
 
+vars:
+  pm2_user: ""
+
 tasks:
-  - name: Ensure Node.js is installed
+  - name: Check Node.js / npm exist
     module: shell
     args:
-      cmd: "command -v npm || (echo 'Node.js/npm required' && exit 1)"
+      cmd: "command -v node && command -v npm || (echo 'Node.js + npm 必须先装好' && exit 1)"
 
   - name: Install PM2 globally
     module: shell
     args:
       cmd: "sudo npm install -g pm2"
-      creates: /usr/lib/node_modules/pm2
+      creates: /usr/local/bin/pm2
 
-  - name: Setup PM2 startup
+  - name: Generate PM2 startup script (user-level, when pm2_user provided)
     module: shell
     args:
-      cmd: "sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u $USER --hp $HOME"
+      cmd: |
+        if [ -n "{{ pm2_user }}" ] && id -u {{ pm2_user }} >/dev/null 2>&1; then
+          # 让指定用户的 PM2 进程开机自启
+          sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u {{ pm2_user }} --hp /home/{{ pm2_user }}
+        else
+          # 系统级
+          sudo pm2 startup
+        fi
     ignore_errors: true
 
-  - name: Verify PM2
-    module: shell
-    args:
-      cmd: "pm2 --version"
+verify:
+  - name: pm2 command works
+    cmd: "command -v pm2 && pm2 --version"
+    hint: "pm2 没安装。可能 npm 全局目录不在 PATH 里（'npm config get prefix' 看路径）。"
+  - name: pm2-systemd unit exists
+    cmd: "ls /etc/systemd/system/pm2-*.service 2>&1 | head -1"
+    hint: "PM2 systemd unit 没生成：可能没指定 pm2_user 或 startup 命令失败。"

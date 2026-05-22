@@ -1,0 +1,36 @@
+{
+  "admin_user": {
+    "type": "string",
+    "label": "管理员用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "required": true,
+    "validate": "^[a-zA-Z][a-zA-Z0-9_-]{2,32}$",
+    "help": "Grafana admin 账号。建议改成不易猜的名字（不要 admin / root）。"
+  },
+  "admin_password": {
+    "type": "password",
+    "label": "管理员密码",
+    "labelEn": "Admin password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "Grafana admin 密码。留空自动生成 24 位。注意：grafana.ini 里的 admin_password 只在**首次启动**时生效；如果是重新运行 Playbook，需要手动 grafana-cli 重设。"
+  },
+  "http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 3000,
+    "help": "Grafana 默认 3000。生产环境建议挂在 nginx/Traefik 反向代理后用 443 + 域名，3000 仅本机访问。"
+  },
+  "domain": {
+    "type": "string",
+    "label": "域名（可选）",
+    "labelEn": "Domain (optional)",
+    "default": "",
+    "validate": "^[a-zA-Z0-9.-]*$",
+    "placeholder": "grafana.example.com",
+    "help": "如果通过反向代理暴露，填上你的域名。Grafana 用来生成正确的 OAuth 回调 URL 等。留空使用 localhost。"
+  }
+}

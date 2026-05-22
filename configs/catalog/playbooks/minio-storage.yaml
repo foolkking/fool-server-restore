@@ -1,48 +1,95 @@
-# Playbook: MinIO 对象存储
-name: Install MinIO S3-compatible object storage
+# Playbook: MinIO 对象存储（S3 兼容）
+#
+# MinIO 是 S3 兼容的对象存储——单二进制、零配置启动。适合自建 S3、备份、CI artifact 仓库。
+# 此 Playbook 装单节点单磁盘版（适合中小规模/开发测试）。生产分布式部署见官方文档。
+name: Install MinIO single-node object storage
 hosts: all
 
+vars:
+  data_dir: "/var/lib/minio/data"
+  api_port: 9000
+  console_port: 9001
+  root_user: "envforge_admin"
+  root_password: "change-me"
+
 tasks:
-  - name: Download MinIO server binary
+  - name: Install dependencies
+    module: package
+    args:
+      name: ["curl"]
+      state: present
+
+  - name: Download MinIO binary
     module: shell
     args:
       cmd: |
-        curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /tmp/minio
-        sudo install /tmp/minio /usr/local/bin/minio
-        rm -f /tmp/minio
+        if [ ! -f /usr/local/bin/minio ]; then
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64) BIN_ARCH=amd64 ;;
+            aarch64) BIN_ARCH=arm64 ;;
+            *) echo "unsupported arch: $ARCH"; exit 1 ;;
+          esac
+          curl -fsSL "https://dl.min.io/server/minio/release/linux-${BIN_ARCH}/minio" -o /tmp/minio
+          sudo mv /tmp/minio /usr/local/bin/minio
+          sudo chmod +x /usr/local/bin/minio
+        fi
       creates: /usr/local/bin/minio
 
-  - name: Create MinIO data directory
-    module: file
+  - name: Create minio user + dirs
+    module: shell
     args:
-      path: /opt/minio/data
-      state: directory
+      cmd: |
+        getent passwd minio-user >/dev/null || sudo useradd --system --no-create-home --shell /usr/sbin/nologin minio-user
+        sudo mkdir -p {{ data_dir }} /etc/default
+        sudo chown -R minio-user:minio-user {{ data_dir }}
 
-  - name: Create MinIO systemd service
+  - name: Render env file
+    module: copy
+    args:
+      dest: /etc/default/minio
+      content: |
+        # /etc/default/minio — managed by EnvForge
+        MINIO_ROOT_USER={{ root_user }}
+        MINIO_ROOT_PASSWORD={{ root_password }}
+        MINIO_VOLUMES="{{ data_dir }}"
+        MINIO_OPTS="--address :{{ api_port }} --console-address :{{ console_port }}"
+
+  - name: Render systemd unit
     module: copy
     args:
       dest: /etc/systemd/system/minio.service
       content: |
         [Unit]
-        Description=MinIO Object Storage
-        After=network.target
+        Description=MinIO
+        After=network-online.target
+        Wants=network-online.target
 
         [Service]
-        Type=simple
-        User=root
-        ExecStart=/usr/local/bin/minio server /opt/minio/data --console-address ":9001"
-        Restart=always
+        User=minio-user
+        Group=minio-user
+        EnvironmentFile=/etc/default/minio
+        ExecStart=/usr/local/bin/minio server $MINIO_OPTS $MINIO_VOLUMES
+        Restart=on-failure
+        LimitNOFILE=1048576
+        TasksMax=infinity
 
         [Install]
         WantedBy=multi-user.target
 
-  - name: Enable and start MinIO
+  - name: Reload systemd + enable + start minio
     module: shell
     args:
-      cmd: "sudo systemctl daemon-reload && sudo systemctl enable minio && sudo systemctl start minio"
+      cmd: "sudo systemctl daemon-reload && sudo systemctl enable --now minio"
 
-  - name: Verify MinIO is running
-    module: shell
-    args:
-      cmd: "curl -s http://localhost:9000/minio/health/live && echo ' MinIO OK'"
-    ignore_errors: true
+verify:
+  - name: minio service is active
+    cmd: "systemctl is-active --quiet minio"
+    hint: "服务未启动。看 'sudo journalctl -u minio -n 30'。常见：data_dir 权限不是 minio-user / 端口被占。"
+  - name: API responds
+    cmd: "for i in 1 2 3 4 5; do curl -fsS -m 3 http://127.0.0.1:{{ api_port }}/minio/health/live 2>/dev/null && exit 0; sleep 2; done; exit 1"
+    hint: "MinIO 没响应：可能服务还在初始化（首次启动 5-10 秒）。"
+  - name: console responds
+    cmd: "curl -fsS -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:{{ console_port }}/"
+    expect_stdout: "200"
+    hint: "console 不可达：可能 console_port 被占或没监听。"

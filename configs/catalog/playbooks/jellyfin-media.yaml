@@ -1,36 +1,51 @@
 # Playbook: Jellyfin 媒体服务器
+#
+# Jellyfin 是开源的"自建 Plex/Emby"——管理音乐/电影/电视/有声书库，从浏览器/iOS/Android/Apple TV/Roku/etc. 流式播放。
+# 用 Jellyfin 官方仓库装最新稳定版（比发行版默认仓库的版本新得多）。
 name: Install Jellyfin media server
 hosts: all
 
+vars:
+  http_port: 8096
+
 tasks:
-  - name: Install prerequisites
+  - name: Install dependencies
     module: package
     args:
-      name:
-        - apt-transport-https
-        - gnupg
-        - curl
+      name: ["curl", "gnupg", "ca-certificates"]
       state: present
 
-  - name: Add Jellyfin repository
+  - name: Run Jellyfin official install script
     module: shell
     args:
       cmd: |
-        sudo mkdir -p /etc/apt/keyrings
-        curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg --yes
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/jellyfin.gpg] https://repo.jellyfin.org/$(. /etc/os-release; echo $ID) $(. /etc/os-release; echo $VERSION_CODENAME) main" | sudo tee /etc/apt/sources.list.d/jellyfin.list
-        sudo apt-get update -qq
-      creates: /etc/apt/sources.list.d/jellyfin.list
+        if ! command -v jellyfin >/dev/null 2>&1; then
+          curl -fsSL https://repo.jellyfin.org/install-debuntu.sh | sudo bash 2>/dev/null || \
+          curl -fsSL https://repo.jellyfin.org/install-fedora.sh | sudo bash 2>/dev/null || \
+          (echo "Jellyfin install scripts cover Debian/Ubuntu and Fedora/CentOS only" && exit 1)
+        fi
+      creates: /usr/bin/jellyfin
 
-  - name: Install Jellyfin
-    module: package
+  - name: Set HTTP port (override default 8096 if requested)
+    module: lineinfile
     args:
-      name: jellyfin
-      state: present
+      path: /etc/jellyfin/network.xml
+      regexp: "<PublicPort>"
+      line: "  <PublicPort>{{ http_port }}</PublicPort>"
+    ignore_errors: true
 
-  - name: Enable Jellyfin
+  - name: Enable and start jellyfin
     module: service
     args:
       name: jellyfin
       enabled: true
       state: started
+
+verify:
+  - name: jellyfin service is active
+    cmd: "systemctl is-active --quiet jellyfin"
+    hint: "服务未启动。看 'sudo journalctl -u jellyfin -n 30'。常见：媒体目录权限问题、端口冲突。"
+  - name: HTTP responds on port {{ http_port }}
+    cmd: "for i in 1 2 3 4 5 6; do curl -fsSL -m 5 http://127.0.0.1:{{ http_port }}/web/ -o /dev/null -w '%{http_code}' 2>/dev/null && exit 0; sleep 5; done; exit 1"
+    expect_stdout: "200"
+    hint: "Jellyfin 没响应：首次启动较慢（10-30 秒），多等一会儿。或者改了 http_port 但 network.xml 没生效（XML 解析失败时 lineinfile 没法可靠改，请在 web UI 里修改）。"

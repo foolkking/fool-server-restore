@@ -1,0 +1,26 @@
+{
+  "bind_address": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "Bind address",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机，推荐）" },
+      { "value": "*", "label": "* (所有网卡，**Netdata 没认证！**) " }
+    ],
+    "help": "Netdata 默认无认证。0.0.0.0 暴露公网会让所有人看到你的系统指标。建议保持 127.0.0.1，前面挂 nginx + basic auth 后再远程访问。"
+  },
+  "history": {
+    "type": "choice",
+    "label": "内存中保留时长",
+    "labelEn": "History (seconds)",
+    "default": "3996",
+    "options": [
+      { "value": "1800", "label": "30 分钟（最省内存）" },
+      { "value": "3996", "label": "约 1 小时（默认）" },
+      { "value": "14400", "label": "4 小时" },
+      { "value": "86400", "label": "24 小时（约 250MB 内存）" }
+    ],
+    "help": "Netdata 把指标存在内存（环形缓冲区）。每 1000 个 metrics 每秒约 100KB 内存。长期数据存不下就要配 dbengine 模式（持久化到磁盘）。"
+  }
+}

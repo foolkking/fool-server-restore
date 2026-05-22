@@ -1,0 +1,45 @@
+{
+  "port": {
+    "type": "port",
+    "label": "MQTT 端口",
+    "labelEn": "MQTT port",
+    "default": 1883,
+    "help": "MQTT 默认 1883（明文）。8883 是 MQTTS（TLS），需要额外的 TLS 配置（不在本 Playbook 范围）。"
+  },
+  "bind_address": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "Bind address",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机，推荐）" },
+      { "value": "0.0.0.0", "label": "0.0.0.0（所有网卡，IoT 设备远程连，需配防火墙）" }
+    ],
+    "help": "如果 IoT 设备需要远程连，改 0.0.0.0 + 防火墙限源 IP + 务必启用密码认证（不能允许匿名！）。"
+  },
+  "allow_anonymous": {
+    "type": "boolean",
+    "label": "允许匿名连接",
+    "labelEn": "Allow anonymous",
+    "default": false,
+    "help": "默认禁止——匿名 MQTT broker 是公开 IoT 市场上最大的安全洞之一。仅在受限内网测试时开启。"
+  },
+  "mqtt_user": {
+    "type": "string",
+    "label": "MQTT 用户名",
+    "labelEn": "MQTT username",
+    "default": "envforge",
+    "validate": "^[a-zA-Z][a-zA-Z0-9_-]{2,32}$",
+    "show_when": "allow_anonymous == false",
+    "help": "客户端连接用的用户名。"
+  },
+  "mqtt_password": {
+    "type": "password",
+    "label": "MQTT 密码",
+    "labelEn": "MQTT password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "show_when": "allow_anonymous == false",
+    "help": "客户端连接密码。留空自动生成 24 位。"
+  }
+}

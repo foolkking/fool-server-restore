@@ -1,27 +1,93 @@
-# Playbook: Zabbix 企业监控
-name: Install Zabbix Agent (monitoring agent)
+# Playbook: Zabbix Agent
+#
+# Zabbix 是企业级监控系统。此 Playbook 装 zabbix-agent2（被监控端），
+# 不是 Zabbix Server。Server 端通常单独部署一台，agent 装在每台被监控机器上。
+name: Install Zabbix Agent 2
 hosts: all
 
+vars:
+  zabbix_server: "127.0.0.1"
+  hostname: ""
+  agent_port: 10050
+
 tasks:
-  - name: Add Zabbix repository
+  - name: Install dependencies
+    module: package
+    args:
+      name: ["curl"]
+      state: present
+
+  - name: Add Zabbix apt repo (Debian/Ubuntu)
     module: shell
     args:
       cmd: |
-        wget -qO /tmp/zabbix-release.deb https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_7.0-2+ubuntu22.04_all.deb
-        sudo dpkg -i /tmp/zabbix-release.deb
-        sudo apt-get update -qq
-        rm -f /tmp/zabbix-release.deb
+        if command -v apt-get >/dev/null 2>&1; then
+          # Zabbix 7.0 LTS 仓库（兼容 Ubuntu 22.04 / 24.04 / Debian 12）
+          UBVER=$(lsb_release -rs)
+          UBNAME=$(lsb_release -cs)
+          curl -fsSL "https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest+ubuntu${UBVER}_all.deb" -o /tmp/zabbix-release.deb 2>/dev/null && \
+            sudo dpkg -i /tmp/zabbix-release.deb && \
+            sudo apt-get update -qq
+        fi
       creates: /etc/apt/sources.list.d/zabbix.list
 
-  - name: Install Zabbix Agent
+  - name: Add Zabbix yum repo (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/zabbix.repo ]; then
+          OSVER=$(rpm -E '%{rhel}')
+          sudo rpm -Uvh https://repo.zabbix.com/zabbix/7.0/rhel/${OSVER}/x86_64/zabbix-release-latest.el${OSVER}.noarch.rpm
+          sudo dnf clean all
+        fi
+      creates: /etc/yum.repos.d/zabbix.repo
+
+  - name: Install zabbix-agent2
     module: package
     args:
-      name: zabbix-agent
+      name: zabbix-agent2
       state: present
 
-  - name: Enable Zabbix Agent
+  - name: Set Server (Zabbix server hostname/IP)
+    module: lineinfile
+    args:
+      path: /etc/zabbix/zabbix_agent2.conf
+      regexp: "^Server="
+      line: "Server={{ zabbix_server }}"
+
+  - name: Set ServerActive
+    module: lineinfile
+    args:
+      path: /etc/zabbix/zabbix_agent2.conf
+      regexp: "^ServerActive="
+      line: "ServerActive={{ zabbix_server }}"
+
+  - name: Set Hostname (when provided)
+    module: lineinfile
+    args:
+      path: /etc/zabbix/zabbix_agent2.conf
+      regexp: "^Hostname="
+      line: "Hostname={{ hostname }}"
+    when: "hostname"
+
+  - name: Set ListenPort
+    module: lineinfile
+    args:
+      path: /etc/zabbix/zabbix_agent2.conf
+      regexp: "^ListenPort="
+      line: "ListenPort={{ agent_port }}"
+
+  - name: Enable and start zabbix-agent2
     module: service
     args:
-      name: zabbix-agent
+      name: zabbix-agent2
       enabled: true
-      state: started
+      state: restarted
+
+verify:
+  - name: zabbix-agent2 service is active
+    cmd: "systemctl is-active --quiet zabbix-agent2"
+    hint: "服务未启动。看 'sudo journalctl -u zabbix-agent2 -n 30'。"
+  - name: agent listening on port {{ agent_port }}
+    cmd: "sudo ss -tlnp | grep ':{{ agent_port }} '"
+    hint: "端口没监听：可能 zabbix_agent2.conf 配置问题或服务启动失败。"

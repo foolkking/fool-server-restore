@@ -1,39 +1,135 @@
 # Netdata 实时监控
 
-Netdata 实时系统监控面板，零配置开箱即用。
+Netdata 是开箱即用的单机监控——装上就有 **600+ 指标**和**漂亮的实时仪表盘**，
+无需配置数据源、无需画 dashboard。每秒粒度，浏览器打开就能看。
 
-*Netdata real-time monitoring dashboard, zero-config out of the box.*
+适合：
+- 服务器突然慢了，想立刻知道是哪里的问题
+- 单机部署、不想搭 Prometheus + Grafana 全套
+
+不适合：
+- 多机集群监控（Netdata 也支持但不如 Prometheus）
+- 长期历史数据 + 告警 + alerting 集成（用 Prometheus）
 
 ## 你将得到什么
 
-- ▶ **安装 Netdata** _(Install Netdata)_ — 通过 curl script
+- ✅ Netdata 最新 stable 版（kickstart 脚本安装到 `/opt/netdata`）
+- ✅ Web UI 在 `http://localhost:19999`（仪表盘 + 实时图表）
+- ✅ 600+ 内置 collector（CPU / 内存 / 磁盘 / 网络 / 进程 / Docker / 数据库 / web server / ...）
+- ✅ Anomaly detection 内置（机器学习识别异常指标）
+- ✅ Telemetry 已关闭（不发匿名统计回 Netdata）
 
-## 自动化步骤
+## 表单字段说明
 
-EnvForge 在目标机器上依次执行以下任务：
+### 监听地址
 
-1. Install Netdata via official script
-2. Enable Netdata service
-3. Verify Netdata is running (port 19999)
+**Netdata 没有用户认证机制**。0.0.0.0 暴露公网 = 把你的系统指标全公开。
+默认 127.0.0.1，远程访问请挂 nginx + basic auth 后端。
 
-## 验证安装
+### 内存中保留时长
+
+Netdata 把指标存在内存的环形缓冲区。默认 1 小时（约 200MB 内存，依监控指标数）。
+长期数据需要切换到 `dbengine` 模式（持久化磁盘）。
+
+## 安装后
+
+### 浏览器访问
+
+`http://localhost:19999` — 立刻有完整仪表盘。第一次打开会引导你做一次 tour。
+
+### 反向代理 + 认证（生产推荐）
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name netdata.example.com;
+
+    auth_basic "Netdata";
+    auth_basic_user_file /etc/nginx/htpasswd;
+
+    location / {
+        proxy_pass http://127.0.0.1:19999;
+        proxy_http_version 1.1;
+        proxy_pass_request_headers on;
+        proxy_set_header Connection "keep-alive";
+        proxy_store off;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Server $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        # WebSocket
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
 
 ```bash
-# 根据安装内容运行对应的健康检查命令
-# 例如查看进程: ps aux | grep <name>
-# 例如查看端口: ss -tlnp
+# 创建 htpasswd
+sudo apt-get install apache2-utils
+sudo htpasswd -c /etc/nginx/htpasswd admin
+```
+
+### 持久化指标到磁盘（dbengine）
+
+`/etc/netdata/netdata.conf`：
+```ini
+[db]
+mode = dbengine
+storage tiers = 3
+update every = 1
+```
+
+dbengine 用三层存储自动 downsampling，保留几个月数据但磁盘只占几个 GB。
+
+### Cloud 模式（多机统一面板，免费）
+
+`https://app.netdata.cloud` 注册账号，按页面提示给每台机器跑 claim 命令，所有机器
+的指标在一个面板里看。
+
+### 装额外 collector
+
+```bash
+sudo /opt/netdata/usr/libexec/netdata/plugins.d/python.d.plugin debug --modules
+# 看哪些 module 没启用
+```
+
+例如要监控 nginx：
+```ini
+# /etc/netdata/python.d/nginx.conf
+local:
+  url: http://127.0.0.1/stub_status
+```
+
+```bash
+sudo systemctl restart netdata
+```
+
+## ⚠️ 敏感性
+
+**safe** — 指标采集是只读的，不动系统配置。但 web UI **没认证**，公网暴露要谨慎。
+
+## 验证
+
+```bash
+systemctl status netdata --no-pager
+curl http://localhost:19999/api/v1/info
+sudo ss -tlnp | grep 19999
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **kickstart 脚本失败** — 通常是网络问题（curl 访问 get.netdata.cloud 不通）。试 https://github.com/netdata/netdata 直接源码编译。
+- **服务起来但 19999 不响应** — 检查 `bind to` 配置；防火墙是否挡了。
+- **CPU 占用高** — Netdata 默认每秒一次采集所有 600+ 指标，在弱机器上会占 1-3% CPU。可以调 `update every = 5`（5 秒一次）减负担。
+- **跨发行版**：用官方 kickstart 脚本，自动适配 Ubuntu / Debian / RHEL / Anolis / Arch。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。已装就跳过 kickstart，仅刷 `bind to` 和 `history` 配置。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+- Telemetry 已默认禁用（kickstart `--disable-telemetry` 参数）。
+- 监控数据全部本地存储，不上传任何东西。
+- Cloud 模式需要主动 claim，不 claim 就不发任何数据出去。

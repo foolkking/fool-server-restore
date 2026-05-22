@@ -1,25 +1,71 @@
-# Playbook: Mosquitto MQTT 消息代理
-name: Install Mosquitto MQTT broker
+# Playbook: Mosquitto MQTT broker
+#
+# Mosquitto 是开源 MQTT broker。MQTT 是 IoT/物联网最常用的消息协议——
+# 轻量（每条消息几十字节）、发布订阅模型、低带宽场景设计。
+name: Install and configure Mosquitto MQTT broker
 hosts: all
 
+vars:
+  port: 1883
+  bind_address: "127.0.0.1"
+  allow_anonymous: false
+  mqtt_user: "envforge"
+  mqtt_password: "change-me"
+
 tasks:
-  - name: Install Mosquitto
+  - name: Install mosquitto
     module: package
     args:
-      name:
-        - mosquitto
-        - mosquitto-clients
+      name: ["mosquitto", "mosquitto-clients"]
       state: present
 
-  - name: Enable Mosquitto
+  - name: Render /etc/mosquitto/mosquitto.conf
+    module: copy
+    args:
+      dest: /etc/mosquitto/mosquitto.conf
+      content: |
+        # /etc/mosquitto/mosquitto.conf — managed by EnvForge
+
+        persistence true
+        persistence_location /var/lib/mosquitto/
+
+        log_dest file /var/log/mosquitto/mosquitto.log
+        log_type error
+        log_type warning
+        log_type notice
+        log_type information
+
+        listener {{ port }} {{ bind_address }}
+        allow_anonymous {{ allow_anonymous }}
+        password_file /etc/mosquitto/passwd
+
+        # 多 listener / TLS / WebSocket / bridge 配置在 conf.d 里加
+        include_dir /etc/mosquitto/conf.d
+
+  - name: Create password file (only when not anonymous)
+    module: shell
+    args:
+      cmd: |
+        sudo touch /etc/mosquitto/passwd
+        sudo chmod 600 /etc/mosquitto/passwd
+        sudo chown mosquitto:mosquitto /etc/mosquitto/passwd
+        sudo mosquitto_passwd -b /etc/mosquitto/passwd '{{ mqtt_user }}' '{{ mqtt_password }}'
+
+  - name: Enable and start mosquitto
     module: service
     args:
       name: mosquitto
       enabled: true
-      state: started
+      state: restarted
 
-  - name: Verify Mosquitto
-    module: shell
-    args:
-      cmd: "mosquitto -h 2>&1 | head -3 || true"
-    ignore_errors: true
+verify:
+  - name: mosquitto service is active
+    cmd: "systemctl is-active --quiet mosquitto"
+    hint: "服务未启动。看 'sudo journalctl -u mosquitto -n 30'。常见：mosquitto.conf 语法错 / passwd 文件权限。"
+  - name: listening on port {{ port }}
+    cmd: "sudo ss -tlnp | grep ':{{ port }} '"
+    hint: "端口没监听：检查 mosquitto.conf 的 listener 行。"
+  - name: pub/sub roundtrip works (when not anonymous)
+    cmd: "if [ '{{ allow_anonymous }}' = 'false' ]; then mosquitto_pub -h 127.0.0.1 -p {{ port }} -u '{{ mqtt_user }}' -P '{{ mqtt_password }}' -t test -m hello && echo OK; else mosquitto_pub -h 127.0.0.1 -p {{ port }} -t test -m hello && echo OK; fi"
+    expect_stdout: "OK"
+    hint: "publish 失败：可能用户密码不对（passwd 文件没生成成功），或匿名模式没开但你也没传凭据。"

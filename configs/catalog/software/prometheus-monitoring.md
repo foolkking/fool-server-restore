@@ -1,97 +1,161 @@
 # Prometheus 监控
 
-## 概述
+Prometheus 是云原生的指标监控系统：定期 scrape 各种 exporter 拿指标，存到本地 TSDB，
+提供 PromQL 查询语言。配 Grafana 一起用最经典。
 
-Prometheus 是云原生计算基金会（CNCF）的开源监控和告警系统。它采用拉取模式采集时序指标数据，配合 Node Exporter 可以监控服务器的 CPU、内存、磁盘、网络等系统指标。
+## 你将得到什么
 
-## 安装内容
+- ✅ Prometheus 2.55.x 二进制装到 `/usr/local/bin/prometheus`
+- ✅ promtool 也装上（验证配置 / 测试规则）
+- ✅ 专用 prometheus 系统用户
+- ✅ 配置 `/etc/prometheus/prometheus.yml`（一个示范 scrape job）
+- ✅ 数据目录 `/var/lib/prometheus`
+- ✅ systemd 单元，按表单的端口/保留时长/抓取间隔启动
 
-- `prometheus` — 监控服务端（默认端口 9090）
-- `prometheus-node-exporter` — 系统指标采集器（默认端口 9100）
-- 配置文件：`/etc/prometheus/prometheus.yml`
-- 数据目录：`/var/lib/prometheus/`
+## 表单字段说明
 
-## 安装命令
+### HTTP 端口
+
+默认 9090，是 Prometheus 的事实标准端口。
+
+### 监听地址
+
+**Prometheus 自身没有用户认证机制**——0.0.0.0 暴露公网就是把所有监控数据全公开。
+默认 127.0.0.1，前面挂 nginx + basic auth 之后再说远程访问。
+
+### 数据保留时长
+
+每 1000 时间序列每天大约 1MB（取决于 churn）。算下来：
+- 默认 15d：~ 几百 MB
+- 90d：~ 几 GB
+- 365d：~ 数十 GB
+
+更长期归档应该用 Thanos / VictoriaMetrics / Cortex。
+
+### 抓取间隔
+
+15 秒是行业默认。改 5 秒会让磁盘占用 3x，改 1 分钟太粗会错过短期 spike。
+
+## 安装后
+
+### 装 Node Exporter（本机系统指标）
+
+`prometheus.yml` 已经包含一个 `localhost:9100` 的 scrape job。在 EnvForge 的 catalog 里搜
+"node_exporter"（如果有）或手动装：
 
 ```bash
-sudo apt-get update -qq
-sudo apt-get install -y prometheus prometheus-node-exporter
-sudo systemctl enable prometheus
-sudo systemctl start prometheus
+# 二进制方式
+VER=1.8.2
+curl -fsSL "https://github.com/prometheus/node_exporter/releases/download/v${VER}/node_exporter-${VER}.linux-amd64.tar.gz" | sudo tar -xz -C /usr/local/bin --strip-components=1 node_exporter-${VER}.linux-amd64/node_exporter
+# 创建 systemd unit, 启动监听 9100
 ```
 
-## 安装后配置
-
-### 1. 基础配置
+### 添加更多 scrape job
 
 编辑 `/etc/prometheus/prometheus.yml`：
-
 ```yaml
-global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
-
 scrape_configs:
-  - job_name: 'prometheus'
+  - job_name: my-app
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['127.0.0.1:8000']
+        labels:
+          env: production
 
-  - job_name: 'node'
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
     static_configs:
-      - targets: ['localhost:9100']
+      - targets:
+          - https://example.com
+          - https://api.example.com
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 127.0.0.1:9115  # blackbox_exporter
 ```
 
-### 2. 添加告警规则（可选）
+校验 + 重载：
+```bash
+sudo promtool check config /etc/prometheus/prometheus.yml
+sudo systemctl reload prometheus
+```
 
-创建 `/etc/prometheus/alerts.yml`：
+### 看哪些 target 在 UP
+
+打开 `http://localhost:9090/targets`，所有 scrape 的状态一目了然。DOWN 的 target 鼠标悬停看错误原因。
+
+### 查询数据（PromQL）
+
+打开 `http://localhost:9090/graph`：
+```promql
+# CPU 使用率（去掉 idle）
+100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# 内存使用率
+(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+
+# HTTP 5xx 错误率
+sum(rate(http_requests_total{code=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
+```
+
+### 配 Grafana 数据源
+
+Grafana → Connections → Data sources → Add → Prometheus，URL 填 `http://localhost:9090`，Save & test。
+
+### 告警规则（按需）
 
 ```yaml
+# /etc/prometheus/alerts.yml
 groups:
-  - name: system
+  - name: instance
     rules:
-      - alert: HighCPU
-        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "CPU 使用率超过 80%"
-
-      - alert: HighMemory
-        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+      - alert: InstanceDown
+        expr: up == 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "内存使用率超过 90%"
+          summary: "{{ $labels.instance }} is down"
 ```
 
-### 3. 数据保留策略
-
-```bash
-# 默认保留 15 天，可通过启动参数修改
-# 编辑 /etc/default/prometheus
-ARGS="--storage.tsdb.retention.time=30d"
+`prometheus.yml` 里 include：
+```yaml
+rule_files:
+  - alerts.yml
 ```
 
-### 4. 重启服务
+实际发告警还需要 Alertmanager（独立服务）。
+
+## ⚠️ 敏感性
+
+**review** — Prometheus 会 scrape 各种敏感指标（业务量、错误率、内部服务名）。务必：
+1. 不要 0.0.0.0 直接公网暴露
+2. nginx + basic auth 反向代理
+3. exporter 也要有访问控制（node_exporter 默认 0.0.0.0 也是问题）
+
+## 验证
 
 ```bash
-sudo systemctl restart prometheus
-```
-
-## 验证安装
-
-```bash
-sudo systemctl status prometheus
+systemctl status prometheus --no-pager
 curl http://localhost:9090/-/healthy
-curl http://localhost:9100/metrics | head -20
+sudo promtool check config /etc/prometheus/prometheus.yml
 ```
 
-## 访问 Web UI
+## 排错
 
-浏览器访问：`http://your-server-ip:9090`
+- **服务起不来 + `permission denied: /var/lib/prometheus`** — 数据目录所有者不是 prometheus，重跑 Playbook 或 `sudo chown -R prometheus:prometheus /var/lib/prometheus`。
+- **`/targets` 上某个 job DOWN** — 该端口没服务在监听，或防火墙挡了，或 metrics 路径错。
+- **跨发行版**：用二进制安装，无包管理器差异。
+
+## 多次运行
+
+`installMode: skip-existing`。已下载二进制不会重下，prometheus.yml 每次重写——你手动加的 scrape_configs 会被覆盖。建议 prometheus.yml 拆分：基础部分 EnvForge 管，业务部分放 `/etc/prometheus/conf.d/*.yml` 后用 `file_sd_configs` 引用。
 
 ## 隐私说明
 
-Prometheus 配置中的目标地址可能包含内部网络信息。指标数据本身通常不包含敏感信息。
+- 监控数据本地存储，不上传不同步。
+- prometheus.yml 不含密码（一般），但 scrape_configs 的 basic_auth 段可能含。

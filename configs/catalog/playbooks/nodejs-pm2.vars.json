@@ -1,0 +1,11 @@
+{
+  "pm2_user": {
+    "type": "string",
+    "label": "PM2 运行用户（可选）",
+    "labelEn": "PM2 user",
+    "default": "",
+    "validate": "^[a-zA-Z0-9_-]*$",
+    "placeholder": "deploy",
+    "help": "让指定用户的 PM2 进程开机自启。常见做法：单建 deploy/app 用户，PM2 跑在它名下。留空则系统级（不推荐——root 跑应用是反模式）。"
+  }
+}

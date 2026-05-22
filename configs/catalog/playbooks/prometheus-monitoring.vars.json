@@ -1,0 +1,47 @@
+{
+  "http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 9090,
+    "help": "Prometheus Web UI + API 端口。默认 9090。"
+  },
+  "bind_address": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "Bind address",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机，配 Grafana 数据源时用）" },
+      { "value": "0.0.0.0", "label": "0.0.0.0（远程访问，**Prometheus 没认证！务必反向代理 + auth**）" }
+    ],
+    "help": "Prometheus 自身没有用户认证。0.0.0.0 暴露到公网等于把所有监控数据公开。建议保持 127.0.0.1，前面挂 nginx + basic auth 后再暴露。"
+  },
+  "retention": {
+    "type": "choice",
+    "label": "数据保留时长",
+    "labelEn": "Data retention",
+    "default": "15d",
+    "options": [
+      { "value": "7d", "label": "7 天（开发测试）" },
+      { "value": "15d", "label": "15 天（默认）" },
+      { "value": "30d", "label": "30 天" },
+      { "value": "90d", "label": "90 天（约 3 个月）" },
+      { "value": "365d", "label": "1 年（数据量很大，磁盘要够）" }
+    ],
+    "help": "TSDB 历史数据保留多久，超过的会自动删。每 1000 时间序列大约每天 1MB，按你监控的指标数估算磁盘占用。长期归档建议用 Thanos / VictoriaMetrics 而不是直接调高 retention。"
+  },
+  "scrape_interval": {
+    "type": "choice",
+    "label": "抓取间隔",
+    "labelEn": "Scrape interval",
+    "default": "15s",
+    "options": [
+      { "value": "5s", "label": "5 秒（高分辨率，磁盘占用大）" },
+      { "value": "15s", "label": "15 秒（推荐）" },
+      { "value": "30s", "label": "30 秒" },
+      { "value": "1m", "label": "1 分钟（粗粒度，省存储）" }
+    ],
+    "help": "Prometheus 多久去 scrape 一次每个 target 的指标。15 秒是行业默认平衡点。"
+  }
+}

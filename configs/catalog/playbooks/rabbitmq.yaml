@@ -1,31 +1,69 @@
 # Playbook: RabbitMQ 消息队列
+#
+# RabbitMQ 是企业级消息队列，AMQP 协议。比 Redis pub/sub 复杂但功能丰富——
+# 路由、队列持久化、死信、消费者优先级。
 name: Install RabbitMQ message broker
 hosts: all
 
+vars:
+  amqp_port: 5672
+  management_port: 15672
+  default_user: "envforge"
+  default_password: "change-me"
+
 tasks:
-  - name: Install Erlang and RabbitMQ
+  - name: Install RabbitMQ + Erlang
     module: package
     args:
-      name:
-        - erlang-base
-        - rabbitmq-server
+      name: rabbitmq-server
       state: present
 
-  - name: Enable RabbitMQ service
+  - name: Enable management plugin (web UI)
+    module: shell
+    args:
+      cmd: "sudo rabbitmq-plugins enable rabbitmq_management"
+
+  - name: Enable and start RabbitMQ
     module: service
     args:
       name: rabbitmq-server
       enabled: true
       state: started
 
-  - name: Enable RabbitMQ management plugin
+  - name: Wait for RabbitMQ ready
     module: shell
     args:
-      cmd: "sudo rabbitmq-plugins enable rabbitmq_management"
-      creates: /etc/rabbitmq/enabled_plugins
+      cmd: "for i in 1 2 3 4 5 6 7 8 9 10; do sudo rabbitmqctl status >/dev/null 2>&1 && exit 0; sleep 3; done; exit 1"
 
-  - name: Verify RabbitMQ is running
+  - name: Create admin user (if missing)
     module: shell
     args:
-      cmd: "sudo rabbitmqctl status | head -5 && echo 'RabbitMQ OK'"
+      cmd: |
+        if ! sudo rabbitmqctl list_users | awk '{print $1}' | grep -qx '{{ default_user }}'; then
+          sudo rabbitmqctl add_user '{{ default_user }}' '{{ default_password }}'
+          sudo rabbitmqctl set_user_tags '{{ default_user }}' administrator
+          sudo rabbitmqctl set_permissions -p / '{{ default_user }}' '.*' '.*' '.*'
+        else
+          # 用户已存在，仅更新密码（让用户能用表单的最新值登录）
+          sudo rabbitmqctl change_password '{{ default_user }}' '{{ default_password }}'
+        fi
+
+  - name: Delete default guest user (security)
+    module: shell
+    args:
+      cmd: "sudo rabbitmqctl delete_user guest 2>/dev/null || true"
     ignore_errors: true
+
+verify:
+  - name: rabbitmq-server is active
+    cmd: "systemctl is-active --quiet rabbitmq-server"
+    hint: "服务未启动。看 'sudo journalctl -u rabbitmq-server -n 50'。常见：Erlang cookie 不一致 / hostname 解析问题（RabbitMQ 对 hostname 极其敏感）。"
+  - name: AMQP listening on {{ amqp_port }}
+    cmd: "sudo ss -tlnp | grep ':{{ amqp_port }} '"
+    hint: "AMQP 端口 {{ amqp_port }} 没监听：可能 RabbitMQ 启动失败或 hostname 问题。"
+  - name: management UI listening on {{ management_port }}
+    cmd: "sudo ss -tlnp | grep ':{{ management_port }} '"
+    hint: "Management 端口没监听：可能 plugin 没启用，运行 'sudo rabbitmq-plugins enable rabbitmq_management'。"
+  - name: admin user can authenticate
+    cmd: "curl -fsS -m 5 -u '{{ default_user }}:{{ default_password }}' http://127.0.0.1:{{ management_port }}/api/whoami | grep -E '\"name\"'"
+    hint: "admin 凭据登不上 management API：可能 add_user 失败（看 journalctl）。"

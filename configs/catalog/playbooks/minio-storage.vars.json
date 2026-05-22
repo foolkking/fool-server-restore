@@ -1,0 +1,42 @@
+{
+  "root_user": {
+    "type": "string",
+    "label": "Root 用户名",
+    "labelEn": "Root user",
+    "default": "envforge_admin",
+    "required": true,
+    "validate": "^[a-zA-Z][a-zA-Z0-9_-]{2,32}$",
+    "help": "MinIO 根用户（access key）。**不要用 minioadmin**——这是默认值，自动扫描器在找。"
+  },
+  "root_password": {
+    "type": "password",
+    "label": "Root 密码",
+    "labelEn": "Root password",
+    "generate_length": 32,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "MinIO 根密码（secret key）。S3 协议用这个签名。留空自动生成 32 位强密码。最少 8 位。"
+  },
+  "api_port": {
+    "type": "port",
+    "label": "S3 API 端口",
+    "labelEn": "S3 API port",
+    "default": 9000,
+    "help": "S3 API 端口。客户端 / boto3 / aws-cli 用这个端口。"
+  },
+  "console_port": {
+    "type": "port",
+    "label": "Web Console 端口",
+    "labelEn": "Web console port",
+    "default": 9001,
+    "help": "MinIO web 管理界面端口。"
+  },
+  "data_dir": {
+    "type": "string",
+    "label": "数据存储目录",
+    "labelEn": "Data directory",
+    "default": "/var/lib/minio/data",
+    "validate": "^/[a-zA-Z0-9/_.-]+$",
+    "help": "MinIO 存对象的目录。**生产环境请放在专用磁盘**，避免和 OS 抢 IO。"
+  }
+}

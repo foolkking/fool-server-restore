@@ -1,6 +1,17 @@
 # Playbook: Nextcloud 私有云盘
-name: Install Nextcloud (snap-based)
+#
+# Nextcloud 用 snap 安装最省心——内置 nginx + PHP + Redis + MariaDB 全套，
+# 自动拿 Let's Encrypt 证书，没有 PHP 版本兼容性烦恼。
+# 缺点：snap 在 RHEL 系列默认没装；需要先装 snapd。
+name: Install Nextcloud via snap
 hosts: all
+
+vars:
+  domain: ""
+  admin_user: "admin"
+  admin_password: "change-me"
+  enable_https: false
+  letsencrypt_email: ""
 
 tasks:
   - name: Install snapd
@@ -9,13 +20,56 @@ tasks:
       name: snapd
       state: present
 
-  - name: Install Nextcloud via snap
+  - name: Enable snapd socket
+    module: service
+    args:
+      name: "snapd.socket"
+      enabled: true
+      state: started
+
+  - name: Wait for snapd ready
+    module: shell
+    args:
+      cmd: "for i in 1 2 3 4 5; do sudo snap version >/dev/null 2>&1 && exit 0; sleep 3; done; exit 1"
+
+  - name: Install Nextcloud snap
     module: shell
     args:
       cmd: "sudo snap install nextcloud"
-      creates: /snap/bin/nextcloud
+      creates: /snap/nextcloud/current
 
-  - name: Verify Nextcloud snap
+  - name: Setup admin account (on first install)
     module: shell
     args:
-      cmd: "sudo snap list | grep nextcloud"
+      cmd: |
+        # 检查是否已经初始化（已有 admin 时此命令会报错，吞掉）
+        if ! sudo nextcloud.occ user:list 2>/dev/null | grep -q '{{ admin_user }}'; then
+          sudo nextcloud.manual-install '{{ admin_user }}' '{{ admin_password }}'
+        fi
+    ignore_errors: true
+
+  - name: Add domain to trusted_domains (when set)
+    module: shell
+    args:
+      cmd: "sudo nextcloud.occ config:system:set trusted_domains 1 --value='{{ domain }}'"
+    when: "domain"
+    ignore_errors: true
+
+  - name: Configure Let's Encrypt (when enabled and email + domain set)
+    module: shell
+    args:
+      cmd: "sudo nextcloud.enable-https lets-encrypt --agree-tos --email '{{ letsencrypt_email }}' --domain '{{ domain }}'"
+    when: "enable_https and letsencrypt_email and domain"
+    ignore_errors: true
+
+verify:
+  - name: nextcloud snap is installed
+    cmd: "snap list nextcloud 2>&1 | grep nextcloud"
+    hint: "snap 没安装好。可能 snapd 在你的发行版上不工作（RHEL 8/9 需要 EPEL 装 snapd 然后 enable + 重启 + 创建 /snap symlink）。"
+  - name: snap services running
+    cmd: "sudo snap services nextcloud 2>&1 | grep -E 'enabled.*active'"
+    hint: "Nextcloud 内部服务没全部启动。'sudo snap services nextcloud' 看具体哪个挂了。"
+  - name: HTTP responds
+    cmd: "for i in 1 2 3 4 5 6 7 8 9 10; do curl -fsS -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1/ 2>/dev/null && exit 0; sleep 5; done; exit 1"
+    expect_stdout: "302"
+    hint: "Nextcloud 没响应：snap 安装较慢（首次 1-3 分钟），多等一会儿。如果还是没响应看 'sudo snap logs nextcloud'。"

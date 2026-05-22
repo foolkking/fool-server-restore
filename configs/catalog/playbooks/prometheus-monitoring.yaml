@@ -1,32 +1,125 @@
 # Playbook: Prometheus 监控
-name: Install Prometheus and Node Exporter
+#
+# Prometheus 不在主流发行版默认仓库（版本太老），用官方二进制安装最稳。
+# 此 Playbook 装最新 stable 二进制 + 创建 prometheus 用户 + systemd unit。
+name: Install Prometheus monitoring server
 hosts: all
 
+vars:
+  http_port: 9090
+  bind_address: "127.0.0.1"
+  retention: "15d"
+  scrape_interval: "15s"
+
 tasks:
-  - name: Install prometheus and node-exporter
+  - name: Install dependencies
     module: package
     args:
-      name:
-        - prometheus
-        - prometheus-node-exporter
+      name: ["curl", "tar"]
       state: present
 
-  - name: Enable prometheus service
-    module: service
-    args:
-      name: prometheus
-      enabled: true
-      state: started
-
-  - name: Enable node-exporter service
-    module: service
-    args:
-      name: prometheus-node-exporter
-      enabled: true
-      state: started
-
-  - name: Verify Prometheus is listening
+  - name: Create prometheus user + directories
     module: shell
     args:
-      cmd: "curl -s http://localhost:9090/-/healthy && echo ' Prometheus OK'"
-    ignore_errors: true
+      cmd: |
+        getent passwd prometheus >/dev/null || sudo useradd --system --no-create-home --shell /usr/sbin/nologin prometheus
+        sudo mkdir -p /etc/prometheus /var/lib/prometheus
+        sudo chown -R prometheus:prometheus /etc/prometheus /var/lib/prometheus
+
+  - name: Download Prometheus binary (latest stable, fixed version)
+    module: shell
+    args:
+      cmd: |
+        if [ ! -f /usr/local/bin/prometheus ]; then
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64) BIN_ARCH=amd64 ;;
+            aarch64) BIN_ARCH=arm64 ;;
+            *) echo "unsupported arch: $ARCH"; exit 1 ;;
+          esac
+          VER="2.55.1"
+          cd /tmp
+          curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${VER}/prometheus-${VER}.linux-${BIN_ARCH}.tar.gz" | tar -xz
+          sudo cp prometheus-${VER}.linux-${BIN_ARCH}/prometheus /usr/local/bin/
+          sudo cp prometheus-${VER}.linux-${BIN_ARCH}/promtool /usr/local/bin/
+          sudo cp -r prometheus-${VER}.linux-${BIN_ARCH}/consoles /etc/prometheus/
+          sudo cp -r prometheus-${VER}.linux-${BIN_ARCH}/console_libraries /etc/prometheus/
+          rm -rf prometheus-${VER}.linux-${BIN_ARCH}
+        fi
+      creates: /usr/local/bin/prometheus
+
+  - name: Render /etc/prometheus/prometheus.yml
+    module: copy
+    args:
+      dest: /etc/prometheus/prometheus.yml
+      content: |
+        # /etc/prometheus/prometheus.yml — managed by EnvForge
+
+        global:
+          scrape_interval: {{ scrape_interval }}
+          evaluation_interval: {{ scrape_interval }}
+
+        scrape_configs:
+          # Prometheus 监控自己
+          - job_name: prometheus
+            static_configs:
+              - targets: ['localhost:{{ http_port }}']
+
+          # 监控本机系统指标（需要装 node_exporter）
+          - job_name: node
+            static_configs:
+              - targets: ['localhost:9100']
+
+          # 在这里添加更多 scrape job
+          # - job_name: my-app
+          #   static_configs:
+          #     - targets: ['127.0.0.1:8000']
+
+  - name: Set ownership of config files
+    module: shell
+    args:
+      cmd: "sudo chown -R prometheus:prometheus /etc/prometheus"
+
+  - name: Render systemd unit
+    module: copy
+    args:
+      dest: /etc/systemd/system/prometheus.service
+      content: |
+        [Unit]
+        Description=Prometheus
+        Wants=network-online.target
+        After=network-online.target
+
+        [Service]
+        User=prometheus
+        Group=prometheus
+        Type=simple
+        ExecStart=/usr/local/bin/prometheus \
+          --config.file=/etc/prometheus/prometheus.yml \
+          --storage.tsdb.path=/var/lib/prometheus/ \
+          --storage.tsdb.retention.time={{ retention }} \
+          --web.console.templates=/etc/prometheus/consoles \
+          --web.console.libraries=/etc/prometheus/console_libraries \
+          --web.listen-address={{ bind_address }}:{{ http_port }}
+
+        Restart=on-failure
+
+        [Install]
+        WantedBy=multi-user.target
+
+  - name: Reload systemd + enable + start prometheus
+    module: shell
+    args:
+      cmd: "sudo systemctl daemon-reload && sudo systemctl enable --now prometheus"
+
+verify:
+  - name: prometheus service is active
+    cmd: "systemctl is-active --quiet prometheus"
+    hint: "服务未启动。看 'sudo journalctl -u prometheus -n 30'。常见：prometheus.yml 语法错（'sudo promtool check config /etc/prometheus/prometheus.yml' 检查）/ TSDB 数据目录权限。"
+  - name: API responds
+    cmd: "curl -fsS -m 5 http://127.0.0.1:{{ http_port }}/-/healthy"
+    expect_stdout: "Healthy"
+    hint: "Prometheus 没响应：服务可能还在启动（需 5-10 秒），或 bind_address 不对。"
+  - name: prometheus self-scrape works
+    cmd: "curl -fsS http://127.0.0.1:{{ http_port }}/api/v1/query?query=up | grep -E '\"status\":\"success\"'"
+    hint: "查询 API 异常：检查 prometheus.yml 配置，看 /targets 页面（ http://localhost:9090/targets ）哪些 job 是 DOWN。"

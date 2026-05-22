@@ -47,19 +47,21 @@
 
 ## 第 3 批：服务面板/监控
 
-- [x] grafana-dashboard (Grafana — schema: admin pw, http_port)
-- [x] prometheus-monitoring (Prometheus — schema: retention, listen addr, scrape interval)
-- [x] netdata-monitoring (Netdata — schema: bind addr, history)
-- [x] zabbix-monitoring (Zabbix Agent — schema: server addr, hostname)
-- [x] loki-logging (Loki — schema: http port, retention)
-- [x] cockpit-panel (Cockpit — no-schema, just installs)
-- [x] minio-storage (MinIO — schema: data dir, root user, root password, console port)
-- [x] mosquitto-mqtt (Mosquitto — schema: port, password file, allow anonymous)
-- [x] rabbitmq (RabbitMQ — schema: management port, default user/pass)
-- [x] nextcloud (Nextcloud — schema: admin user/pw, db type, data dir)
-- [x] gitea-server (Gitea — schema: domain, http port, db type)
-- [x] jellyfin-media (Jellyfin — schema: server name, http port)
-- [x] portainer (Portainer — schema: edition CE/BE, http port)
+- [x] grafana-dashboard ← ✓ batch3
+- [x] prometheus-monitoring ← ✓ batch3
+- [x] netdata-monitoring ← ✓ batch3
+- [x] zabbix-monitoring ← ✓ batch3
+- [x] loki-logging ← ✓ batch3
+- [x] cockpit-panel (no-schema) ← ✓ batch3
+- [x] minio-storage ← ✓ batch3
+- [x] mosquitto-mqtt ← ✓ batch3
+- [x] rabbitmq ← ✓ batch3
+- [x] nextcloud ← ✓ batch3
+- [x] gitea-server ← ✓ batch3
+- [x] jellyfin-media ← ✓ batch3
+- [x] portainer ← ✓ batch3
+- [x] swap-config (虽然属于服务，但 schema 简单) ← ✓ batch3
+- [x] nodejs-pm2 ← ✓ batch3
 
 ## 第 4 批：开发工具/运行时（多数 no-schema）
 

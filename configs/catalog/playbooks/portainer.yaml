@@ -1,31 +1,50 @@
-# Playbook: Portainer Docker 管理面板
-name: Install Portainer Docker management UI
+# Playbook: Portainer Docker 管理 UI
+#
+# Portainer 是 Docker 的 web 管理面板——浏览器里管容器、镜像、卷、网络、Compose 应用。
+# 自身就是个 Docker 容器，依赖 Docker。
+name: Install Portainer Community Edition
 hosts: all
 
-tasks:
-  - name: Ensure Docker is installed
-    module: shell
-    args:
-      cmd: "command -v docker || (echo 'Docker required' && exit 1)"
+vars:
+  edition: "ce"
+  http_port: 9000
+  https_port: 9443
 
-  - name: Create Portainer volume
+tasks:
+  - name: Check Docker is installed
     module: shell
     args:
-      cmd: "sudo docker volume create portainer_data"
+      cmd: "command -v docker || (echo 'Docker is required but not installed. Please run docker-host-profile Playbook first.' && exit 1)"
+
+  - name: Create portainer_data volume (idempotent)
+    module: shell
+    args:
+      cmd: "sudo docker volume inspect portainer_data >/dev/null 2>&1 || sudo docker volume create portainer_data"
 
   - name: Run Portainer container
     module: shell
     args:
       cmd: |
-        sudo docker run -d -p 9443:9443 -p 8000:8000 \
-          --name portainer \
-          --restart=always \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v portainer_data:/data \
-          portainer/portainer-ce:latest
-      creates: /var/lib/docker/volumes/portainer_data
+        if ! sudo docker ps -a --format '{{ "{{" }}.Names{{ "}}" }}' | grep -qx portainer; then
+          sudo docker run -d \
+            -p {{ http_port }}:9000 \
+            -p {{ https_port }}:9443 \
+            --name portainer \
+            --restart=always \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v portainer_data:/data \
+            portainer/portainer-{{ edition }}:latest
+        else
+          # 已存在，仅确保它在运行
+          sudo docker start portainer
+        fi
 
-  - name: Verify Portainer
-    module: shell
-    args:
-      cmd: "sudo docker ps --filter 'name=portainer' --format '{{.Status}}'"
+verify:
+  - name: portainer container is running
+    cmd: "sudo docker ps --format '{{ '{{' }}.Names{{ '}}' }}' | grep -qx portainer && echo OK"
+    expect_stdout: "OK"
+    hint: "portainer 容器没在跑。检查 'sudo docker ps -a' 看状态，'sudo docker logs portainer' 看启动日志。"
+  - name: HTTP responds on port {{ http_port }}
+    cmd: "for i in 1 2 3 4 5; do curl -fsS -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:{{ http_port }}/ 2>/dev/null && exit 0; sleep 3; done; exit 1"
+    expect_stdout: "200|302"
+    hint: "Portainer 没响应：容器还在启动（首次需 5-10 秒），或 docker.sock 挂载权限问题。"
