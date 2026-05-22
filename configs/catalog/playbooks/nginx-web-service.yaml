@@ -88,3 +88,16 @@ tasks:
     args:
       cmd: "systemctl is-active --quiet nginx && echo 'nginx is running on port {{ listen_port }} for {{ domain }}'"
     ignore_errors: true
+
+verify:
+  - name: nginx process is active
+    cmd: "systemctl is-active --quiet nginx"
+    hint: "服务未启动，运行 'sudo systemctl status nginx' 查看具体原因（端口冲突、配置错误等）。"
+  - name: HTTP endpoint responds
+    cmd: "curl -fsS -m 5 http://localhost:{{ listen_port }}/ -o /dev/null -w '%{http_code}'"
+    expect_stdout: "200"
+    hint: "Nginx 在线但 HTTP 请求失败，可能是上游 {{ upstream_url }} 不可达（如开启了反向代理但后端没启动）。"
+  - name: nginx config is syntactically valid
+    cmd: "sudo nginx -t 2>&1"
+    expect_stdout: "syntax is ok"
+    hint: "Nginx 配置语法错误。运行 'sudo nginx -t' 查看具体一行。"

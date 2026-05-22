@@ -11,6 +11,30 @@ export interface Playbook {
   hosts?: "all" | string;
   vars?: Record<string, unknown>;
   tasks: Task[];
+  /**
+   * Optional post-run smoke tests. After all tasks succeed, the engine runs
+   * each verify check and reports pass/fail without rolling back. Failures
+   * surface in the result so the user knows the install completed but the
+   * thing isn't behaving as expected (e.g. `curl localhost:80` returns 502).
+   */
+  verify?: VerifyCheck[];
+}
+
+/**
+ * A single verify check. `cmd` is run via the standard SSH executor; the check
+ * passes when the command exits 0 (and, if `expect_stdout` is set, when stdout
+ * contains that substring). `expect_status` is shorthand for asserting an HTTP
+ * status code from a curl command.
+ */
+export interface VerifyCheck {
+  /** Human-readable name shown in the result */
+  name: string;
+  /** Shell command to run on the target. Should be self-contained (no pipes to interactive tools). */
+  cmd: string;
+  /** Optional: substring that must appear in stdout for the check to pass */
+  expect_stdout?: string;
+  /** Optional: a description of what success looks like, shown in the UI when the check fails */
+  hint?: string;
 }
 
 /** 单个任务调用一个模块 */

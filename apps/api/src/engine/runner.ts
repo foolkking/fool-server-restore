@@ -67,6 +67,21 @@ export interface RunResult {
   skipped: number;
   logs: TaskExecutionLog[];
   error?: string;
+  /** Post-run smoke-test results, when the Playbook declared a verify: block */
+  verifyResults?: VerifyResult[];
+  /** Number of failed verify checks (undefined when none ran or all passed) */
+  verifyFailed?: number;
+}
+
+/** A single verify-block check outcome. */
+export interface VerifyResult {
+  name: string;
+  cmd: string;
+  passed: boolean;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  hint?: string;
 }
 
 /** 解析 YAML 字符串为 Playbook（支持单 play 或 play 列表） */
@@ -244,5 +259,72 @@ export async function runPlaybook(
     }
   }
 
-  return { ok: true, totalTasks: logs.length, changed, ok_count, failed, skipped, logs };
+  // ── Verify phase ────────────────────────────────────────────────────────
+  // Runs a list of post-task smoke tests declared in the Playbook YAML's
+  // `verify:` block. Failures don't roll back the install — they're surfaced
+  // as a non-fatal warning so the user knows "install completed, but X isn't
+  // working yet." Skipped entirely when previous tasks failed.
+  const verifyChecks = playbook.verify ?? [];
+  const verifyResults: VerifyResult[] = [];
+  if (verifyChecks.length > 0 && !options.dryRun && failed === 0) {
+    for (const check of verifyChecks) {
+      const startMs = Date.now();
+      const log: TaskExecutionLog = {
+        taskName: `[verify] ${check.name}`,
+        moduleName: "verify",
+        command: check.cmd,
+        status: "running",
+        startedAt: new Date().toISOString()
+      };
+      logs.push(log);
+      options.onProgress?.(log);
+
+      const resolvedCmd = substitute(check.cmd, vars) as string;
+      const r = await executor.exec(resolvedCmd);
+      const stdout = r.stdout ?? "";
+      const stderr = r.stderr ?? "";
+      let pass = r.exitCode === 0;
+      if (pass && check.expect_stdout && !stdout.includes(check.expect_stdout)) {
+        pass = false;
+      }
+
+      const verifyResult: VerifyResult = {
+        name: check.name,
+        cmd: resolvedCmd,
+        passed: pass,
+        stdout: stdout.slice(0, 2000),
+        stderr: stderr.slice(0, 2000),
+        durationMs: Date.now() - startMs,
+        hint: pass ? undefined : check.hint
+      };
+      verifyResults.push(verifyResult);
+
+      log.completedAt = new Date().toISOString();
+      log.durationMs = verifyResult.durationMs;
+      log.result = {
+        changed: false,
+        failed: !pass,
+        msg: pass
+          ? `✓ ${check.name}`
+          : `✗ ${check.name}${check.hint ? `\n💡 ${check.hint}` : ""}`,
+        stdout,
+        stderr
+      };
+      log.status = pass ? "ok" : "failed";
+      options.onProgress?.(log);
+    }
+  }
+
+  const failedVerifyCount = verifyResults.filter((v) => !v.passed).length;
+  return {
+    ok: true,
+    totalTasks: logs.length,
+    changed,
+    ok_count,
+    failed,
+    skipped,
+    logs,
+    verifyResults: verifyResults.length > 0 ? verifyResults : undefined,
+    verifyFailed: failedVerifyCount > 0 ? failedVerifyCount : undefined
+  };
 }
