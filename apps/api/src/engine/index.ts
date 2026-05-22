@@ -71,6 +71,11 @@ export interface BatchRunOptions {
   onTaskProgress?: (itemIndex: number, log: import("./types.js").TaskExecutionLog) => void;
   /** 检查取消标志 */
   isCancelled?: () => boolean;
+  /**
+   * Per-item user vars (form values). Map: catalogId → vars.
+   * Items not in the map run with no overrides (Playbook YAML defaults only).
+   */
+  userVarsByCatalogId?: Record<string, Record<string, unknown>>;
 }
 
 export interface BatchRunResult {
@@ -141,7 +146,8 @@ export async function executeBatchPlaybooks(
 
         const runResult = await runPlaybook(playbook, executor, {
           dryRun: options.dryRun,
-          onProgress: (log) => options.onTaskProgress?.(i, log)
+          onProgress: (log) => options.onTaskProgress?.(i, log),
+          userVars: options.userVarsByCatalogId?.[item.catalogId]
         });
 
         result.ok_count = runResult.ok_count;

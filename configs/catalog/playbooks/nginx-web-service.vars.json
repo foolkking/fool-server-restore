@@ -1,0 +1,50 @@
+{
+  "domain": {
+    "type": "string",
+    "label": "网站域名",
+    "labelEn": "Domain",
+    "default": "example.com",
+    "required": true,
+    "validate": "^[a-zA-Z0-9.-]+$",
+    "placeholder": "mysite.example.com",
+    "help": "Nginx 默认站点的 server_name。如果还没绑定域名，可以先填本机 IP。",
+    "helpEn": "The server_name for the default Nginx site. Use the host IP if you don't have a domain yet."
+  },
+  "listen_port": {
+    "type": "port",
+    "label": "监听端口",
+    "labelEn": "Listen port",
+    "default": 80,
+    "help": "Nginx 监听的端口。如果系统已有 web 服务占用 80 端口，请改用其他端口（例如 8080）。",
+    "helpEn": "Port for Nginx to listen on. If another web server already uses port 80, pick a different one (e.g. 8080)."
+  },
+  "enable_reverse_proxy": {
+    "type": "boolean",
+    "label": "启用反向代理",
+    "labelEn": "Enable reverse proxy",
+    "default": false,
+    "help": "勾选后，所有请求会被转发到后端应用（适合 Node.js / Python / Go 等动态站点）。"
+  },
+  "upstream_url": {
+    "type": "string",
+    "label": "后端地址",
+    "labelEn": "Upstream URL",
+    "default": "http://127.0.0.1:3000",
+    "validate": "^https?://[a-zA-Z0-9.:_-]+(:\\d+)?(/.*)?$",
+    "show_when": "enable_reverse_proxy == true",
+    "help": "后端应用监听的地址。例如 http://127.0.0.1:3000（本机 Node 应用）。",
+    "helpEn": "Address of the upstream application, e.g. http://127.0.0.1:3000."
+  },
+  "client_max_body_size": {
+    "type": "choice",
+    "label": "上传大小限制",
+    "labelEn": "Max upload size",
+    "default": "10m",
+    "options": [
+      { "value": "1m", "label": "1 MB（默认值，适合 API）" },
+      { "value": "10m", "label": "10 MB（适合普通网站）" },
+      { "value": "100m", "label": "100 MB（适合文件上传）" },
+      { "value": "1g", "label": "1 GB（大文件）" }
+    ]
+  }
+}

@@ -85,7 +85,8 @@ export async function executeBatchCatalogTask(
   connection: StoredConnection,
   items: Array<{ catalogId: string; displayName: string }>,
   dryRun: boolean,
-  taskId?: string
+  taskId?: string,
+  userVarsByCatalogId?: Record<string, Record<string, unknown>>
 ): Promise<ExecutionTask> {
   if (!taskId) taskId = registerBatchTask(userId, connection.id, items, dryRun);
   const task = taskStore.get(taskId)!;
@@ -108,6 +109,7 @@ export async function executeBatchCatalogTask(
         await executeBatchPlaybooks(items, connection, {
           dryRun,
           isCancelled: () => cancelFlags.get(task.id) === true,
+          userVarsByCatalogId,
           onItemProgress: (progress: BatchItemProgress) => {
             if (!task.items) return;
             const slot = task.items[progress.itemIndex];
@@ -170,9 +172,17 @@ export async function executeCatalogTask(
   catalogId: string,
   catalogName: string,
   dryRun: boolean,
-  taskId?: string
+  taskId?: string,
+  userVars?: Record<string, unknown>
 ): Promise<ExecutionTask> {
-  return executeBatchCatalogTask(userId, connection, [{ catalogId, displayName: catalogName }], dryRun, taskId);
+  return executeBatchCatalogTask(
+    userId,
+    connection,
+    [{ catalogId, displayName: catalogName }],
+    dryRun,
+    taskId,
+    userVars ? { [catalogId]: userVars } : undefined
+  );
 }
 
 /** Execute a raw YAML playbook on a connection */
@@ -181,7 +191,8 @@ export async function executePlaybookTask(
   connection: StoredConnection,
   yamlText: string,
   dryRun: boolean,
-  taskId?: string
+  taskId?: string,
+  userVars?: Record<string, unknown>
 ): Promise<ExecutionTask> {
   if (!taskId) taskId = registerBatchTask(userId, connection.id, [{ catalogId: "playbook", displayName: "Playbook" }], dryRun);
   const task = taskStore.get(taskId)!;
@@ -201,6 +212,7 @@ export async function executePlaybookTask(
       try {
         const result = await executePlaybook(yamlText, connection, {
           dryRun,
+          userVars,
           onProgress: (log) => {
             const existing = task.steps.find((s) => s.label === log.taskName);
             if (existing) {

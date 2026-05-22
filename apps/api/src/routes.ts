@@ -129,6 +129,72 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  /**
+   * GET /api/catalog/:id/vars-schema
+   *
+   * Returns the configurable-vars schema for a Playbook (admin-defined form
+   * fields the UI renders on the right side of the configure-and-run pane).
+   * Returns { schema: null } when the Playbook has no schema, in which case
+   * the UI falls back to the simple "run with defaults" button.
+   *
+   * Public endpoint — anyone who can see the catalog can see the form shape.
+   */
+  app.get("/api/catalog/:id/vars-schema", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { isValidCatalogId } = await import("./catalog-overrides.js");
+    if (!isValidCatalogId(id)) {
+      reply.code(400);
+      return { error: "Invalid catalog id" };
+    }
+    try {
+      const { loadVarsSchema } = await import("./catalog-vars-schema.js");
+      const schema = await loadVarsSchema(id);
+      return { schema };
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Failed to load schema" };
+    }
+  });
+
+  /**
+   * POST /api/catalog/:id/vars-schema (admin only)
+   *
+   * Save an override schema for a Playbook. Validated server-side before write
+   * so we can never persist a broken schema that would break the form UI.
+   */
+  app.post("/api/catalog/:id/vars-schema", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { id } = request.params as { id: string };
+    const body = request.body as { schema?: unknown };
+    if (!body?.schema) { reply.code(400); return { error: "schema is required" }; }
+    try {
+      // saveOverrideSchema runs validateSchema internally and throws on any
+      // structural issue, so an invalid submission ends up here with a
+      // descriptive Error.message — surfaced to the admin as 400.
+      const { saveOverrideSchema } = await import("./catalog-vars-schema.js");
+      await saveOverrideSchema(id, body.schema as Parameters<typeof saveOverrideSchema>[1]);
+      return { ok: true };
+    } catch (err) {
+      reply.code(400);
+      return { error: err instanceof Error ? err.message : "Invalid schema" };
+    }
+  });
+
+  /**
+   * DELETE /api/catalog/:id/vars-schema (admin only) — revert to baseline.
+   */
+  app.delete("/api/catalog/:id/vars-schema", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { id } = request.params as { id: string };
+    const { isValidCatalogId } = await import("./catalog-overrides.js");
+    if (!isValidCatalogId(id)) { reply.code(400); return { error: "Invalid catalog id" }; }
+    const { deleteOverrideSchema } = await import("./catalog-vars-schema.js");
+    await deleteOverrideSchema(id);
+    return { ok: true };
+  });
+
   app.get("/api/migration/strategies", async () => {
     return {
       strategies: await listMigrationStrategies()
@@ -347,7 +413,17 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const user = await getUserByToken(readBearerToken(request.headers.authorization));
     if (!user) { reply.code(401); return { error: "Login required." }; }
 
-    const body = (request.body ?? {}) as { connectionId?: string; profileId?: string; dryRun?: boolean };
+    const body = (request.body ?? {}) as {
+      connectionId?: string;
+      profileId?: string;
+      dryRun?: boolean;
+      /**
+       * Optional user-supplied vars from the configurable Playbook form.
+       * Validated against the catalog item's vars.schema.json before being
+       * passed to the runner. Ignored for items without a schema.
+       */
+      vars?: Record<string, unknown>;
+    };
     if (!body.connectionId || !body.profileId) {
       reply.code(400);
       return { error: "connectionId and profileId are required." };
@@ -364,8 +440,28 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const catalogItems = await listCatalogFromDatabase();
     const catalogItem = catalogItems.find((c) => c.id === body.profileId);
     if (catalogItem) {
+      // Validate user vars against the schema (if any). A vars schema makes the
+      // form explicit; if user submits something the schema rejects, we fail
+      // loudly here rather than silently feeding bad values to the runner.
+      let normalizedVars: Record<string, unknown> | undefined;
+      if (body.vars && Object.keys(body.vars).length > 0) {
+        const { loadVarsSchema, validateAndNormalise } = await import("./catalog-vars-schema.js");
+        const schema = await loadVarsSchema(catalogItem.id);
+        if (schema) {
+          const result = validateAndNormalise(schema, body.vars);
+          if (!result.ok) {
+            reply.code(400);
+            return { error: "Invalid vars", fieldErrors: result.errors };
+          }
+          normalizedVars = result.values;
+        } else {
+          // No schema for this item — user vars are silently ignored to avoid
+          // letting arbitrary template data reach the runner unchecked.
+        }
+      }
+
       const taskId = registerBatchTask(user.id, connection.id, [{ catalogId: catalogItem.id, displayName: catalogItem.name }], dryRun);
-      void executeCatalogTask(user.id, connection, catalogItem.id, catalogItem.name, dryRun, taskId);
+      void executeCatalogTask(user.id, connection, catalogItem.id, catalogItem.name, dryRun, taskId, normalizedVars);
       const task = gt(taskId);
       return { taskId, dryRun, steps: task?.steps ?? [] };
     }

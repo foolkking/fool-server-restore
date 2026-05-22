@@ -1071,6 +1071,20 @@ function getNewSoftwareCatalog(): CatalogItem[] {
       assets: ["firewalld"], guidePath: "configs/catalog/software/firewalld.md",
       guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
       components: [{ type: "software", label: "firewalld", labelEn: "firewalld", detail: "apt" }]
+    },
+    {
+      id: "x-ui-panel", kind: "software", name: "3x-ui 面板", nameEn: "3x-ui panel",
+      category: "network",
+      summary: "3x-ui 面板（Xray + 多协议代理）一键安装，含端口、用户名、密码配置。",
+      summaryEn: "3x-ui panel (Xray multi-protocol proxy) one-click install with port + admin password setup.",
+      rating: 4.6, installs: "0", imageTone: "indigo", sensitivity: "privileged",
+      assets: ["3x-ui", "xray", "panel"],
+      guidePath: "configs/catalog/software/x-ui-panel.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [
+        { type: "system-command", label: "下载并运行 install.sh", labelEn: "fetch install.sh", detail: "curl + bash" },
+        { type: "system-command", label: "设置面板端口与口令", labelEn: "set panel port + admin", detail: "x-ui setting" }
+      ]
     }
   ];
 }

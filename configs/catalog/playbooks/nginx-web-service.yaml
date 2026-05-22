@@ -1,6 +1,22 @@
-# Playbook: Nginx Web 服务
+# Playbook: Nginx Web 服务（可配置）
+#
+# 此 Playbook 支持表单化配置，参见 nginx-web-service.vars.json：
+#   - domain: 网站域名
+#   - listen_port: 监听端口（默认 80）
+#   - enable_reverse_proxy: 是否启用反向代理（默认 false）
+#   - upstream_url: 后端应用地址（仅当反向代理启用时）
+#   - client_max_body_size: 上传大小限制
+#
+# Playbook 中的 {{ var }} 占位符会被表单值替换；如不填表单则使用默认值。
 name: Install and configure Nginx web server
 hosts: all
+
+vars:
+  domain: example.com
+  listen_port: 80
+  enable_reverse_proxy: false
+  upstream_url: http://127.0.0.1:3000
+  client_max_body_size: 10m
 
 tasks:
   - name: Install nginx package
@@ -9,15 +25,66 @@ tasks:
       name: nginx
       state: present
 
+  - name: Render default site config (静态站点)
+    module: template
+    args:
+      dest: /etc/nginx/conf.d/envforge-default.conf
+      content: |
+        server {
+            listen {{ listen_port }};
+            server_name {{ domain }};
+            client_max_body_size {{ client_max_body_size }};
+
+            location / {
+                root /usr/share/nginx/html;
+                index index.html index.htm;
+            }
+
+            access_log /var/log/nginx/envforge-access.log;
+            error_log  /var/log/nginx/envforge-error.log;
+        }
+    when: not enable_reverse_proxy
+
+  - name: Render reverse-proxy site config
+    module: template
+    args:
+      dest: /etc/nginx/conf.d/envforge-default.conf
+      content: |
+        server {
+            listen {{ listen_port }};
+            server_name {{ domain }};
+            client_max_body_size {{ client_max_body_size }};
+
+            location / {
+                proxy_pass {{ upstream_url }};
+                proxy_set_header Host              $host;
+                proxy_set_header X-Real-IP         $remote_addr;
+                proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade           $http_upgrade;
+                proxy_set_header Connection        "upgrade";
+            }
+
+            access_log /var/log/nginx/envforge-access.log;
+            error_log  /var/log/nginx/envforge-error.log;
+        }
+    when: enable_reverse_proxy
+
+  - name: Validate nginx config (nginx -t)
+    module: shell
+    args:
+      cmd: "sudo nginx -t"
+
   - name: Enable nginx service to start on boot
     module: service
     args:
       name: nginx
       enabled: true
-      state: started
+      state: restarted
 
   - name: Verify nginx is running
     module: shell
     args:
-      cmd: "systemctl is-active --quiet nginx && echo 'nginx is running'"
+      cmd: "systemctl is-active --quiet nginx && echo 'nginx is running on port {{ listen_port }} for {{ domain }}'"
     ignore_errors: true

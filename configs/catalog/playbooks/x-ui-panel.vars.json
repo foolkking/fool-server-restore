@@ -1,0 +1,35 @@
+{
+  "panel_port": {
+    "type": "port",
+    "label": "面板端口",
+    "labelEn": "Panel port",
+    "default": 54321,
+    "help": "登录 3x-ui 面板的端口。建议改成一个不常见的高位端口，提高安全性。"
+  },
+  "panel_path": {
+    "type": "string",
+    "label": "面板访问路径",
+    "labelEn": "Base path",
+    "default": "/",
+    "validate": "^/[a-zA-Z0-9/_-]*$",
+    "placeholder": "/dashboard",
+    "help": "面板 URL 的基础路径。默认 / 即根路径；改成 /admin 或 /xy 等可减少被扫描到的概率（必须以 / 开头）。"
+  },
+  "admin_username": {
+    "type": "string",
+    "label": "管理员用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "required": true,
+    "validate": "^[a-zA-Z0-9_-]{3,32}$",
+    "help": "用户名长度 3-32，只能含字母数字和 _-。不要用 root / admin（容易被爆破）。"
+  },
+  "admin_password": {
+    "type": "password",
+    "label": "管理员密码",
+    "labelEn": "Admin password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "留空则自动生成 24 位高强度密码（运行结束后会显示出来）。也可以填写自定义密码。"
+  }
+}

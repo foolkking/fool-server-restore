@@ -50,6 +50,12 @@ export interface RunOptions {
   dryRun: boolean;
   /** 进度回调：每个 task 开始/结束时触发 */
   onProgress?: (log: TaskExecutionLog) => void;
+  /**
+   * User-supplied vars (e.g. from the configurable Playbook form).
+   * Merged on top of `playbook.vars` so users can override defaults
+   * declared in the YAML without editing the YAML.
+   */
+  userVars?: Record<string, unknown>;
 }
 
 export interface RunResult {
@@ -112,7 +118,7 @@ export async function runPlaybook(
   executor: SshExecutor,
   options: RunOptions
 ): Promise<RunResult> {
-  const vars: Record<string, unknown> = { ...(playbook.vars ?? {}) };
+  const vars: Record<string, unknown> = { ...(playbook.vars ?? {}), ...(options.userVars ?? {}) };
   const logs: TaskExecutionLog[] = [];
   let changed = 0;
   let ok_count = 0;
