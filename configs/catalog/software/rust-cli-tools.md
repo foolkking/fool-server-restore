@@ -1,43 +1,109 @@
-# 现代 CLI 工具集
+# 现代 CLI 工具集（Rust 写的更好的版本）
 
-bat、ripgrep、fd、exa、zoxide、fzf、tldr 等现代工具。
-
-*bat, ripgrep, fd, exa, zoxide, fzf, tldr.*
+一组替代经典 Unix 工具的现代版本，全部用 Rust 重写，性能和体验都更好。
+都通过系统包管理器装（不需要 cargo install）。
 
 ## 你将得到什么
 
-- 📦 **bat** _(bat)_ — 通过 apt
-- 📦 **ripgrep** _(ripgrep)_ — 通过 apt
-- 📦 **fd-find** _(fd)_ — 通过 apt
+- 📦 **bat** — 替代 cat（语法高亮 + 行号 + git 集成）
+- 📦 **fd-find** — 替代 find（语法直观 100 倍）
+- 📦 **ripgrep**（命令 `rg`） — 替代 grep（速度快 5-10 倍）
+- 📦 **zoxide** — 替代 cd（按访问频率智能跳转）
+- 📦 **fzf** — 模糊搜索器（搭配各种工具）
+- 📦 **eza** — 替代 ls（含 git 状态、tree 模式）
+- 📦 **tldr** — 简化版 man 页（命令例子第一）
 
-## 自动化步骤
+## 用法
 
-EnvForge 在目标机器上依次执行以下任务：
-
-1. Install via apt (where available)
-2. Verify tools
-
-## 验证安装
+### bat（替代 cat）
 
 ```bash
-# 检查包是否已安装
-dpkg -l | grep tldr      # Ubuntu/Debian
-rpm -q tldr                # RHEL/CentOS/Anolis
+bat README.md           # 带语法高亮 + 行号
+bat -A bin              # 显示二进制文件不会乱码
+alias cat='bat'
+```
 
-# 检查服务是否运行（如果有 systemd 单元）
-systemctl status tldr --no-pager
+### fd（替代 find）
+
+```bash
+# 老 find 写法：
+find . -type f -name "*.py" -not -path "*/node_modules/*"
+# 新 fd：
+fd '\.py$' --type f --exclude node_modules
+```
+
+### rg（ripgrep, 替代 grep）
+
+```bash
+# 老 grep:
+grep -rn "TODO" --include="*.py" .
+# 新 rg:
+rg "TODO" --type py
+```
+默认就尊重 `.gitignore`，不会搜 `node_modules`。
+
+### zoxide（替代 cd）
+
+```bash
+# 添加 ~/.bashrc / ~/.zshrc:
+eval "$(zoxide init bash)"
+
+# 用 z 跳转（按访问频率排序）
+z proj                  # 跳到最近访问的含 "proj" 的目录
+zi                      # 用 fzf 交互式选择
+```
+
+### fzf（模糊搜索神器）
+
+```bash
+fzf                     # 交互式从 stdin 选一个
+vim $(fzf)              # 选个文件用 vim 打开
+
+# 在 ~/.bashrc 里：
+source /usr/share/doc/fzf/examples/key-bindings.bash
+# 然后 Ctrl+R 用 fzf 搜历史，Ctrl+T 选文件
+```
+
+### eza（替代 ls）
+
+```bash
+eza -la --git           # 类似 ls -la 但带 git 状态
+eza --tree --level=2    # tree 风格
+alias ls='eza'
+alias ll='eza -la --git'
+alias tree='eza --tree'
+```
+
+### tldr（简化版 man）
+
+```bash
+tldr tar
+# 显示 tar 最常用的几个命令例子（不是 man 那种长篇大论）
+tldr docker
+tldr ssh
+```
+
+## ⚠️ 敏感性
+
+**safe** — 都是 CLI 工具。
+
+## 验证
+
+```bash
+command -v bat fd rg zoxide fzf eza tldr
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **`bat` 命令找不到（Ubuntu/Debian）** — Ubuntu 把 bat 包名叫 `batcat`，需 `alias bat='batcat'` 或 `sudo ln -s /usr/bin/batcat /usr/local/bin/bat`。EnvForge 的 PACKAGE_ALIASES 已经处理。
+- **`fd` 找不到** — 同上，Ubuntu 上是 `fdfind` 命令。
+- **eza 不在仓库** — 旧版本发行版没 eza（Ubuntu 22.04 没有）。可以换 `exa`（旧名）或 `cargo install eza`。
+- **跨发行版**：很多包在 RHEL/Anolis 需要 EPEL（preflight 自动启用）。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+不发遥测。

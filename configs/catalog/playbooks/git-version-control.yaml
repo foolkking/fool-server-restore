@@ -1,18 +1,65 @@
 # Playbook: Git 版本控制
-name: Install Git and Git LFS
+#
+# 装 git + 配全局 user.name / user.email / 别的常用 alias。
+name: Install Git and configure global settings
 hosts: all
 
+vars:
+  git_user_name: ""
+  git_user_email: ""
+  default_branch: "main"
+  enable_aliases: true
+
 tasks:
-  - name: Install git and git-lfs
+  - name: Install Git
     module: package
     args:
-      name:
-        - git
-        - git-lfs
+      name: ["git", "git-lfs"]
       state: present
+      ignore_missing: true
 
-  - name: Initialize git lfs for current user
+  - name: Configure user.name (global)
     module: shell
     args:
-      cmd: "git lfs install"
-      creates: ~/.config/git/attributes
+      cmd: "git config --global user.name '{{ git_user_name }}'"
+    when: "git_user_name"
+
+  - name: Configure user.email (global)
+    module: shell
+    args:
+      cmd: "git config --global user.email '{{ git_user_email }}'"
+    when: "git_user_email"
+
+  - name: Set default branch name
+    module: shell
+    args:
+      cmd: "git config --global init.defaultBranch {{ default_branch }}"
+
+  - name: Enable git-lfs (only when installed)
+    module: shell
+    args:
+      cmd: "command -v git-lfs && git lfs install --system"
+    ignore_errors: true
+
+  - name: Add common aliases
+    module: shell
+    args:
+      cmd: |
+        git config --global alias.st status
+        git config --global alias.co checkout
+        git config --global alias.br branch
+        git config --global alias.lg "log --oneline --graph --decorate --all"
+        git config --global alias.last "log -1 HEAD"
+        git config --global alias.unstage "reset HEAD --"
+        git config --global pull.rebase false
+        git config --global core.editor "vim"
+    when: enable_aliases
+
+verify:
+  - name: git command works
+    cmd: "git --version"
+    expect_stdout: "git version"
+    hint: "git 没装上。"
+  - name: git config user.name set
+    cmd: "git config --global user.name | head -1"
+    hint: "user.name 没设。如果你没填表单，commit 时 git 会报警告。"

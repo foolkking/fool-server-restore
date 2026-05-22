@@ -1,0 +1,15 @@
+{
+  "default_node_version": {
+    "type": "choice",
+    "label": "默认 Node 版本",
+    "labelEn": "Default Node version",
+    "default": "lts/jod",
+    "options": [
+      { "value": "lts/iron", "label": "Node 20 LTS (Iron)" },
+      { "value": "lts/jod", "label": "Node 22 LTS (Jod，推荐)" },
+      { "value": "node", "label": "最新非 LTS 版本" },
+      { "value": "18.20.5", "label": "Node 18 (固定版本，已 EOL 但仍在用)" }
+    ],
+    "help": "nvm 安装后会立即用此版本。需要其它版本：'nvm install 16' / 'nvm install 21' 后用 'nvm use 16'。"
+  }
+}

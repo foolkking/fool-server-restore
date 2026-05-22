@@ -1,42 +1,88 @@
 # Ruby + Bundler
 
-Ruby 解释器 + Bundler 包管理。
-
-*Ruby interpreter + Bundler package manager.*
+Ruby 3 + Bundler（Ruby 的包管理器，等价于 npm/pip/cargo）。装系统 Ruby——
+如果你需要多版本 Ruby，用 rbenv 或 rvm（不在本 Playbook 范围）。
 
 ## 你将得到什么
 
-- 📦 **ruby-full** _(Ruby)_ — 通过 apt
+- 📦 **ruby** + **ruby-dev**（Ubuntu）/ **ruby-devel**（RHEL）
+- 📦 **bundler** gem
+- ✅ build 依赖（让 native gem 能编过）
 
-## 自动化步骤
-
-EnvForge 在目标机器上依次执行以下任务：
-
-1. Install Ruby and dependencies
-2. Install bundler
-3. Verify Ruby
-
-## 验证安装
+## 用法
 
 ```bash
-# 检查包是否已安装
-dpkg -l | grep ruby-full      # Ubuntu/Debian
-rpm -q ruby-full                # RHEL/CentOS/Anolis
+ruby --version
+gem --version
+bundle --version
+```
 
-# 检查服务是否运行（如果有 systemd 单元）
-systemctl status ruby-full --no-pager
+### 装 Rails
+
+```bash
+gem install rails
+rails --version
+rails new myapp
+cd myapp
+bundle install
+rails server -b 0.0.0.0
+```
+
+### 国内 RubyGems 镜像
+
+```bash
+gem sources --add https://gems.ruby-china.com/
+gem sources --remove https://rubygems.org/
+gem sources -l       # 验证
+
+# 项目级：
+bundle config mirror.https://rubygems.org https://gems.ruby-china.com
+```
+
+### 多版本 Ruby（用 rbenv）
+
+```bash
+git clone https://github.com/rbenv/rbenv.git ~/.rbenv
+echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bashrc
+echo 'eval "$(rbenv init -)"' >> ~/.bashrc
+
+git clone https://github.com/rbenv/ruby-build.git ~/.rbenv/plugins/ruby-build
+
+rbenv install 3.3.5
+rbenv global 3.3.5
+```
+
+### 部署 Rails 应用
+
+```bash
+RAILS_ENV=production bundle install --deployment
+RAILS_ENV=production rails db:migrate
+RAILS_ENV=production rails assets:precompile
+
+# 用 puma + nginx 反代，systemd unit 跑
+```
+
+## ⚠️ 敏感性
+
+**safe** — 装语言运行时。
+
+## 验证
+
+```bash
+ruby --version
+gem list bundler
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **`gem install` 报 native extension 编译失败** — `ruby-dev` / `ruby-devel` 没装。
+- **`Could not find gem ...`** — bundle 时找不到包：网络问题或镜像没设。
+- **跨发行版**：包名差异（`ruby-dev` vs `ruby-devel`），EnvForge 已通过 PACKAGE_ALIASES 处理。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。已装就跳过。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+不发遥测。RubyGems 默认源是 rubygems.org。

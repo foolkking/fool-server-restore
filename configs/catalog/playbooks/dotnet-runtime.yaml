@@ -1,25 +1,47 @@
-# Playbook: .NET SDK 运行时
+# Playbook: .NET 8 SDK
 name: Install .NET 8 SDK
 hosts: all
 
 tasks:
-  - name: Install Microsoft repo
+  - name: Install dependencies
+    module: package
+    args:
+      name: ["curl", "ca-certificates", "gnupg"]
+      state: present
+      ignore_missing: true
+
+  - name: Add Microsoft package repo (Debian/Ubuntu)
     module: shell
     args:
       cmd: |
-        wget -qO /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
-        sudo dpkg -i /tmp/packages-microsoft-prod.deb
-        sudo apt-get update -qq
-        rm -f /tmp/packages-microsoft-prod.deb
+        if command -v apt-get >/dev/null 2>&1 && [ ! -f /etc/apt/sources.list.d/microsoft-prod.list ]; then
+          # 自动检测发行版与版本
+          source /etc/os-release
+          curl -fsSL "https://packages.microsoft.com/config/${ID}/${VERSION_ID}/packages-microsoft-prod.deb" -o /tmp/packages-microsoft-prod.deb 2>/dev/null && \
+            sudo dpkg -i /tmp/packages-microsoft-prod.deb && \
+            sudo apt-get update -qq
+        fi
       creates: /etc/apt/sources.list.d/microsoft-prod.list
 
-  - name: Install .NET SDK
+  - name: Add Microsoft package repo (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/microsoft-prod.repo ]; then
+          source /etc/os-release
+          MAJOR=$(echo $VERSION_ID | cut -d. -f1)
+          sudo rpm -Uvh "https://packages.microsoft.com/config/rhel/${MAJOR}/packages-microsoft-prod.rpm" 2>/dev/null || true
+        fi
+      creates: /etc/yum.repos.d/microsoft-prod.repo
+
+  - name: Install .NET SDK 8
     module: package
     args:
       name: dotnet-sdk-8.0
       state: present
 
-  - name: Verify dotnet
-    module: shell
-    args:
-      cmd: "dotnet --version"
+verify:
+  - name: dotnet command works
+    cmd: "dotnet --version"
+    expect_stdout: "8."
+    hint: ".NET 8 没装上。可能 Microsoft 仓库添加失败（curl 不到 packages.microsoft.com）。"

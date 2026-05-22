@@ -1,42 +1,64 @@
 # .NET 8 SDK
 
-Microsoft .NET 8 SDK，C#/F#/VB.NET 开发。
-
-*Microsoft .NET 8 SDK for C#/F#/VB.NET.*
+微软的跨平台 .NET 开发框架。EnvForge 通过 Microsoft 官方仓库装最新 LTS（.NET 8）。
 
 ## 你将得到什么
 
-- 📦 **dotnet-sdk-8.0** _(.NET SDK 8)_ — 通过 apt
+- 📦 **dotnet-sdk-8.0**（含 SDK + runtime）
+- ✅ Microsoft 官方源（自动跟进 patch 升级）
 
-## 自动化步骤
-
-EnvForge 在目标机器上依次执行以下任务：
-
-1. Install Microsoft repo
-2. Install .NET SDK
-3. Verify dotnet
-
-## 验证安装
+## 用法
 
 ```bash
-# 检查包是否已安装
-dpkg -l | grep dotnet-sdk-8.0      # Ubuntu/Debian
-rpm -q dotnet-sdk-8.0                # RHEL/CentOS/Anolis
+dotnet --version
+dotnet new console -o hello
+cd hello
+dotnet run
+```
 
-# 检查服务是否运行（如果有 systemd 单元）
-systemctl status dotnet-sdk-8.0 --no-pager
+### 国内 NuGet 加速
+
+`~/.nuget/NuGet/NuGet.Config`：
+```xml
+<configuration>
+  <packageSources>
+    <add key="nuget.cn" value="https://nuget.cdn.azure.cn/v3/index.json" />
+  </packageSources>
+</configuration>
+```
+
+### 部署 Web 应用（ASP.NET Core）
+
+```bash
+dotnet publish -c Release -o /var/www/myapp
+# 装 dotnet-runtime 到生产机器（不用 SDK），systemd 跑
+sudo systemd-run --user dotnet /var/www/myapp/myapp.dll
+```
+
+## ⚠️ 敏感性
+
+**safe** — 只装语言运行时。
+
+## 验证
+
+```bash
+dotnet --version
+dotnet --list-sdks
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **包仓库添加失败** — 微软仓库需要先装 `packages-microsoft-prod` 包。Playbook 自动处理。
+- **跨发行版**：Microsoft 的 deb / rpm 仓库都覆盖了主流发行版。Anolis 走 RHEL 仓库。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。已装就跳过。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+.NET 默认开启 telemetry（性能数据匿名上报），可关：
+```bash
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+echo 'export DOTNET_CLI_TELEMETRY_OPTOUT=1' >> ~/.bashrc
+```

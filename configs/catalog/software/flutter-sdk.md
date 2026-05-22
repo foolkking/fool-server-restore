@@ -1,43 +1,101 @@
 # Flutter SDK
 
-Google 跨平台 UI 框架。
+Flutter 是 Google 的跨平台 UI 框架——一份 Dart 代码同时编出 iOS / Android / Web / Linux / Windows / macOS 应用。
 
-*Google cross-platform UI framework.*
+服务器上装 Flutter 主要用途是 **CI/CD**——跑 `flutter build apk` / `flutter build web` 这种构建任务。
+开发本身在桌面/笔记本上做。
 
 ## 你将得到什么
 
-- ▶ **克隆 Flutter** _(Clone Flutter)_ — 通过 git clone
+- ✅ Flutter SDK 装到 `/opt/flutter`（git 克隆 + 自动跟进 channel）
+- ✅ `/opt/flutter/bin` 加入系统 PATH（重开 shell 后生效）
+- ✅ Dart SDK + Linux 编译工具链已 precache
 
-## 自动化步骤
+**注意**：开发 Android 还需要 Android SDK（不在本 Playbook 范围）；开发 iOS 需要 Mac。
 
-EnvForge 在目标机器上依次执行以下任务：
+## 用法
 
-1. Install dependencies
-2. Clone Flutter SDK
-3. Add Flutter to PATH
-4. Verify Flutter
-
-## 验证安装
+### 验证
 
 ```bash
-# 检查包是否已安装
-dpkg -l | grep libglu1-mesa      # Ubuntu/Debian
-rpm -q libglu1-mesa                # RHEL/CentOS/Anolis
+flutter --version
+flutter doctor
+# 显示哪些功能可用：
+# [✓] Flutter (Channel stable, 3.x.x)
+# [!] Android toolchain - develop for Android devices
+# 等
+```
 
-# 检查服务是否运行（如果有 systemd 单元）
-systemctl status libglu1-mesa --no-pager
+### 跑一个示例
+
+```bash
+flutter create my_app
+cd my_app
+flutter run -d linux       # 本机跑桌面版
+flutter build web          # 构建 web 版（dist 在 build/web/）
+```
+
+### CI 用法（GitHub Actions / GitLab CI）
+
+```yaml
+# .github/workflows/build.yml
+- uses: subosito/flutter-action@v2
+  with:
+    flutter-version: '3.x'
+- run: flutter pub get
+- run: flutter build web
+```
+
+或者在你自己的 CI 服务器上：本 Playbook 装好 Flutter，runner job 直接用。
+
+### 升级 Flutter
+
+```bash
+cd /opt/flutter
+git pull
+flutter upgrade
+```
+
+或者 `flutter channel beta && flutter upgrade` 切到 beta。
+
+### 国内镜像
+
+```bash
+echo 'export PUB_HOSTED_URL=https://pub.flutter-io.cn' >> ~/.bashrc
+echo 'export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn' >> ~/.bashrc
+source ~/.bashrc
+```
+
+## ⚠️ 敏感性
+
+**safe** — 装到 `/opt/flutter`，不动其它系统组件。占用磁盘约 1-2GB（Dart SDK + 编译缓存）。
+
+## 验证
+
+```bash
+/opt/flutter/bin/flutter --version
+/opt/flutter/bin/flutter doctor
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **`flutter: command not found`** — `/etc/profile.d/flutter.sh` 没生效（仅交互式 shell 加载）。CI/服务里写完整路径 `/opt/flutter/bin/flutter`，或者在 systemd unit 里加 PATH。
+- **`pub get` 网络慢** — 设国内镜像（见上）。
+- **`flutter doctor` 提示缺 Android toolchain** — 服务器上正常（CI 跑 web/linux 不需要 Android）。如果真要构建 Android：
+  ```bash
+  sudo dpkg --add-architecture i386
+  sudo apt-get install android-sdk
+  flutter config --android-sdk /usr/lib/android-sdk
+  ```
+- **跨发行版**：用 git 安装，无包管理器差异。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。已装就跳过 git clone（不会自动升级 Flutter 版本）。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+Flutter 默认开启 analytics 上报使用统计：
+```bash
+flutter --disable-analytics
+```

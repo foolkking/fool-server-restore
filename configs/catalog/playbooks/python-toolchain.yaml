@@ -1,13 +1,31 @@
 # Playbook: Python 工具链
-name: Install Python toolchain
+#
+# 装系统 Python 3 + pip + venv + 常用编译依赖（让 pip install <C 扩展> 能编过）。
+name: Install Python 3 toolchain
 hosts: all
 
 tasks:
-  - name: Install Python 3 with pip and venv
+  - name: Install Python + pip + venv + build essentials
     module: package
     args:
       name:
         - python3
         - python3-pip
         - python3-venv
+        - python3-dev
+        - build-essential
       state: present
+      ignore_missing: true
+
+verify:
+  - name: python3 works
+    cmd: "python3 --version"
+    expect_stdout: "Python 3"
+    hint: "Python 3 没装上。Ubuntu/Debian 默认仓库直接有；RHEL/Anolis 上 'python3' 也是默认提供。"
+  - name: pip works
+    cmd: "python3 -m pip --version"
+    hint: "pip 没装上：可能 python3-pip 包名翻译有问题。Ubuntu 上是 python3-pip，RHEL 上是 python3-pip 或 python-pip。"
+  - name: venv works (creates and removes a test venv)
+    cmd: "python3 -m venv /tmp/.envforge-test-venv && rm -rf /tmp/.envforge-test-venv && echo OK"
+    expect_stdout: "OK"
+    hint: "venv 模块不工作。Ubuntu/Debian 上 venv 在 'python3-venv' 里，需单独装。"

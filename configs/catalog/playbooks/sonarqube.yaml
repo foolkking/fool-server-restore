@@ -1,27 +1,98 @@
 # Playbook: SonarQube 代码质量
-name: Install SonarQube via Docker
+#
+# SonarQube 是代码静态分析平台。装 Community Edition + 内置 H2 数据库（开发测试用）。
+# 生产部署需要外接 PostgreSQL（H2 仅适合 PoC）。
+#
+# 注意：SonarQube 必须 vm.max_map_count >= 524288，否则 Elasticsearch 启动失败。
+name: Install SonarQube Community Edition
 hosts: all
 
+vars:
+  http_port: 9000
+
 tasks:
-  - name: Ensure Docker is installed
+  - name: Install Java + dependencies
+    module: package
+    args:
+      name: ["openjdk-17-jdk", "java-17-openjdk-devel", "unzip", "wget"]
+      state: present
+      ignore_missing: true
+
+  - name: Set vm.max_map_count for Elasticsearch
+    module: sysctl
+    args:
+      name: vm.max_map_count
+      value: "524288"
+
+  - name: Set fs.file-max
+    module: sysctl
+    args:
+      name: fs.file-max
+      value: "131072"
+
+  - name: Create sonarqube user
+    module: user
+    args:
+      name: sonarqube
+      shell: /bin/bash
+      home: /opt/sonarqube
+
+  - name: Download SonarQube CE
     module: shell
     args:
-      cmd: "command -v docker || (echo 'Docker required' && exit 1)"
+      cmd: |
+        if [ ! -d /opt/sonarqube/bin ]; then
+          VER="10.7.0.96327"
+          cd /tmp
+          wget -q "https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-${VER}.zip"
+          unzip -q "sonarqube-${VER}.zip"
+          sudo mv "sonarqube-${VER}" /opt/sonarqube-tmp
+          # 移内容（保留 /opt/sonarqube 这个目录，避免删用户家目录）
+          sudo cp -a /opt/sonarqube-tmp/. /opt/sonarqube/
+          sudo rm -rf /opt/sonarqube-tmp /tmp/sonarqube-*.zip
+          sudo chown -R sonarqube:sonarqube /opt/sonarqube
+        fi
+      creates: /opt/sonarqube/bin/linux-x86-64/sonar.sh
 
-  - name: Increase vm.max_map_count for SonarQube
+  - name: Set HTTP port in sonar.properties
     module: lineinfile
     args:
-      path: /etc/sysctl.conf
-      line: "vm.max_map_count=524288"
-      create: true
+      path: /opt/sonarqube/conf/sonar.properties
+      regexp: "^#?sonar\\.web\\.port="
+      line: "sonar.web.port={{ http_port }}"
 
-  - name: Apply sysctl
+  - name: Render systemd unit
+    module: copy
+    args:
+      dest: /etc/systemd/system/sonarqube.service
+      content: |
+        [Unit]
+        Description=SonarQube
+        After=network-online.target
+
+        [Service]
+        Type=forking
+        User=sonarqube
+        Group=sonarqube
+        ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
+        ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+        LimitNOFILE=131072
+        LimitNPROC=8192
+        Restart=on-failure
+
+        [Install]
+        WantedBy=multi-user.target
+
+  - name: Reload systemd + enable + start sonarqube
     module: shell
     args:
-      cmd: "sudo sysctl -w vm.max_map_count=524288"
+      cmd: "sudo systemctl daemon-reload && sudo systemctl enable --now sonarqube"
 
-  - name: Run SonarQube container
-    module: shell
-    args:
-      cmd: "sudo docker run -d --name sonarqube -p 9000:9000 -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true sonarqube:lts-community"
-      creates: /var/lib/docker/containers/sonarqube
+verify:
+  - name: sonarqube service is active
+    cmd: "systemctl is-active --quiet sonarqube"
+    hint: "服务未启动。看 'sudo journalctl -u sonarqube -n 50' + /opt/sonarqube/logs/sonar.log。常见：vm.max_map_count 太小（要求 ≥524288）/ Java 不对（要 17）/ 9000 端口被占。"
+  - name: HTTP responds on {{ http_port }}
+    cmd: "for i in 1 2 3 4 5 6 7 8 9 10 11 12; do curl -fsS -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:{{ http_port }}/ 2>/dev/null && exit 0; sleep 10; done; exit 1"
+    expect_stdout: "200"
+    hint: "SonarQube 没响应：首次启动较慢（1-3 分钟，要起 Elasticsearch 索引），多等。"

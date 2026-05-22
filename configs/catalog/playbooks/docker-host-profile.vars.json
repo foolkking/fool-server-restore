@@ -1,0 +1,39 @@
+{
+  "registry_mirrors": {
+    "type": "string",
+    "label": "镜像仓库加速（可选，逗号分隔）",
+    "labelEn": "Registry mirrors",
+    "default": "",
+    "validate": "^(https?://[a-zA-Z0-9.,:/_-]+)*$",
+    "placeholder": "https://docker.m.daocloud.io,https://hub-mirror.c.163.com",
+    "help": "国内服务器到 docker.io 慢，建议设镜像加速。多个 URL 用英文逗号分隔。常用：https://docker.m.daocloud.io / https://hub-mirror.c.163.com / 阿里云容器镜像服务（每个账号一个 URL）"
+  },
+  "data_root": {
+    "type": "string",
+    "label": "Docker 数据目录（可选）",
+    "labelEn": "Data root",
+    "default": "",
+    "validate": "^(/[a-zA-Z0-9/_.-]+)?$",
+    "placeholder": "/data/docker",
+    "help": "Docker 镜像/容器/卷的存储目录。默认 /var/lib/docker。如果根分区空间小，迁到大盘（先停 docker，rsync /var/lib/docker → 新位置，改这里，重启 docker）。"
+  },
+  "log_driver": {
+    "type": "choice",
+    "label": "日志驱动",
+    "labelEn": "Log driver",
+    "default": "json-file",
+    "options": [
+      { "value": "json-file", "label": "json-file（默认，已配最多 100MB × 3 文件轮转）" },
+      { "value": "journald", "label": "journald（写到 systemd journal，统一日志）" },
+      { "value": "local", "label": "local（性能好但 docker logs 不能用 --tail）" }
+    ],
+    "help": "json-file 是默认，但要配 max-size 否则容器日志能把磁盘吃满。Playbook 已配 100MB × 3。"
+  },
+  "add_user_to_docker_group": {
+    "type": "boolean",
+    "label": "把当前用户加到 docker 组",
+    "labelEn": "Add user to docker group",
+    "default": true,
+    "help": "**注意**：加进 docker 组等于该用户能拿到 root 权限（docker.sock 等于 root）。仅给信任用户。"
+  }
+}

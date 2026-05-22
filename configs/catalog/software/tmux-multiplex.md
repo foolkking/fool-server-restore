@@ -1,42 +1,110 @@
 # tmux 终端复用器
 
-持久化会话、分屏，含合理默认配置。
-
-*Persistent sessions, split panes, sane defaults.*
+tmux 让一个 SSH 连接里同时跑多个终端会话——还能 detach 后继续在后台跑（断 SSH 也不会
+让你的命令终止）。是远程服务器工作的必备工具。
 
 ## 你将得到什么
 
-- 📦 **tmux** _(tmux)_ — 通过 apt
+- 📦 **tmux**
 
-## 自动化步骤
+## 速查
 
-EnvForge 在目标机器上依次执行以下任务：
-
-1. Install tmux
-2. Configure tmux defaults
-3. Verify tmux
-
-## 验证安装
+### 启动 / 恢复
 
 ```bash
-# 检查包是否已安装
-dpkg -l | grep tmux      # Ubuntu/Debian
-rpm -q tmux                # RHEL/CentOS/Anolis
+tmux                       # 启动新会话
+tmux new -s mywork         # 启动并命名
+tmux ls                    # 列出现有会话
+tmux attach -t mywork      # 接到 mywork 会话
+tmux attach                # 接到上次的
+tmux kill-session -t mywork
+```
 
-# 检查服务是否运行（如果有 systemd 单元）
-systemctl status tmux --no-pager
+### Detach（最重要的功能）
+
+`Ctrl+b` 然后按 `d` — 离开但会话继续在后台跑。
+SSH 断了也没事，下次 ssh 进来 `tmux attach` 接回。
+
+### 窗口（windows，类似浏览器 tab）
+
+`Ctrl+b` 触发然后：
+- `c` — 新窗口
+- `n` — 下一个窗口
+- `p` — 上一个
+- `0-9` — 跳转到第 N 个
+- `,` — 重命名当前窗口
+- `&` — 关闭当前窗口
+
+### 分屏（panes）
+
+`Ctrl+b` 然后：
+- `%` — 左右分屏
+- `"` — 上下分屏
+- 方向键 — 在 panes 间切换
+- `o` — 顺序切换
+- `x` — 关闭当前 pane
+- `z` — 当前 pane 全屏 / 还原
+- `空格` — 循环切布局
+
+### 滚动查看历史
+
+`Ctrl+b` 然后 `[` — 进入 copy 模式，用方向键 / PgUp/PgDn 翻历史。`q` 退出。
+
+## 配置（推荐）
+
+`~/.tmux.conf`：
+
+```bash
+# 用 Ctrl+a 替代 Ctrl+b（更顺手）
+unbind C-b
+set -g prefix C-a
+bind C-a send-prefix
+
+# 鼠标支持
+set -g mouse on
+
+# 状态栏在底部 + 显示日期
+set -g status-position bottom
+set -g status-right '%Y-%m-%d %H:%M'
+
+# 历史缓冲区调大
+set -g history-limit 100000
+
+# 窗口编号从 1 开始
+set -g base-index 1
+setw -g pane-base-index 1
+
+# 改 pane split 快捷键
+bind | split-window -h
+bind - split-window -v
+```
+
+```bash
+# 重新加载配置（在 tmux 内）
+Ctrl+a r
+```
+
+或者用 [TPM (Tmux Plugin Manager)](https://github.com/tmux-plugins/tpm) + 一系列 plugin（resurrect / continuum 自动保存恢复 session）。
+
+## ⚠️ 敏感性
+
+**safe** — 装终端工具。
+
+## 验证
+
+```bash
+tmux -V
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **`error connecting to /tmp/tmux-1000/default` (Address already in use)** — 旧的 tmux server 还在但坏了。`tmux kill-server` 重启。
+- **跨发行版**：`tmux` 在两边一致，无差异。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+不发遥测。

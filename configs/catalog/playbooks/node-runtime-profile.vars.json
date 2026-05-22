@@ -1,0 +1,23 @@
+{
+  "node_version": {
+    "type": "choice",
+    "label": "Node.js 版本",
+    "labelEn": "Node.js version",
+    "default": "22",
+    "options": [
+      { "value": "20", "label": "20 LTS（Iron，2026-04 EOL）" },
+      { "value": "22", "label": "22 LTS（Jod，推荐，2027-04 EOL）" },
+      { "value": "24", "label": "24（最新，非 LTS）" }
+    ],
+    "help": "Node.js 偶数版本是 LTS（长期支持）。生产用 LTS。22 是当前推荐——比 20 新，比 24 稳定。"
+  },
+  "npm_registry": {
+    "type": "string",
+    "label": "npm registry（可选）",
+    "labelEn": "npm registry",
+    "default": "",
+    "validate": "^(https?://[^\\s]+)?$",
+    "placeholder": "https://registry.npmmirror.com",
+    "help": "国内服务器建议设 https://registry.npmmirror.com（淘宝镜像）加快 npm install。留空使用 npm 官方源。"
+  }
+}

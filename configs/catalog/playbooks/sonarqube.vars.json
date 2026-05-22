@@ -1,0 +1,9 @@
+{
+  "http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 9000,
+    "help": "SonarQube web UI 端口。**注意 9000 是 Prometheus 的默认端口**，同机部署时改一个。"
+  }
+}

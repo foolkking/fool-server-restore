@@ -1,0 +1,23 @@
+{
+  "http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 8080,
+    "help": "Jenkins web UI 端口。生产建议挂 nginx 反代后用 443 + 域名，8080 仅本机。"
+  },
+  "java_max_heap": {
+    "type": "choice",
+    "label": "JVM 最大堆",
+    "labelEn": "JVM max heap",
+    "default": "1024m",
+    "options": [
+      { "value": "512m", "label": "512 MB（小项目）" },
+      { "value": "1024m", "label": "1 GB（默认，10-50 任务）" },
+      { "value": "2048m", "label": "2 GB（中型，100+ 任务）" },
+      { "value": "4096m", "label": "4 GB（大型，多构建并发）" },
+      { "value": "8192m", "label": "8 GB" }
+    ],
+    "help": "Jenkins 是 Java 应用，堆内存按构建并发数调。一般物理内存的 50%。"
+  }
+}

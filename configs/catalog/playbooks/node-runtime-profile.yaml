@@ -1,28 +1,56 @@
-# Playbook: Node.js 运行时配置
+# Playbook: Node.js LTS 运行时
+#
+# 用 NodeSource 官方仓库装 Node.js LTS（22.x）。比发行版自带版本新得多。
 name: Install Node.js LTS runtime
 hosts: all
 
+vars:
+  node_version: "22"
+  npm_registry: ""
+
 tasks:
-  - name: Install curl for NodeSource setup
+  - name: Install dependencies
     module: package
     args:
-      name: curl
+      name: ["curl", "ca-certificates"]
       state: present
 
-  - name: Add NodeSource LTS repository (Node 20.x)
+  - name: Add NodeSource apt repo (Debian/Ubuntu)
     module: shell
     args:
-      cmd: "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1 && ! command -v node >/dev/null 2>&1; then
+          curl -fsSL https://deb.nodesource.com/setup_{{ node_version }}.x | sudo -E bash -
+        fi
       creates: /etc/apt/sources.list.d/nodesource.list
 
-  - name: Install Node.js from NodeSource
+  - name: Add NodeSource yum repo (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && ! command -v node >/dev/null 2>&1; then
+          curl -fsSL https://rpm.nodesource.com/setup_{{ node_version }}.x | sudo -E bash -
+        fi
+      creates: /etc/yum.repos.d/nodesource-nodejs.repo
+
+  - name: Install Node.js
     module: package
     args:
       name: nodejs
       state: present
-      update_cache: true
 
-  - name: Verify node and npm versions
+  - name: Configure npm registry (only when set)
     module: shell
     args:
-      cmd: "node --version && npm --version"
+      cmd: "sudo -u $(logname 2>/dev/null || echo $USER) npm config set registry {{ npm_registry }}"
+    when: "npm_registry"
+    ignore_errors: true
+
+verify:
+  - name: node command works
+    cmd: "node --version"
+    expect_stdout: "v{{ node_version }}"
+    hint: "node 命令找不到或版本不对。检查 PATH，或重跑 Playbook（NodeSource 仓库可能没添加成功）。"
+  - name: npm command works
+    cmd: "npm --version"
+    hint: "npm 没装上。NodeSource 的 nodejs 包包含 npm，安装失败时检查包源。"

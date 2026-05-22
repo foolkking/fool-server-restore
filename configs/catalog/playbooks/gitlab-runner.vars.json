@@ -1,0 +1,36 @@
+{
+  "gitlab_url": {
+    "type": "string",
+    "label": "GitLab URL",
+    "labelEn": "GitLab URL",
+    "default": "https://gitlab.com",
+    "validate": "^https?://[a-zA-Z0-9.-]+/?$",
+    "help": "GitLab 实例地址。SaaS 用 https://gitlab.com，自建实例填你的 URL。"
+  },
+  "registration_token": {
+    "type": "password",
+    "label": "Registration Token（可选）",
+    "labelEn": "Registration token",
+    "help": "在 GitLab 项目/group/admin → Settings → CI/CD → Runners 里拿。留空则只装 runner 不注册（后续手动 'sudo gitlab-runner register'）。"
+  },
+  "executor": {
+    "type": "choice",
+    "label": "Executor",
+    "labelEn": "Executor",
+    "default": "shell",
+    "options": [
+      { "value": "shell", "label": "shell（直接在本机跑，最简单）" },
+      { "value": "docker", "label": "docker（每个 job 起独立容器，需先装 docker）" },
+      { "value": "ssh", "label": "ssh（在另一台机器上跑）" }
+    ],
+    "help": "shell 适合简单部署任务；docker 适合大量构建（每次干净环境）；ssh 适合 runner 和构建机分离。"
+  },
+  "runner_description": {
+    "type": "string",
+    "label": "Runner 描述（可选）",
+    "labelEn": "Runner description",
+    "default": "",
+    "placeholder": "production-deploy",
+    "help": "在 GitLab UI 里显示的 runner 名字，方便区分多个 runner。留空用 hostname。"
+  }
+}

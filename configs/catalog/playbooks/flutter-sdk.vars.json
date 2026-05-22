@@ -1,0 +1,14 @@
+{
+  "channel": {
+    "type": "choice",
+    "label": "Flutter channel",
+    "labelEn": "Channel",
+    "default": "stable",
+    "options": [
+      { "value": "stable", "label": "stable（推荐生产）" },
+      { "value": "beta", "label": "beta" },
+      { "value": "master", "label": "master（最新但易碎）" }
+    ],
+    "help": "stable channel 4 个月一个大版本，是生产首选。"
+  }
+}

@@ -1,82 +1,89 @@
 # Rust 工具链
 
-## 概述
+通过 rustup 装 Rust（rustc + cargo + clippy + rustfmt）。rustup 是 Rust 官方的版本管理器——
+能轻松装 stable / beta / nightly 多个版本，工具链升级一条命令搞定。
 
-Rust 是一门注重安全性、并发性和性能的系统编程语言。通过 rustup 工具链管理器安装，包含编译器 rustc、包管理器 Cargo 和标准库。
+## 你将得到什么
 
-## 安装内容
+- ✅ **rustup**（Rust 工具链管理器）
+- ✅ Rust stable channel 默认 toolchain
+- ✅ rustc / cargo / clippy / rustfmt
+- ✅ 装到当前用户的 `~/.cargo/`，PATH 已加到 `~/.bashrc`
 
-- `curl` — 下载 rustup 安装脚本
-- `build-essential` — C 编译器和链接器（Rust 编译依赖）
-- rustup — Rust 工具链管理器
-- rustc — Rust 编译器
-- cargo — Rust 包管理器
+## 用法
 
-## 安装命令
-
-```bash
-sudo apt-get update -qq
-sudo apt-get install -y curl build-essential
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source $HOME/.cargo/env
-```
-
-## 安装后配置
-
-### 1. 添加到 PATH（如未自动添加）
+### 验证
 
 ```bash
-echo 'source $HOME/.cargo/env' >> ~/.bashrc
-source ~/.bashrc
+# 重开终端让 PATH 生效
+rustc --version
+cargo --version
+clippy-driver --version
 ```
 
-### 2. 安装常用组件
+### 切换 toolchain（多版本）
 
 ```bash
-rustup component add clippy      # 代码检查
-rustup component add rustfmt     # 代码格式化
-rustup component add rust-src    # 源码（IDE 支持）
+rustup toolchain list
+rustup toolchain install nightly
+rustup default nightly
+rustup default stable
 ```
 
-### 3. 安装常用工具
+### 国内速度优化
 
-```bash
-cargo install cargo-watch    # 文件变更自动重编译
-cargo install cargo-edit     # cargo add/rm 命令
-cargo install sccache        # 编译缓存加速
-```
-
-### 4. 配置国内镜像（可选）
-
-创建 `~/.cargo/config.toml`：
-
+`~/.cargo/config.toml`：
 ```toml
 [source.crates-io]
-replace-with = 'ustc'
+replace-with = 'rsproxy'
+
+[source.rsproxy]
+registry = "https://rsproxy.cn/crates.io-index"
 
 [source.ustc]
-registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+registry = "git://mirrors.ustc.edu.cn/crates.io-index"
+
+[net]
+git-fetch-with-cli = true
 ```
 
-## 验证安装
+### 升级 Rust
+
+```bash
+rustup update
+```
+
+### 第一个项目
+
+```bash
+cargo new hello
+cd hello
+cargo run         # 编译 + 运行 debug 版本
+cargo build --release
+./target/release/hello
+```
+
+## ⚠️ 敏感性
+
+**safe** — 装到用户目录 `~/.cargo`，不污染系统。
+
+## 验证
 
 ```bash
 rustc --version
 cargo --version
-rustup show
 ```
 
-## 常用命令
+## 排错
 
-```bash
-cargo new myproject     # 创建项目
-cargo build             # 编译
-cargo run               # 编译并运行
-cargo test              # 运行测试
-cargo clippy            # 代码检查
-cargo fmt               # 格式化
-```
+- **重开 shell 后还找不到 cargo** — `~/.cargo/env` 没被 source。检查 `~/.bashrc` 有没有 `source $HOME/.cargo/env` 这一行。
+- **国内服务器 `cargo build` 极慢** — 配 rsproxy.cn 镜像（见上）。
+- **跨发行版**：rustup 是脚本安装，无包管理器差异。
+
+## 多次运行
+
+`installMode: skip-existing`。rustup 已安装就跳过。要更新 Rust 用 `rustup update` 而不是重跑 Playbook。
 
 ## 隐私说明
 
-Rust 工具链配置不包含敏感信息，可安全同步。
+rustup / cargo 默认不发遥测。

@@ -1,0 +1,28 @@
+{
+  "bind_address": {
+    "type": "choice",
+    "label": "监听地址",
+    "labelEn": "Bind address",
+    "default": "127.0.0.1",
+    "options": [
+      { "value": "127.0.0.1", "label": "127.0.0.1（仅本机/SSH 隧道，推荐）" },
+      { "value": "0.0.0.0", "label": "0.0.0.0（远程访问，**必须配反向代理 + HTTPS**）" }
+    ],
+    "help": "code-server 是完整的 IDE 后端，能执行任意命令。**绝不要** 0.0.0.0 + 弱密码暴露公网。推荐：监听 127.0.0.1，本地 SSH 隧道访问。"
+  },
+  "http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 8080
+  },
+  "password": {
+    "type": "password",
+    "label": "登录密码",
+    "labelEn": "Password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "登录 code-server web UI 的密码。留空自动生成 24 位。"
+  }
+}

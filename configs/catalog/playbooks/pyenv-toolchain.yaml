@@ -1,9 +1,15 @@
-# Playbook: pyenv Python 版本管理
-name: Install pyenv Python version manager
+# Playbook: pyenv (Python 版本管理)
+#
+# 装 pyenv + 编译 Python 需要的所有 build 依赖（zlib / openssl / sqlite / etc.）。
+# Pyenv 会从源码编译每个 Python 版本（首次 5-15 分钟），所以前置依赖很重要。
+name: Install pyenv + Python build dependencies
 hosts: all
 
+vars:
+  default_python_version: "3.12.7"
+
 tasks:
-  - name: Install pyenv build dependencies
+  - name: Install build dependencies (Debian/Ubuntu)
     module: package
     args:
       name:
@@ -13,6 +19,7 @@ tasks:
         - libbz2-dev
         - libreadline-dev
         - libsqlite3-dev
+        - curl
         - libncursesw5-dev
         - xz-utils
         - tk-dev
@@ -20,20 +27,56 @@ tasks:
         - libxmlsec1-dev
         - libffi-dev
         - liblzma-dev
-        - curl
         - git
       state: present
+      ignore_missing: true
 
-  - name: Install pyenv
+  - name: Install build dependencies (RHEL/Anolis)
+    module: package
+    args:
+      name:
+        - "@development-tools"
+        - openssl-devel
+        - bzip2-devel
+        - libffi-devel
+        - zlib-devel
+        - readline-devel
+        - sqlite-devel
+        - xz-devel
+        - tk-devel
+        - libxml2-devel
+        - xmlsec1-devel
+        - git
+      state: present
+      ignore_missing: true
+
+  - name: Install pyenv (when not already installed)
     module: shell
     args:
-      cmd: "curl https://pyenv.run | bash"
-      creates: ~/.pyenv
+      cmd: |
+        if [ ! -d "$HOME/.pyenv" ]; then
+          curl -fsSL https://pyenv.run | bash
+        fi
+      creates: "$HOME/.pyenv/bin/pyenv"
 
-  - name: Add pyenv to bashrc
-    module: lineinfile
+  - name: Install default Python version
+    module: shell
     args:
-      path: ~/.bashrc
-      regexp: "^export PYENV_ROOT"
-      line: 'export PYENV_ROOT="$HOME/.pyenv"; export PATH="$PYENV_ROOT/bin:$PATH"; eval "$(pyenv init -)"'
-      create: true
+      cmd: |
+        export PYENV_ROOT="$HOME/.pyenv"
+        export PATH="$PYENV_ROOT/bin:$PATH"
+        eval "$(pyenv init -)"
+        if ! pyenv versions | grep -q "{{ default_python_version }}"; then
+          pyenv install {{ default_python_version }}
+        fi
+        pyenv global {{ default_python_version }}
+
+verify:
+  - name: pyenv command works
+    cmd: "test -f $HOME/.pyenv/bin/pyenv && echo OK"
+    expect_stdout: "OK"
+    hint: "pyenv 没装到 $HOME/.pyenv。可能 curl pyenv.run 失败。"
+  - name: default Python version installed
+    cmd: "bash -lc 'export PYENV_ROOT=$HOME/.pyenv; export PATH=$PYENV_ROOT/bin:$PATH; eval \"$(pyenv init -)\"; python --version'"
+    expect_stdout: "Python {{ default_python_version }}"
+    hint: "默认 Python 版本没装好：可能编译失败（看任务日志的 stderr，常见缺 build 依赖）。"

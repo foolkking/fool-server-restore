@@ -1,21 +1,56 @@
-# Playbook: code-server (Web VSCode)
+# Playbook: code-server（浏览器版 VSCode）
+#
+# code-server 是 VSCode 的 web 版——浏览器访问，背后跑 Node.js + 真正的 VSCode 后端。
+# 适合：iPad/Chromebook 远程开发、低配机器跑高 RAM 项目（IDE 在服务器，浏览器只渲染）。
 name: Install code-server (browser-based VSCode)
 hosts: all
 
+vars:
+  bind_address: "127.0.0.1"
+  http_port: 8080
+  password: "change-me"
+
 tasks:
-  - name: Install code-server
+  - name: Install dependencies
+    module: package
+    args:
+      name: ["curl"]
+      state: present
+
+  - name: Install code-server (official install script)
     module: shell
     args:
-      cmd: "curl -fsSL https://code-server.dev/install.sh | sh"
+      cmd: |
+        if ! command -v code-server >/dev/null 2>&1; then
+          curl -fsSL https://code-server.dev/install.sh | sudo sh
+        fi
       creates: /usr/bin/code-server
 
-  - name: Enable code-server for current user
+  - name: Render config for the run user
     module: shell
     args:
-      cmd: "sudo systemctl enable --now code-server@$USER"
-    ignore_errors: true
+      cmd: |
+        USR=$(logname 2>/dev/null || echo $USER)
+        sudo -u $USR mkdir -p /home/$USR/.config/code-server
+        sudo -u $USR tee /home/$USR/.config/code-server/config.yaml > /dev/null <<EOF
+        bind-addr: {{ bind_address }}:{{ http_port }}
+        auth: password
+        password: {{ password }}
+        cert: false
+        EOF
 
-  - name: Verify code-server
+  - name: Enable and start code-server (user-level systemd)
     module: shell
     args:
-      cmd: "code-server --version | head -1"
+      cmd: |
+        USR=$(logname 2>/dev/null || echo $USER)
+        sudo systemctl enable --now code-server@$USR
+
+verify:
+  - name: code-server service is active
+    cmd: "USR=$(logname 2>/dev/null || echo $USER); systemctl is-active --quiet code-server@$USR"
+    hint: "服务未启动。看 'sudo journalctl -u code-server@$USER -n 30'。常见：config.yaml 语法错 / 端口被占。"
+  - name: HTTP responds on {{ http_port }}
+    cmd: "for i in 1 2 3 4 5; do curl -fsS -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:{{ http_port }}/login 2>/dev/null && exit 0; sleep 3; done; exit 1"
+    expect_stdout: "200"
+    hint: "code-server 没响应：可能服务还在启动（首次需 5-10 秒），或 bind_address 设了 0.0.0.0 但 127.0.0.1 不通。"

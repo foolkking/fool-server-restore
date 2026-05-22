@@ -1,23 +1,46 @@
-# Playbook: Node.js 版本管理器 (NVM)
-name: Install NVM (Node Version Manager)
+# Playbook: NVM (Node Version Manager)
+#
+# nvm 让一台机器上能装多个 Node 版本，不同项目用不同版本。安装到当前用户家目录。
+name: Install nvm + default Node version
 hosts: all
 
+vars:
+  default_node_version: "lts/jod"
+
 tasks:
-  - name: Install prerequisites
+  - name: Install dependencies
     module: package
     args:
-      name:
-        - curl
-        - build-essential
+      name: ["curl", "git", "build-essential"]
       state: present
+      ignore_missing: true
 
-  - name: Install NVM
+  - name: Install nvm to current user (when not already installed)
     module: shell
     args:
-      cmd: "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash"
-      creates: ~/.nvm/nvm.sh
+      cmd: |
+        if [ ! -d "$HOME/.nvm" ]; then
+          curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+        fi
+      creates: "$HOME/.nvm/nvm.sh"
 
-  - name: Install latest LTS Node via NVM
+  - name: Install default Node via nvm
     module: shell
     args:
-      cmd: "bash -c 'source ~/.nvm/nvm.sh && nvm install --lts && nvm use --lts'"
+      cmd: |
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+        nvm install {{ default_node_version }}
+        nvm alias default {{ default_node_version }}
+
+verify:
+  - name: nvm.sh exists
+    cmd: "test -f $HOME/.nvm/nvm.sh && echo OK"
+    expect_stdout: "OK"
+    hint: "nvm 没装到 $HOME/.nvm。可能 install.sh 失败（curl 网络问题）。"
+  - name: nvm command available after sourcing
+    cmd: "bash -lc 'export NVM_DIR=$HOME/.nvm; . $NVM_DIR/nvm.sh; nvm --version'"
+    hint: "nvm 命令不可用：检查 ~/.bashrc 是否有 NVM 那段（install.sh 自动追加）。"
+  - name: default node version is set
+    cmd: "bash -lc 'export NVM_DIR=$HOME/.nvm; . $NVM_DIR/nvm.sh; node --version'"
+    hint: "node 命令找不到：默认版本可能没装上，或者 nvm alias default 没成功。"

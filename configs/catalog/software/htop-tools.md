@@ -1,43 +1,83 @@
-# 系统监控工具集
+# 系统监控 CLI 工具集
 
-htop、btop、iotop、ncdu 等系统诊断和监控工具。
-
-*htop, btop, iotop, ncdu and other system diagnostic tools.*
+一组诊断系统性能用的命令行工具。装上即用，无需配置。
 
 ## 你将得到什么
 
-- 📦 **htop** _(htop)_ — 通过 apt
-- 📦 **btop** _(btop)_ — 通过 apt
-- 📦 **ncdu** _(ncdu)_ — 通过 apt
+- 📦 **htop** — 现代版 top（彩色、可点击、tree view）
+- 📦 **btop** — 比 htop 还现代的版本（鼠标支持、磁盘网络面板）
+- 📦 **iotop** — 监控磁盘 IO（哪个进程在读写磁盘）
+- 📦 **ncdu** — NCurses 磁盘用量分析器（哪些目录在占空间）
+- 📦 **sysstat** — 含 sar / iostat / mpstat 等历史数据工具
 
-## 自动化步骤
+## 用法
 
-EnvForge 在目标机器上依次执行以下任务：
-
-1. Install monitoring tools
-2. Verify htop
-
-## 验证安装
+### htop — 替代 top
 
 ```bash
-# 检查包是否已安装
-dpkg -l | grep htop      # Ubuntu/Debian
-rpm -q htop                # RHEL/CentOS/Anolis
+htop
+```
+`F2` 设置 / `F5` tree 模式 / `F9` 杀进程 / `F10` 退出
 
-# 检查服务是否运行（如果有 systemd 单元）
-systemctl status htop --no-pager
+### btop — 比 htop 还酷
+
+```bash
+btop
+```
+鼠标可点击，CPU/内存/网络/磁盘四个面板可切换。
+
+### iotop — 哪个进程在吃磁盘
+
+```bash
+sudo iotop -o   # 仅显示有 IO 的进程
+```
+适合排查"磁盘 100% 但 CPU 空闲"的问题。
+
+### ncdu — 找占空间的目录
+
+```bash
+sudo ncdu /
+# 可交互浏览，按 d 删除选中目录
+```
+比 `du -sh /*` 直观 100 倍。
+
+### sysstat — 历史性能数据
+
+`sysstat` 装上后默认每 10 分钟采集一次。
+
+```bash
+sar              # 看今天的 CPU / 内存历史
+sar -r           # 仅内存
+sar -n DEV       # 网络
+sar -d           # 磁盘
+sar -f /var/log/sa/sa15  # 看 15 号那天的（按日存档）
+iostat -x 2       # 实时磁盘 IO（每 2 秒一次）
+mpstat -P ALL 2   # 每个 CPU 核的占用
+vmstat 2          # 虚拟内存 + IO + CPU 概览
+```
+
+历史数据非常有用——故障发生后很久还能查"昨天 3 点 CPU 是多少"。
+
+## ⚠️ 敏感性
+
+**safe** — 都是只读监控工具。
+
+## 验证
+
+```bash
+command -v htop btop iotop ncdu sar
+systemctl is-active sysstat
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **`btop` 没装上** — 旧发行版（Ubuntu 20.04 / RHEL 8）默认仓库没 btop。EnvForge preflight 会启用 EPEL，理论上能装。装不上就先用 htop。
+- **`sar` 显示 "Cannot open"** — sysstat 第一次装完还没采集到数据，等 10 分钟再来。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。已装就跳过。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+不发遥测。sysstat 把性能数据存在 `/var/log/sa/`，不上传不同步。

@@ -1,26 +1,33 @@
-# Playbook: Ruby + Rails 运行时
-name: Install Ruby with bundler
+# Playbook: Ruby + Bundler
+name: Install Ruby and Bundler
 hosts: all
 
 tasks:
-  - name: Install Ruby and dependencies
+  - name: Install Ruby + dev headers + build essentials
     module: package
     args:
       name:
-        - ruby-full
+        - ruby
+        - ruby-dev
         - build-essential
-        - libssl-dev
-        - libreadline-dev
         - zlib1g-dev
+        - libssl-dev
       state: present
+      ignore_missing: true
 
-  - name: Install bundler
+  - name: Install Bundler gem
     module: shell
     args:
-      cmd: "sudo gem install bundler"
-      creates: /usr/local/bin/bundler
+      cmd: "sudo gem install bundler --no-document"
 
-  - name: Verify Ruby
-    module: shell
-    args:
-      cmd: "ruby --version && gem --version && bundler --version"
+verify:
+  - name: ruby works
+    cmd: "ruby --version"
+    expect_stdout: "ruby"
+    hint: "Ruby 没装上。检查 'apt-get install ruby' 或 'dnf install ruby' 输出。"
+  - name: gem works
+    cmd: "gem --version"
+    hint: "gem 没装上：通常 ruby 包就包含了 gem，包源有问题。"
+  - name: bundler works
+    cmd: "bundle --version"
+    hint: "Bundler 没装上：'sudo gem install bundler' 失败，可能 RubyGems 网络问题（国内服务器需配镜像）。"

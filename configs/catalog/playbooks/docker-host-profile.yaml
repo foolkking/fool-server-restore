@@ -1,47 +1,102 @@
 # Playbook: Docker 容器引擎
-name: Install Docker Engine and Compose plugin
+#
+# Docker CE 来自 Docker Inc. 官方仓库（不是发行版自带的，版本太旧）。
+# 装完配 daemon.json：可选注册中心镜像、改 data-root。
+name: Install Docker Engine + Compose plugin
 hosts: all
 
+vars:
+  registry_mirrors: ""
+  data_root: ""
+  log_driver: "json-file"
+  add_user_to_docker_group: true
+
 tasks:
-  - name: Install prerequisites for Docker
+  - name: Install prerequisites
     module: package
     args:
-      name:
-        - ca-certificates
-        - curl
-        - gnupg
+      name: ["ca-certificates", "curl", "gnupg"]
       state: present
 
-  - name: Add Docker official GPG key and repository
+  - name: Add Docker apt repo (Debian/Ubuntu)
     module: shell
     args:
       cmd: |
-        sudo install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-        sudo apt-get update -qq
+        if command -v apt-get >/dev/null 2>&1; then
+          sudo install -m 0755 -d /etc/apt/keyrings
+          # 检测 OS 是 ubuntu 还是 debian
+          source /etc/os-release
+          curl -fsSL "https://download.docker.com/linux/${ID}/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update -qq
+        fi
       creates: /etc/apt/sources.list.d/docker.list
 
-  - name: Install Docker Engine and plugins
+  - name: Add Docker yum repo (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/docker-ce.repo ]; then
+          # Anolis 用 centos 仓库
+          sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        fi
+      creates: /etc/yum.repos.d/docker-ce.repo
+
+  - name: Install Docker Engine + plugins
     module: package
     args:
-      name:
-        - docker-ce
-        - docker-ce-cli
-        - containerd.io
-        - docker-buildx-plugin
-        - docker-compose-plugin
+      name: ["docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin", "docker-compose-plugin"]
       state: present
 
-  - name: Enable docker service to start on boot
+  - name: Render /etc/docker/daemon.json (when registry_mirrors or data_root set)
+    module: shell
+    args:
+      cmd: |
+        sudo mkdir -p /etc/docker
+        cat > /tmp/daemon.json <<EOF
+        {
+          "log-driver": "{{ log_driver }}",
+          "log-opts": {
+            "max-size": "100m",
+            "max-file": "3"
+          }$(if [ -n "{{ registry_mirrors }}" ]; then echo ",
+          \"registry-mirrors\": [$(echo '{{ registry_mirrors }}' | awk -v RS=, '{printf (NR>1?", ":"") "\""$0"\""}')]"; fi)$(if [ -n "{{ data_root }}" ]; then echo ",
+          \"data-root\": \"{{ data_root }}\""; fi)
+        }
+        EOF
+        sudo mv /tmp/daemon.json /etc/docker/daemon.json
+        sudo chmod 644 /etc/docker/daemon.json
+
+  - name: Enable and start docker
     module: service
     args:
       name: docker
       enabled: true
-      state: started
+      state: restarted
 
   - name: Add current user to docker group
     module: shell
     args:
-      cmd: "sudo usermod -aG docker $USER || true"
+      cmd: |
+        USR=$(logname 2>/dev/null || echo $USER)
+        if [ "$USR" != "root" ] && id -u "$USR" >/dev/null 2>&1; then
+          sudo usermod -aG docker "$USR"
+        fi
+    when: add_user_to_docker_group
     ignore_errors: true
+
+verify:
+  - name: docker command works
+    cmd: "sudo docker --version"
+    expect_stdout: "Docker version"
+    hint: "Docker 没装上。"
+  - name: docker daemon is running
+    cmd: "systemctl is-active --quiet docker"
+    hint: "docker 服务没启动。看 'sudo journalctl -u docker -n 30'。常见：daemon.json 语法错（'sudo dockerd --validate' 检查）。"
+  - name: docker compose plugin works
+    cmd: "sudo docker compose version"
+    expect_stdout: "Docker Compose"
+    hint: "docker compose 插件没装上。"
+  - name: docker run hello-world
+    cmd: "sudo docker run --rm hello-world 2>&1 | grep -E 'Hello from Docker'"
+    hint: "Docker 拉镜像失败：可能是国内服务器到 Docker Hub 慢。配 registry_mirrors。"

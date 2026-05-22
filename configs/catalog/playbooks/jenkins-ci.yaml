@@ -1,24 +1,42 @@
 # Playbook: Jenkins CI/CD
+#
+# Jenkins 是最经典的 CI/CD 系统。装 LTS 版本，启动 Web UI 在 :8080。
+# 第一次访问需要在 web 里走 setup wizard（解锁码自动生成在 /var/lib/jenkins/secrets/initialAdminPassword）。
 name: Install Jenkins CI/CD server
 hosts: all
 
+vars:
+  http_port: 8080
+  java_max_heap: "1024m"
+
 tasks:
-  - name: Install Java (required by Jenkins)
+  - name: Install Java (Jenkins 需要)
     module: package
     args:
-      name:
-        - openjdk-17-jre
-        - curl
+      name: ["openjdk-17-jdk", "java-17-openjdk-devel", "curl"]
       state: present
+      ignore_missing: true
 
-  - name: Add Jenkins repository
+  - name: Add Jenkins apt repo (Debian/Ubuntu)
     module: shell
     args:
       cmd: |
-        curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-        echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list
-        sudo apt-get update -qq
+        if command -v apt-get >/dev/null 2>&1; then
+          curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+          sudo apt-get update -qq
+        fi
       creates: /etc/apt/sources.list.d/jenkins.list
+
+  - name: Add Jenkins yum repo (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/jenkins.repo ]; then
+          sudo curl -fsSL https://pkg.jenkins.io/redhat-stable/jenkins.repo -o /etc/yum.repos.d/jenkins.repo
+          sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+        fi
+      creates: /etc/yum.repos.d/jenkins.repo
 
   - name: Install Jenkins
     module: package
@@ -26,9 +44,44 @@ tasks:
       name: jenkins
       state: present
 
-  - name: Enable Jenkins
-    module: service
+  - name: Set HTTP port
+    module: lineinfile
     args:
-      name: jenkins
-      enabled: true
-      state: started
+      path: /etc/default/jenkins
+      regexp: "^HTTP_PORT="
+      line: "HTTP_PORT={{ http_port }}"
+    ignore_errors: true
+
+  - name: Set HTTP port (RHEL path)
+    module: lineinfile
+    args:
+      path: /etc/sysconfig/jenkins
+      regexp: "^JENKINS_PORT="
+      line: 'JENKINS_PORT="{{ http_port }}"'
+    ignore_errors: true
+
+  - name: Configure JVM heap via systemd override
+    module: copy
+    args:
+      dest: /etc/systemd/system/jenkins.service.d/override.conf
+      content: |
+        [Service]
+        Environment="JAVA_OPTS=-Xmx{{ java_max_heap }} -Djava.awt.headless=true"
+
+  - name: Reload systemd + enable + start jenkins
+    module: shell
+    args:
+      cmd: "sudo systemctl daemon-reload && sudo systemctl enable --now jenkins"
+
+verify:
+  - name: jenkins service is active
+    cmd: "systemctl is-active --quiet jenkins"
+    hint: "服务未启动。看 'sudo journalctl -u jenkins -n 50'。常见：Java 没装好 / Java 版本不对（Jenkins 需要 Java 11+）/ 端口被占。"
+  - name: HTTP responds on {{ http_port }}
+    cmd: "for i in 1 2 3 4 5 6 7 8 9 10; do curl -fsS -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:{{ http_port }}/login 2>/dev/null && exit 0; sleep 5; done; exit 1"
+    expect_stdout: "200|403"
+    hint: "Jenkins 没响应：首次启动较慢（30-60 秒）。多等一会儿。"
+  - name: initial admin password generated
+    cmd: "sudo test -f /var/lib/jenkins/secrets/initialAdminPassword && echo OK"
+    expect_stdout: "OK"
+    hint: "初始密码文件没生成：Jenkins 启动失败或权限问题。"

@@ -1,79 +1,93 @@
-# Java / OpenJDK 运行时
+# OpenJDK + Maven
 
-## 概述
+装 OpenJDK 17 LTS + Maven。Java 17 是当前最广泛使用的 LTS（兼容大多数现代框架）。
 
-OpenJDK 是 Java 平台的开源实现，是运行 Java 应用程序的标准运行时环境。配合 Maven 构建工具，可以满足大多数 Java 开发和部署需求。
+## 你将得到什么
 
-## 安装内容
+- 📦 **openjdk-17-jdk**（Ubuntu）/ **java-17-openjdk-devel**（RHEL）
+- 📦 **maven**
+- ✅ JAVA_HOME 由 OpenJDK 包自动管理（多版本时用 update-alternatives）
 
-- `default-jdk` — OpenJDK 开发工具包（含 JRE）
-- `maven` — Apache Maven 构建工具
-- JAVA_HOME 环境变量
+## Java 版本选择
 
-## 安装命令
+Java 8 / 11 / 17 / 21 都是 LTS。**当前默认 17**（兼容性 + 性能 + 现代特性的最佳平衡）。
 
-```bash
-sudo apt-get update -qq
-sudo apt-get install -y default-jdk maven
-```
+如果你的项目要求老版本：
+- Java 8：`openjdk-8-jdk` (Ubuntu) / `java-1.8.0-openjdk-devel` (RHEL)。**不推荐**——已 EOL。
+- Java 11：`openjdk-11-jdk` / `java-11-openjdk-devel`。仍 LTS 但 17 更值得用。
+- Java 21：`openjdk-21-jdk` / `java-21-openjdk-devel`。最新 LTS，virtual threads 等新特性。
 
-## 安装后配置
+修改本 Playbook 里的 `java_version` 字段切换。
 
-### 1. 设置 JAVA_HOME
+## 用法
 
-```bash
-# 查找 Java 安装路径
-JAVA_PATH=$(dirname $(dirname $(readlink -f $(which java))))
-echo "export JAVA_HOME=$JAVA_PATH" >> ~/.bashrc
-source ~/.bashrc
-```
-
-### 2. 验证版本
+### 验证
 
 ```bash
-java -version
-javac -version
-mvn -version
+java --version
+javac --version
+mvn --version
 ```
 
-### 3. Maven 镜像配置（中国用户推荐）
+### Maven 国内镜像（重要）
 
-编辑 `~/.m2/settings.xml`：
-
+`~/.m2/settings.xml`：
 ```xml
 <settings>
   <mirrors>
     <mirror>
       <id>aliyun</id>
+      <name>aliyun maven</name>
+      <url>https://maven.aliyun.com/repository/public</url>
       <mirrorOf>central</mirrorOf>
-      <url>https://maven.aliyun.com/repository/central</url>
     </mirror>
   </mirrors>
 </settings>
 ```
 
-### 4. 安装特定版本（可选）
+国内服务器 `mvn install` 速度从 ~1MB/s 提到 ~30MB/s。
 
+### 多 Java 版本
+
+如果同机器要多版本：
 ```bash
-# 安装 OpenJDK 17
-sudo apt-get install -y openjdk-17-jdk
-
-# 安装 OpenJDK 21
-sudo apt-get install -y openjdk-21-jdk
-
-# 切换默认版本
-sudo update-alternatives --config java
+sudo apt-get install openjdk-11-jdk openjdk-17-jdk    # Ubuntu
+sudo update-alternatives --config java                # 选默认版本
+sudo update-alternatives --config javac
 ```
 
-## 常用命令
+或用 `sdkman` (`https://sdkman.io/`)，类似 nvm 但管 Java。
+
+### 用 Gradle 而不是 Maven
 
 ```bash
-java -jar app.jar              # 运行 JAR
-mvn clean package              # Maven 构建
-mvn spring-boot:run            # Spring Boot 启动
-javac Main.java && java Main   # 编译运行
+sudo apt-get install gradle    # Ubuntu
+sudo dnf install gradle        # 一些 RHEL 系
+# 或 sdkman 装最新版
 ```
+
+## ⚠️ 敏感性
+
+**safe** — 只装语言运行时。
+
+## 验证
+
+```bash
+java --version
+javac --version
+mvn --version
+```
+
+## 排错
+
+- **`java -version` 显示 GraalVM / Oracle JDK 而不是 OpenJDK** — 系统已经有别的 Java，本 Playbook 装的 OpenJDK 不是默认。`sudo update-alternatives --config java` 切回。
+- **`mvn` 找不到** — Maven 没装上（一些精简发行版 maven 包名不一样），手动 `apt install maven` / `dnf install maven`。
+- **跨发行版**：包名差异大（Ubuntu `openjdk-17-jdk` vs RHEL `java-17-openjdk-devel`），EnvForge 同时尝试两个，正确的那个生效。
+
+## 多次运行
+
+`installMode: skip-existing`。已装就跳过。
 
 ## 隐私说明
 
-Java 运行时配置不包含敏感信息。Maven settings.xml 中的私有仓库凭据属于敏感数据。
+不发遥测。

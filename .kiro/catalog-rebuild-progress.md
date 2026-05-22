@@ -66,37 +66,35 @@
 ## 第 4 批：开发工具/运行时（多数 no-schema）
 
 Runtime（运行时类，多数 no-schema）：
-- [x] node-runtime-profile (no-schema; just installs)
-- [x] python-toolchain (no-schema)
-- [x] golang-runtime (no-schema)
-- [x] openjdk-runtime (no-schema; perhaps schema for jdk version choice)
-- [x] rust-toolchain (no-schema)
-- [x] nodejs-version-mgr (NVM — schema: default node version)
-- [x] pyenv-toolchain (pyenv — schema: default python version)
-- [x] dotnet-runtime (no-schema)
-- [x] php-toolchain (no-schema unless extension list)
-- [x] ruby-toolchain (no-schema)
-- [x] flutter-sdk (no-schema)
+- [x] node-runtime-profile (schema: node_version + npm_registry) ← ✓ batch4
+- [x] python-toolchain (no-schema) ← ✓ batch4
+- [x] golang-runtime (no-schema, md only) ← ✓ batch4
+- [x] openjdk-runtime (no-schema) ← ✓ batch4
+- [x] rust-toolchain (no-schema) ← ✓ batch4
+- [x] nodejs-version-mgr (NVM, schema: default version) ← ✓ batch4
+- [x] pyenv-toolchain (schema: default python version) ← ✓ batch4
+- [x] dotnet-runtime (no-schema) ← ✓ batch4
+- [x] php-toolchain (no-schema) ← ✓ batch4
+- [x] ruby-toolchain (no-schema) ← ✓ batch4
+- [x] flutter-sdk (schema: channel) ← ✓ batch4
 
-Developer tools（多数 no-schema）：
-- [x] git-version-control (schema: git user.name, user.email)
-- [x] htop-tools (no-schema)
-- [x] zsh-shell (no-schema)
-- [x] neovim-editor (no-schema)
-- [x] tmux-multiplex (no-schema)
-- [x] ansible-tool (no-schema)
-- [x] code-server (schema: bind addr, password)
-- [x] fish-shell (no-schema)
-- [x] jenkins-ci (schema: http port, java memory)
-- [x] gitlab-runner (schema: gitlab URL, registration token, executor)
-- [x] terraform-iac (no-schema)
-- [x] sonarqube (schema: http port, db, admin pw)
-- [x] rust-cli-tools (no-schema)
-- [x] swap-config (schema: size in GB, swappiness)
-- [x] rsync-tools (no-schema)
-- [x] kubernetes-tools (no-schema; client tools only)
-- [x] docker-host-profile (schema: registry mirrors, data root)
-- [x] nodejs-pm2 (schema: app name, app file, instances)
+Developer tools:
+- [x] git-version-control (schema: user.name/email/branch/aliases) ← ✓ batch4
+- [x] htop-tools (no-schema, md only) ← ✓ batch4
+- [x] zsh-shell (no-schema) ← ✓ batch4
+- [x] neovim-editor (no-schema) ← ✓ batch4
+- [x] tmux-multiplex (no-schema) ← ✓ batch4
+- [x] ansible-tool (no-schema) ← ✓ batch4
+- [x] code-server (schema: bind/port/password) ← ✓ batch4
+- [x] fish-shell (no-schema) ← ✓ batch4
+- [x] jenkins-ci (schema: http_port/heap) ← ✓ batch4
+- [x] gitlab-runner (schema: gitlab_url/token/executor/desc) ← ✓ batch4
+- [x] terraform-iac (no-schema) ← ✓ batch4
+- [x] sonarqube (schema: http_port) ← ✓ batch4
+- [x] rust-cli-tools (no-schema) ← ✓ batch4
+- [x] rsync-tools (no-schema) ← ✓ batch4
+- [x] kubernetes-tools (no-schema) ← ✓ batch4
+- [x] docker-host-profile (schema: registry_mirrors/data_root/log_driver/add_user) ← ✓ batch4
 
 ## 第 5 批：组合 (combo)
 

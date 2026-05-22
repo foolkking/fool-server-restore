@@ -1,0 +1,16 @@
+{
+  "default_python_version": {
+    "type": "choice",
+    "label": "默认 Python 版本",
+    "labelEn": "Default Python version",
+    "default": "3.12.7",
+    "options": [
+      { "value": "3.10.15", "label": "Python 3.10.15" },
+      { "value": "3.11.10", "label": "Python 3.11.10" },
+      { "value": "3.12.7", "label": "Python 3.12.7（推荐）" },
+      { "value": "3.13.0", "label": "Python 3.13.0（最新）" },
+      { "value": "3.9.20", "label": "Python 3.9.20（已 EOL，仅兼容用）" }
+    ],
+    "help": "首次安装会从源码编译，需要 5-15 分钟。"
+  }
+}

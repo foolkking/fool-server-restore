@@ -1,34 +1,49 @@
 # Playbook: Flutter SDK
+#
+# Flutter 不在 apt/dnf 仓库，用官方 git 方式安装。装到 /opt/flutter（系统级）。
+# 注意：Flutter 服务端用得少，主要是开发设备用。CI 服务器装 Flutter 用来跑 'flutter build apk'/'web' 之类。
 name: Install Flutter SDK
 hosts: all
+
+vars:
+  channel: "stable"
 
 tasks:
   - name: Install dependencies
     module: package
     args:
-      name:
-        - git
-        - curl
-        - unzip
-        - xz-utils
-        - libglu1-mesa
+      name: ["git", "curl", "unzip", "xz-utils", "libglu1-mesa"]
       state: present
+      ignore_missing: true
 
-  - name: Clone Flutter SDK
+  - name: Clone Flutter repo to /opt/flutter
     module: shell
     args:
-      cmd: "git clone https://github.com/flutter/flutter.git -b stable /opt/flutter"
-      creates: /opt/flutter
+      cmd: |
+        if [ ! -d /opt/flutter ]; then
+          sudo git clone https://github.com/flutter/flutter.git -b {{ channel }} /opt/flutter
+          sudo chown -R $(logname 2>/dev/null || echo $USER):$(logname 2>/dev/null || echo $USER) /opt/flutter
+        fi
+      creates: /opt/flutter/bin/flutter
 
-  - name: Add Flutter to PATH
+  - name: Add /opt/flutter/bin to PATH (system-wide)
     module: lineinfile
     args:
       path: /etc/profile.d/flutter.sh
       line: 'export PATH=$PATH:/opt/flutter/bin'
       create: true
 
-  - name: Verify Flutter
+  - name: Run flutter precache (download dart sdk + linux toolchain)
     module: shell
     args:
-      cmd: "/opt/flutter/bin/flutter --version || true"
+      cmd: "/opt/flutter/bin/flutter precache --linux 2>&1 | tail -5"
     ignore_errors: true
+
+verify:
+  - name: flutter command works
+    cmd: "/opt/flutter/bin/flutter --version 2>&1 | head -3"
+    expect_stdout: "Flutter"
+    hint: "flutter 命令找不到。可能 git clone 失败或 /opt/flutter 权限问题。"
+  - name: flutter doctor passes basic checks
+    cmd: "/opt/flutter/bin/flutter doctor 2>&1 | head -10"
+    hint: "flutter doctor 报错。生产环境装 Flutter 主要是 CI 用，需要的额外组件（android-sdk / ios-tools）按需手动装。"

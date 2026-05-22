@@ -1,12 +1,36 @@
-# Playbook: Java / OpenJDK 运行时
-name: Install Java OpenJDK and Maven
+# Playbook: OpenJDK + Maven
+#
+# 装 OpenJDK 17 LTS（兼容大多数现代 Java 应用）+ Maven。如需别的 Java 版本，
+# 改下面的 vars.json 里的 java_version 选择。
+name: Install OpenJDK + Maven
 hosts: all
 
+vars:
+  java_version: "17"
+
 tasks:
-  - name: Install OpenJDK and Maven
+  - name: Install OpenJDK + Maven (Debian/Ubuntu naming)
     module: package
     args:
-      name:
-        - default-jdk
-        - maven
+      name: ["openjdk-17-jdk", "maven"]
       state: present
+      ignore_missing: true
+
+  - name: Install OpenJDK + Maven (RHEL/Anolis naming, fallback)
+    module: package
+    args:
+      name: ["java-17-openjdk-devel", "maven"]
+      state: present
+      ignore_missing: true
+
+verify:
+  - name: java works
+    cmd: "java --version"
+    expect_stdout: "openjdk"
+    hint: "Java 没装上。可能 java_version 不对（不同发行版包的版本不一样），改成发行版默认的 11 或 17。"
+  - name: javac works
+    cmd: "javac --version"
+    hint: "javac 没装。可能装的是 JRE 不是 JDK；包名里要带 -devel (RHEL) 或 -jdk (Ubuntu)。"
+  - name: maven works
+    cmd: "mvn --version | head -1"
+    hint: "Maven 没装上。"

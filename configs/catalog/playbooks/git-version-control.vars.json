@@ -1,0 +1,38 @@
+{
+  "git_user_name": {
+    "type": "string",
+    "label": "Git user.name",
+    "labelEn": "Git user.name",
+    "default": "",
+    "placeholder": "Your Name",
+    "help": "提交记录里显示的作者名。留空则不设置（commit 时 git 会要求你设）。"
+  },
+  "git_user_email": {
+    "type": "string",
+    "label": "Git user.email",
+    "labelEn": "Git user.email",
+    "default": "",
+    "validate": "^([^@]+@[^@]+\\.[^@]+)?$",
+    "placeholder": "you@example.com",
+    "help": "提交记录里的作者邮箱。GitHub/GitLab 用此匹配你的账号头像。"
+  },
+  "default_branch": {
+    "type": "choice",
+    "label": "默认分支名",
+    "labelEn": "Default branch",
+    "default": "main",
+    "options": [
+      { "value": "main", "label": "main（现代默认）" },
+      { "value": "master", "label": "master（传统）" },
+      { "value": "trunk", "label": "trunk" }
+    ],
+    "help": "git init 创建仓库时的默认分支名。GitHub 默认 main，老仓库可能 master。"
+  },
+  "enable_aliases": {
+    "type": "boolean",
+    "label": "启用常用别名",
+    "labelEn": "Enable aliases",
+    "default": true,
+    "help": "添加 'git st' 'git co' 'git lg' 等常用别名，让命令行更顺手。"
+  }
+}

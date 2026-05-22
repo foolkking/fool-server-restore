@@ -1,42 +1,112 @@
 # Fish Shell + Starship
 
-Fish 友好 Shell + Starship 跨 Shell 提示符。
-
-*Fish friendly shell + Starship cross-shell prompt.*
+Fish 是新一代 shell——开箱即用的智能补全、语法高亮、历史搜索，零配置就有现代体验。
+配 Starship 跨 shell 提示符（zsh / bash / fish 都能用），漂亮且快。
 
 ## 你将得到什么
 
-- 📦 **fish** _(Fish)_ — 通过 apt
+- 📦 **fish**
+- 📦 **starship**（跨 shell 提示符工具）
 
-## 自动化步骤
+## 用法
 
-EnvForge 在目标机器上依次执行以下任务：
-
-1. Install Fish and curl
-2. Install Starship prompt
-3. Verify Fish
-
-## 验证安装
+### 切换默认 shell
 
 ```bash
-# 检查包是否已安装
-dpkg -l | grep fish      # Ubuntu/Debian
-rpm -q fish                # RHEL/CentOS/Anolis
+chsh -s $(which fish)
+```
 
-# 检查服务是否运行（如果有 systemd 单元）
-systemctl status fish --no-pager
+### 试试 fish 的杀手级特性
+
+```bash
+# 输入命令时，fish 自动用历史 + 文件系统建议补全（灰色文字）
+git clone <Tab>             # 补全 git clone 子命令 + 选项
+
+# 命令对错实时变色：错的红，对的绿
+git statu                   # statu 红色（命令不存在）
+git status                  # 绿色
+
+# 历史搜索：直接打字就过滤
+↑                           # 反向搜索（无需 Ctrl+R）
+```
+
+### Fish 配置
+
+`~/.config/fish/config.fish`：
+```fish
+# 关闭欢迎消息
+set fish_greeting
+
+# 别名
+alias ll='ls -lah'
+alias gst='git status'
+
+# 启用 starship
+starship init fish | source
+
+# 加 PATH
+fish_add_path $HOME/.local/bin
+```
+
+### Starship 配置
+
+`~/.config/starship.toml`：
+```toml
+# 极简模式
+add_newline = false
+[character]
+success_symbol = "[➜](green)"
+error_symbol = "[➜](red)"
+
+[git_branch]
+symbol = "🌱 "
+
+[git_status]
+conflicted = "🏳"
+ahead = "⇡${count}"
+behind = "⇣${count}"
+```
+
+更多预设主题：https://starship.rs/presets/
+
+### Fisher（fish 包管理器）
+
+```bash
+curl -sL https://git.io/fisher | source && fisher install jorgebucaran/fisher
+
+fisher install PatrickF1/fzf.fish        # fzf 集成
+fisher install jorgebucaran/autopair.fish  # 自动补全引号/括号
+```
+
+### Bash 兼容
+
+Fish **不是** POSIX shell——bash 脚本在 fish 里跑可能不工作。建议：
+- 写脚本：`#!/bin/bash` shebang，明确用 bash
+- 交互式 shell 用 fish
+- ssh 远程命令时考虑加 `bash -c '...'` 强制 bash
+
+## ⚠️ 敏感性
+
+**safe** — 但 chsh 改默认 shell 后，依赖系统脚本登录的工具（如某些 cron）可能因 fish 不兼容
+而出问题。建议**只给个人账号改默认 shell**，root 保持 bash。
+
+## 验证
+
+```bash
+fish --version
+starship --version
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **chsh 失败 "shell not authorized"** — `/etc/shells` 没列 fish。`echo $(which fish) | sudo tee -a /etc/shells`。
+- **starship 不工作** — fish/zsh/bash 配置里没 `starship init` 那行。
+- **跨发行版**：`fish` 在 Ubuntu/Debian 默认仓库；RHEL 上需要 EPEL（preflight 启用）。`starship` 不在所有发行版仓库，可能要从 cargo 装：`cargo install starship`。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+Fish 和 Starship 默认不发遥测。

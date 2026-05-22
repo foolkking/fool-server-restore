@@ -1,27 +1,66 @@
 # Playbook: PHP 8 工具链
-name: Install PHP 8 with common extensions
+#
+# 装 PHP 8 + 常用扩展 + Composer。Ubuntu 用 ondrej/php PPA 拿最新版本。
+name: Install PHP 8 + Composer
 hosts: all
 
 tasks:
-  - name: Install PHP and extensions
+  - name: Install dependencies
+    module: package
+    args:
+      name: ["curl", "ca-certificates", "gnupg", "lsb-release"]
+      state: present
+      ignore_missing: true
+
+  - name: Add ondrej/php PPA (Debian/Ubuntu, for newer PHP)
+    module: shell
+    args:
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1 && [ ! -f /etc/apt/sources.list.d/ondrej-ubuntu-php-*.list ] && [ ! -f /etc/apt/sources.list.d/php.list ]; then
+          # 仅在 Ubuntu 上加 PPA（Debian 用 sury.org）
+          if [ -f /etc/lsb-release ]; then
+            sudo add-apt-repository -y ppa:ondrej/php 2>/dev/null || true
+          fi
+          sudo apt-get update -qq
+        fi
+    ignore_errors: true
+
+  - name: Install PHP 8 + common extensions
     module: package
     args:
       name:
         - php
         - php-cli
-        - php-fpm
-        - php-mysql
-        - php-pgsql
         - php-curl
-        - php-gd
         - php-mbstring
         - php-xml
         - php-zip
-        - php-redis
-        - composer
+        - php-mysql
+        - php-pgsql
+        - php-sqlite3
+        - php-gd
+        - php-intl
+        - php-bcmath
       state: present
+      ignore_missing: true
 
-  - name: Verify PHP
+  - name: Install Composer
     module: shell
     args:
-      cmd: "php --version | head -1"
+      cmd: |
+        if [ ! -f /usr/local/bin/composer ]; then
+          curl -fsSL https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
+        fi
+      creates: /usr/local/bin/composer
+
+verify:
+  - name: php works
+    cmd: "php --version"
+    expect_stdout: "PHP 8"
+    hint: "PHP 没装上。Ubuntu 22.04 默认 8.1，更新版本需要 ondrej PPA（已尝试）。"
+  - name: composer works
+    cmd: "composer --version"
+    hint: "Composer 没装上。getcomposer.org curl 失败，国内服务器可能要换镜像。"
+  - name: PDO MySQL extension loaded
+    cmd: "php -m | grep -i 'pdo_mysql\\|pdo_pgsql'"
+    hint: "数据库扩展没加载。运行 'php -m' 看具体哪些扩展可用。"

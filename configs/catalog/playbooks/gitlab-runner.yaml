@@ -1,13 +1,40 @@
 # Playbook: GitLab Runner
-name: Install GitLab Runner CI agent
+#
+# Runner 是 GitLab CI/CD 的执行端：装在被构建用的机器上，向 GitLab 注册后接受任务。
+# Server 端是 GitLab 实例（gitlab.com 或自建）；本 Playbook 只装 Runner。
+name: Install GitLab Runner
 hosts: all
 
+vars:
+  gitlab_url: "https://gitlab.com"
+  registration_token: ""
+  executor: "shell"
+  runner_description: ""
+
 tasks:
-  - name: Add GitLab Runner repository
+  - name: Install dependencies
+    module: package
+    args:
+      name: ["curl", "ca-certificates"]
+      state: present
+
+  - name: Add GitLab Runner apt repo (Debian/Ubuntu)
     module: shell
     args:
-      cmd: "curl -L 'https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh' | sudo bash"
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1; then
+          curl -fsSL https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh | sudo bash
+        fi
       creates: /etc/apt/sources.list.d/runner_gitlab-runner.list
+
+  - name: Add GitLab Runner yum repo (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/runner_gitlab-runner.repo ]; then
+          curl -fsSL https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh | sudo bash
+        fi
+      creates: /etc/yum.repos.d/runner_gitlab-runner.repo
 
   - name: Install gitlab-runner
     module: package
@@ -15,9 +42,33 @@ tasks:
       name: gitlab-runner
       state: present
 
-  - name: Enable gitlab-runner
+  - name: Register runner (only when registration_token provided)
+    module: shell
+    args:
+      cmd: |
+        if [ -n "{{ registration_token }}" ]; then
+          DESC="{{ runner_description }}"
+          [ -z "$DESC" ] && DESC="$(hostname) (envforge)"
+          sudo gitlab-runner register --non-interactive \
+            --url "{{ gitlab_url }}" \
+            --registration-token "{{ registration_token }}" \
+            --executor "{{ executor }}" \
+            --description "$DESC" \
+            --tag-list "linux,envforge"
+        fi
+    when: "registration_token"
+
+  - name: Enable and start gitlab-runner
     module: service
     args:
       name: gitlab-runner
       enabled: true
       state: started
+
+verify:
+  - name: gitlab-runner service is active
+    cmd: "systemctl is-active --quiet gitlab-runner"
+    hint: "服务未启动。看 'sudo journalctl -u gitlab-runner -n 30'。"
+  - name: registered with GitLab (if token was provided)
+    cmd: "if [ -n '{{ registration_token }}' ]; then sudo gitlab-runner verify 2>&1 | grep -E 'is alive|verified'; else echo 'not registered (skipped, no token)'; fi"
+    hint: "Runner 注册失败。可能 token 不对、gitlab_url 错、或网络不通。手动跑 'sudo gitlab-runner register' 看具体提示。"
