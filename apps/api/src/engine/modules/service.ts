@@ -98,20 +98,51 @@ async function captureSystemdDiagnostics(executor: SshExecutor, name: string): P
   };
 }
 
+/** Find which process is currently listening on a given TCP port. Returns a short one-line description. */
+async function whoIsOnPort(executor: SshExecutor, port: string): Promise<string | undefined> {
+  // Try ss first (modern), fallback to netstat. Use sudo so we can see the process name.
+  const ss = await executor.exec(`sudo ss -tlnp 2>/dev/null | grep ':${port} ' | head -n 3`);
+  let raw = ss.stdout.trim();
+  if (!raw) {
+    const ns = await executor.exec(`sudo netstat -tlnp 2>/dev/null | grep ':${port} ' | head -n 3`);
+    raw = ns.stdout.trim();
+  }
+  if (!raw) return undefined;
+  // ss output:  LISTEN 0  511  *:80  *:*  users:(("httpd",pid=1234,fd=4),...)
+  const procMatch = raw.match(/users:\(\("([^"]+)",pid=(\d+)/) || raw.match(/(\d+)\/(\S+)/);
+  if (procMatch) {
+    // ss format: name + pid; netstat format: pid/name
+    const procName = procMatch[1].match(/^\d+$/) ? procMatch[2] : procMatch[1];
+    const procPid = procMatch[1].match(/^\d+$/) ? procMatch[1] : procMatch[2];
+    return `${procName} (pid ${procPid})`;
+  }
+  return raw.split("\n")[0].slice(0, 200);
+}
+
 /**
  * Pattern-match common service-start failures to give the user an actionable hint.
  * Returns undefined when we can't identify a known cause.
+ *
+ * For port-in-use cases we also probe the system to identify the conflicting
+ * process (apache2/httpd/caddy/another nginx) so the user knows what to stop.
  */
-function identifyRootCause(diag: { status: string; journal: string }): string | undefined {
+async function identifyRootCause(executor: SshExecutor, diag: { status: string; journal: string }): Promise<string | undefined> {
   const text = `${diag.status}\n${diag.journal}`.toLowerCase();
 
   // Port already in use (very common with nginx if Apache/Caddy/another nginx is running)
-  if (text.includes("address already in use") || text.includes("bind() to") && text.includes("failed")) {
-    const portMatch = text.match(/0\.0\.0\.0:(\d+)|:::(\d+)|port\s+(\d+)/);
-    const port = portMatch?.[1] ?? portMatch?.[2] ?? portMatch?.[3];
-    return port
-      ? `端口 ${port} 已被占用。运行 'sudo ss -tlnp | grep :${port}' 查看占用进程，停止后再试。如果是另一个 web 服务（apache2/caddy），请先停止它。`
-      : `端口已被其他进程占用。运行 'sudo ss -tlnp' 查看占用情况。`;
+  if (text.includes("address already in use") || (text.includes("bind() to") && text.includes("failed"))) {
+    const portMatch = text.match(/0\.0\.0\.0:(\d+)|:::(\d+)|\[::\]:(\d+)|port\s+(\d+)/);
+    const port = portMatch?.[1] ?? portMatch?.[2] ?? portMatch?.[3] ?? portMatch?.[4];
+    if (port) {
+      const owner = await whoIsOnPort(executor, port);
+      if (owner) {
+        return `端口 ${port} 已被 ${owner} 占用。先停止它再重试：` +
+               `'sudo systemctl stop ${owner.split(" ")[0]}' 或 'sudo kill ${owner.match(/pid (\d+)/)?.[1] ?? "<pid>"}'。` +
+               `如果它和当前服务功能相同（例如 apache2/httpd 和 nginx 都是 web server），请决定保留哪一个。`;
+      }
+      return `端口 ${port} 已被占用。运行 'sudo ss -tlnp | grep :${port}' 查看占用进程，停止后再试。`;
+    }
+    return `端口已被其他进程占用。运行 'sudo ss -tlnp' 查看占用情况。`;
   }
 
   // nginx config syntax error
@@ -241,7 +272,7 @@ export const serviceModule: AnsibleModule<ServiceArgs> = {
         // Capture systemd diagnostics so the user sees the real reason instead
         // of the unhelpful "Job for X failed because the control process exited".
         const diag = await captureSystemdDiagnostics(executor, serviceName);
-        const cause = identifyRootCause(diag);
+        const cause = await identifyRootCause(executor, diag);
         const causeNote = cause ? `\n🔍 ${cause}` : "";
         return {
           changed: false,

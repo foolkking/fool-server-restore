@@ -163,11 +163,15 @@ export function classifyError(
     };
   }
 
-  // 服务不存在
+  // 服务不存在 — 严格匹配 systemd 的 "Unit X not found / could not be found"
+  // 不要匹配通用的 "failed to start" — 那只是说明启动失败，不代表服务没装
+  // （比如端口占用、配置错误也会触发 "Failed to start"）
   if (
-    combined.includes("unit") && (combined.includes("not found") || combined.includes("could not be found")) ||
-    combined.includes("failed to start") ||
-    combined.includes("service not found")
+    /unit\s+\S+\s+(?:not\s+found|could\s+not\s+be\s+found)/i.test(`${stderr}\n${stdout}`) ||
+    combined.includes("loaded: not-found") ||
+    combined.includes("service not found") ||
+    combined.includes("no such unit") ||
+    combined.includes("no such file or directory") && combined.includes(".service")
   ) {
     // Extract real service name from stderr "Unit foo.service not found" or from cmdStr
     const combinedRaw = `${stderr}\n${stdout}`;

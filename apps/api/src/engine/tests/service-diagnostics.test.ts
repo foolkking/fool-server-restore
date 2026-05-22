@@ -58,9 +58,38 @@ test("diagnostics: nginx start failure with port 80 in use surfaces port conflic
   // Should mention port conflict, port 80, and the actual journalctl line
   assert.ok(msg.includes("🔧"), `expected 🔧 prefix, got: ${msg}`);
   assert.ok(msg.includes("80"), `expected port 80 in hint, got: ${msg}`);
-  assert.ok(msg.includes("ss -tlnp"), `expected ss command hint, got: ${msg}`);
+  // When the port owner can't be identified, fall back to the manual ss command
+  assert.ok(msg.includes("ss -tlnp") || msg.includes("已被"), `expected ss command or owner hint, got: ${msg}`);
   assert.ok(msg.includes("journalctl"), `expected journal section header, got: ${msg}`);
   assert.ok(msg.includes("Address already in use"), `expected raw journal line, got: ${msg}`);
+});
+
+test("diagnostics: port conflict identifies the holding process via ss", async () => {
+  const exec = mockExec({
+    "command -v apt-get": { exitCode: 1 },
+    "command -v rpm": { exitCode: 0 },
+    "systemctl cat nginx": { exitCode: 0 },
+    "systemctl is-active --quiet nginx": { exitCode: 1 },
+    "sudo systemctl start nginx": { exitCode: 1, stderr: "Job for nginx.service failed" },
+    "systemctl status nginx": {
+      exitCode: 1,
+      stdout: "Active: failed\nnginx: [emerg] bind() to 0.0.0.0:80 failed (98: Address already in use)"
+    },
+    "sudo journalctl -u nginx": { exitCode: 0, stdout: "bind() to 0.0.0.0:80 failed (98: Address already in use)" },
+    // ss output: httpd is squatting port 80
+    "sudo ss -tlnp": {
+      exitCode: 0,
+      stdout: 'LISTEN 0  511  *:80  *:*  users:(("httpd",pid=1234,fd=4),("httpd",pid=1235,fd=4))'
+    }
+  });
+
+  const result = await serviceModule.run(exec, { name: "nginx", state: "started" }, false);
+  assert.equal(result.failed, true);
+  const msg = result.msg ?? "";
+  // Hint should name the conflicting process AND its pid
+  assert.ok(msg.includes("httpd"), `expected httpd in port-owner hint, got: ${msg}`);
+  assert.ok(msg.includes("1234"), `expected pid in port-owner hint, got: ${msg}`);
+  assert.ok(msg.includes("systemctl stop httpd") || msg.includes("kill"), `expected actionable command, got: ${msg}`);
 });
 
 test("diagnostics: nginx config syntax error surfaces the [emerg] line", async () => {
