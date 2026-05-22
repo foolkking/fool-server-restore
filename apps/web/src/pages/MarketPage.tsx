@@ -6,6 +6,7 @@ import {
   fetchBatchImpact,
   fetchDockerCompose,
   fetchCatalogGuide,
+  fetchPlaybookPreview,
   fetchVarsSchema,
   runPreflightCheck,
   streamTask,
@@ -602,6 +603,17 @@ export function MarketPage({
           schema={configureSchema}
           locale={locale}
           onClose={handleCloseConfigure}
+          onPreview={async (vars) => {
+            // 预览不连远端，只做服务端 schema 校验 + var 替换 + 任务渲染
+            if (!authToken || !configureItem) {
+              return { ok: false as const, error: locale === "zh" ? "请先登录" : "Login required" };
+            }
+            const result = await fetchPlaybookPreview(authToken, configureItem.id, vars);
+            if ("preview" in result) {
+              return { ok: true as const, preview: result.preview };
+            }
+            return { ok: false as const, error: result.error, fieldErrors: result.fieldErrors };
+          }}
           onSubmit={handleConfigureSubmit}
           submitting={configureSubmitting}
           fieldErrors={configureFieldErrors}

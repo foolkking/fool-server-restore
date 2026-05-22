@@ -98,7 +98,7 @@ export function parsePlaybook(text: string): Playbook {
 }
 
 /** 简单的变量替换：{{ var_name }} → vars[var_name] */
-function substitute(value: unknown, vars: Record<string, unknown>): unknown {
+export function substitute(value: unknown, vars: Record<string, unknown>): unknown {
   if (typeof value === "string") {
     return value.replace(/\{\{\s*(\w+(?:\.\w+)*)\s*\}\}/g, (_, expr: string) => {
       const parts = expr.split(".");
@@ -120,7 +120,7 @@ function substitute(value: unknown, vars: Record<string, unknown>): unknown {
 }
 
 /** 求值 when 表达式（支持简单形式：var.changed, !var.changed） */
-function evalWhen(expr: string, vars: Record<string, unknown>): boolean {
+export function evalWhen(expr: string, vars: Record<string, unknown>): boolean {
   const negated = expr.trim().startsWith("not ") || expr.trim().startsWith("!");
   const cleanExpr = expr.trim().replace(/^(not |!)/, "").trim();
   const result = substitute(`{{ ${cleanExpr} }}`, vars);

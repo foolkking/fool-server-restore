@@ -195,6 +195,39 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  /**
+   * POST /api/catalog/:id/preview
+   *
+   * Pre-apply preview: 给定用户在表单里填的 vars，返回完整的 "如果点 Run 会发生什么"
+   * 报告 — 渲染后的 YAML、每个任务的最终参数、会被写入的文件路径、影响范围。
+   *
+   * 不连远端 SSH，纯本地计算（schema 验证 + var 替换）。安全：vars 经过 schema
+   * 校验，避免随意值被模板进 shell 命令。schema 不存在的 Playbook 也支持，但只能
+   * 看到原始 YAML 的渲染结果，没有 fieldErrors 校验。
+   */
+  app.post("/api/catalog/:id/preview", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const { isValidCatalogId } = await import("./catalog-overrides.js");
+    if (!isValidCatalogId(id)) { reply.code(400); return { error: "Invalid catalog id" }; }
+
+    const body = (request.body ?? {}) as { vars?: Record<string, unknown> };
+    try {
+      const { buildPlaybookPreview } = await import("./catalog-preview.js");
+      const preview = await buildPlaybookPreview(id, body.vars ?? {});
+      return { preview };
+    } catch (err) {
+      // schema 校验失败时附带 fieldErrors
+      const e = err as Error & { fieldErrors?: Record<string, string> };
+      reply.code(400);
+      return {
+        error: e.message ?? "Preview failed",
+        ...(e.fieldErrors ? { fieldErrors: e.fieldErrors } : {})
+      };
+    }
+  });
+
   app.get("/api/migration/strategies", async () => {
     return {
       strategies: await listMigrationStrategies()

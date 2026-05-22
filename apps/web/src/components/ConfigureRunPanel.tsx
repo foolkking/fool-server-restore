@@ -1,20 +1,23 @@
 /**
  * ConfigureRunPanel — split-pane modal for configurable Playbooks.
  *
- * Layout: README guide on the left, form fields on the right. The form is
- * driven by the Playbook's vars.schema.json (loaded via fetchVarsSchema).
+ * 两阶段交互：
+ *   1. 编辑表单（左：guide，右：表单字段）→ 用户点"预览"
+ *   2. 预览（左：guide 仍可见，右：PreviewPanel 展示渲染 YAML / 任务清单 / 文件清单）
+ *      → 用户点"确认并安装"才真正提交
  *
- * When the user submits, values are sent to /api/execute as `vars`. The server
- * validates against the schema; if validation fails we surface per-field errors.
+ * 让用户在真正动远端机器之前看到完整的 "如果点 Run 会发生什么"。预览阶段可以
+ * 随时返回编辑某个值，预览本身是纯本地计算（不连远端 SSH），即时返回。
  *
- * If a Playbook has no schema, callers should use the simple "run" flow
- * directly — this component only renders when a schema exists.
+ * 没有 schema 的 Playbook 不走这个组件，由 MarketPage 直接 fallthrough 到
+ * 简单的 install 流程。
  */
 import React, { useState, useEffect, useMemo } from "react";
 import { X, Eye, EyeOff, RotateCw } from "lucide-react";
-import type { CatalogGuide, VarsSchema, VarsSchemaField } from "../api";
+import type { CatalogGuide, VarsSchema, VarsSchemaField, PlaybookPreview } from "../api";
 import type { Locale } from "../lib/types";
 import { renderMarkdownPreview } from "./MarkdownOverlay";
+import { PreviewPanel } from "./PreviewPanel";
 
 // Mirrors the server's evalShowWhen — kept identical so what the user sees in
 // the form is exactly what the server will validate. Fail-open on parse errors.
@@ -68,6 +71,7 @@ export function ConfigureRunPanel({
   locale,
   isAdmin,
   onClose,
+  onPreview,
   onSubmit,
   submitting,
   fieldErrors
@@ -79,7 +83,15 @@ export function ConfigureRunPanel({
   /** When true, show a "Edit YAML directly" link for power users */
   isAdmin?: boolean;
   onClose: () => void;
-  /** Called when user clicks "Run" — receives validated form values */
+  /**
+   * 异步获取预览。返回 preview 数据（成功）或 fieldErrors（schema 校验失败时由
+   * 服务端返回）。若返回错误信息，组件不切换到预览视图。
+   */
+  onPreview: (vars: Record<string, unknown>) => Promise<
+    | { ok: true; preview: PlaybookPreview }
+    | { ok: false; error?: string; fieldErrors?: Record<string, string> }
+  >;
+  /** 用户在预览界面点"确认安装"时调用 */
   onSubmit: (vars: Record<string, unknown>) => void;
   /** When the parent is mid-submission (locks the form) */
   submitting?: boolean;
@@ -89,9 +101,17 @@ export function ConfigureRunPanel({
   const [values, setValues] = useState<Record<string, unknown>>(() => initialValues(schema));
   const [revealedPasswords, setRevealedPasswords] = useState<Set<string>>(new Set());
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+  const [previewing, setPreviewing] = useState(false); // fetching preview from server
+  const [preview, setPreview] = useState<PlaybookPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   // Re-init when schema changes (different Playbook selected)
-  useEffect(() => { setValues(initialValues(schema)); setLocalErrors({}); }, [schema]);
+  useEffect(() => {
+    setValues(initialValues(schema));
+    setLocalErrors({});
+    setPreview(null);
+    setPreviewError(null);
+  }, [schema]);
 
   // Filter out fields hidden by show_when, in the same order the schema declares them
   const visibleFields = useMemo(() => {
@@ -139,21 +159,61 @@ export function ConfigureRunPanel({
     return Object.keys(errors).length === 0;
   }
 
-  function handleSubmit() {
-    if (submitting) return;
-    if (!validateLocally()) return;
-    // Convert numeric strings to numbers for number/port fields
+  /**
+   * 把当前表单 values 转换成提交格式（数字转 number、空值剔除让默认值/auto-gen 生效）。
+   * 客户端校验 + 转换在这里做一次，预览和真正提交都用它。
+   */
+  function buildSubmittedVars(): Record<string, unknown> | null {
+    if (!validateLocally()) return null;
     const submitted: Record<string, unknown> = {};
     for (const [name, field] of visibleFields) {
       const v = values[name];
       if (v == null || v === "") {
-        // Empty string for password → leave undefined so server auto-generates.
-        // Empty string for other fields → also undefined (defaults will fill in).
+        // 空字符串：password 让服务端 auto-gen，其它让 schema default 填上
         continue;
       }
       if (field.type === "number" || field.type === "port") submitted[name] = Number(v);
       else if (field.type === "boolean") submitted[name] = Boolean(v);
       else submitted[name] = v;
+    }
+    return submitted;
+  }
+
+  /** 用户点"预览"：先做客户端校验，再请求服务端渲染 preview，成功后切视图。 */
+  async function handleShowPreview() {
+    if (submitting || previewing) return;
+    const submitted = buildSubmittedVars();
+    if (!submitted) return;
+    setPreviewing(true);
+    setPreviewError(null);
+    try {
+      const result = await onPreview(submitted);
+      if (result.ok) {
+        setPreview(result.preview);
+      } else {
+        if (result.fieldErrors) {
+          // 服务端字段错误覆盖到本地（与 fieldErrors prop 同级）
+          setLocalErrors((prev) => ({ ...prev, ...result.fieldErrors! }));
+        }
+        setPreviewError(result.error ?? (locale === "zh" ? "预览失败" : "Preview failed"));
+      }
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
+  function handleBackToEdit() {
+    setPreview(null);
+    setPreviewError(null);
+  }
+
+  function handleConfirm() {
+    if (submitting) return;
+    const submitted = buildSubmittedVars();
+    if (!submitted) {
+      // 不太可能走到这里：能进预览说明已经过校验
+      handleBackToEdit();
+      return;
     }
     onSubmit(submitted);
   }
@@ -171,7 +231,11 @@ export function ConfigureRunPanel({
       <article className="configure-run-panel" onClick={(e) => e.stopPropagation()}>
         <header>
           <div>
-            <p className="eyebrow">{locale === "zh" ? "配置并运行" : "Configure & Run"}</p>
+            <p className="eyebrow">
+              {preview
+                ? (locale === "zh" ? "预览：将要执行的内容" : "Preview: what will run")
+                : (locale === "zh" ? "配置并运行" : "Configure & Run")}
+            </p>
             <h2>{guide ? (locale === "zh" ? guide.item.name : guide.item.nameEn) : (locale === "zh" ? "配置 Playbook" : "Configure Playbook")}</h2>
           </div>
           <button className="ghost-action icon-action" type="button" onClick={onClose} disabled={submitting} aria-label={locale === "zh" ? "关闭" : "Close"}>
@@ -180,57 +244,72 @@ export function ConfigureRunPanel({
         </header>
 
         <div className="configure-run-body">
-          {/* Left pane: Markdown guide */}
+          {/* Left pane: Markdown guide — 在编辑和预览阶段都显示 */}
           <section className="configure-run-guide" aria-label={locale === "zh" ? "使用说明" : "Guide"}>
             {guide
               ? <div className="markdown-preview">{renderMarkdownPreview(guide.markdown)}</div>
               : <p className="muted">{locale === "zh" ? "（此 Playbook 没有提供使用说明）" : "(No guide available for this Playbook)"}</p>}
           </section>
 
-          {/* Right pane: Form */}
-          <section className="configure-run-form" aria-label={locale === "zh" ? "配置参数" : "Configuration"}>
-            <div className="form-fields">
-              {visibleFields.map(([name, field]) => (
-                <FormField
-                  key={name}
-                  name={name}
-                  field={field}
-                  value={values[name]}
-                  onChange={(v) => update(name, v)}
-                  error={errors[name]}
-                  locale={locale}
-                  passwordRevealed={revealedPasswords.has(name)}
-                  togglePasswordReveal={() => {
-                    setRevealedPasswords((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(name)) next.delete(name); else next.add(name);
-                      return next;
-                    });
-                  }}
-                />
-              ))}
-              {visibleFields.length === 0 && (
-                <p className="muted">{locale === "zh" ? "无需配置参数。" : "No parameters needed."}</p>
+          {/* Right pane: 表单 OR 预览（取决于 preview 是否已 load） */}
+          {preview ? (
+            <section className="configure-run-form" aria-label={locale === "zh" ? "执行预览" : "Execution preview"}>
+              <PreviewPanel
+                preview={preview}
+                locale={locale}
+                onBack={handleBackToEdit}
+                onConfirm={handleConfirm}
+                submitting={submitting}
+              />
+            </section>
+          ) : (
+            <section className="configure-run-form" aria-label={locale === "zh" ? "配置参数" : "Configuration"}>
+              <div className="form-fields">
+                {visibleFields.map(([name, field]) => (
+                  <FormField
+                    key={name}
+                    name={name}
+                    field={field}
+                    value={values[name]}
+                    onChange={(v) => update(name, v)}
+                    error={errors[name]}
+                    locale={locale}
+                    passwordRevealed={revealedPasswords.has(name)}
+                    togglePasswordReveal={() => {
+                      setRevealedPasswords((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(name)) next.delete(name); else next.add(name);
+                        return next;
+                      });
+                    }}
+                  />
+                ))}
+                {visibleFields.length === 0 && (
+                  <p className="muted">{locale === "zh" ? "无需配置参数。" : "No parameters needed."}</p>
+                )}
+              </div>
+
+              <div className="form-actions">
+                <button type="button" className="ghost-action" onClick={resetDefaults} disabled={submitting || previewing}>
+                  <RotateCw size={14} /> {locale === "zh" ? "重置默认值" : "Reset defaults"}
+                </button>
+                <button type="button" className="primary-action" onClick={handleShowPreview} disabled={submitting || previewing}>
+                  {previewing
+                    ? (locale === "zh" ? "生成预览中…" : "Generating preview…")
+                    : (locale === "zh" ? "预览将要执行的内容 →" : "Preview what will run →")}
+                </button>
+              </div>
+
+              {Object.keys(errors).length > 0 && (
+                <p className="form-summary-error">
+                  {locale === "zh" ? "请修正上述高亮的字段后重试。" : "Fix the highlighted fields above to continue."}
+                </p>
               )}
-            </div>
-
-            <div className="form-actions">
-              <button type="button" className="ghost-action" onClick={resetDefaults} disabled={submitting}>
-                <RotateCw size={14} /> {locale === "zh" ? "重置默认值" : "Reset defaults"}
-              </button>
-              <button type="button" className="primary-action" onClick={handleSubmit} disabled={submitting}>
-                {submitting
-                  ? (locale === "zh" ? "运行中..." : "Running...")
-                  : (locale === "zh" ? "✓ 应用配置并安装" : "✓ Apply & Install")}
-              </button>
-            </div>
-
-            {Object.keys(errors).length > 0 && (
-              <p className="form-summary-error">
-                {locale === "zh" ? "请修正上述高亮的字段后重试。" : "Fix the highlighted fields above to continue."}
-              </p>
-            )}
-          </section>
+              {previewError && (
+                <p className="form-summary-error">{previewError}</p>
+              )}
+            </section>
+          )}
         </div>
       </article>
     </div>

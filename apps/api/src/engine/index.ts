@@ -15,6 +15,7 @@ import { readUserKey } from "../key-store.js";
 export type { Playbook, Task, ModuleResult, TaskExecutionLog } from "./types.js";
 export type { RunOptions, RunResult };
 export { parsePlaybook, runPlaybook };
+export { substitute, evalWhen } from "./runner.js";
 
 /** 读取 catalog 中的 playbook YAML 文件（优先 admin override，回退到基线） */
 export async function loadPlaybookFromCatalog(playbookId: string): Promise<string> {

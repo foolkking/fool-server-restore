@@ -609,6 +609,63 @@ export async function fetchVarsSchema(id: string): Promise<VarsSchema | null> {
   return (data?.schema ?? null) as VarsSchema | null;
 }
 
+// ─── Pre-apply preview ───────────────────────────────────────────────────
+
+/** 单个任务的预览信息（与后端 PreviewTask 对应） */
+export interface PreviewTask {
+  name: string;
+  module: string;
+  resolvedArgs: Record<string, unknown>;
+  willSkip: boolean;
+  skipReason?: string;
+  summary: string;
+  effectKind: "install" | "config" | "service" | "command" | "filesystem" | "user" | "other";
+}
+
+/** 会被写入或修改的远端文件 */
+export interface PreviewFile {
+  path: string;
+  via: string;
+  contentPreview?: string;
+  totalLines?: number;
+  action: "create-or-replace" | "edit-line" | "delete";
+}
+
+/** 预览整体响应 */
+export interface PlaybookPreview {
+  renderedYaml: string;
+  effectiveVars: Record<string, unknown>;
+  hiddenVars: string[];
+  tasks: PreviewTask[];
+  files: PreviewFile[];
+  impact: { disk?: string; time?: string; sudo?: boolean; risk?: "low" | "medium" | "high"; [key: string]: unknown };
+  verifyChecks?: Array<{ name: string; cmd: string }>;
+}
+
+/**
+ * 请求 catalog 项的执行预览。submittedVars 会经过后端 schema 校验；校验失败时返回
+ * { fieldErrors }，供 UI 直接绑回表单字段。
+ */
+export async function fetchPlaybookPreview(
+  token: string,
+  catalogId: string,
+  vars: Record<string, unknown>
+): Promise<{ preview: PlaybookPreview } | { error: string; fieldErrors?: Record<string, string> }> {
+  const response = await fetch(`/api/catalog/${encodeURIComponent(catalogId)}/preview`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ vars })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      error: (data as { error?: string })?.error ?? `Preview failed (${response.status})`,
+      fieldErrors: (data as { fieldErrors?: Record<string, string> })?.fieldErrors
+    };
+  }
+  return data as { preview: PlaybookPreview };
+}
+
 export async function batchExecute(
   token: string,
   connectionId: string,
