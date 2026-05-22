@@ -1,0 +1,40 @@
+{
+  "frontend_port": {
+    "type": "port",
+    "label": "前端监听端口",
+    "labelEn": "Frontend port",
+    "default": 80,
+    "help": "客户端请求进入的端口。一般 80（HTTP）或 443（HTTPS，需 ssl 配置）。"
+  },
+  "backend_addresses": {
+    "type": "string",
+    "label": "首个后端地址",
+    "labelEn": "First backend address",
+    "default": "127.0.0.1:3000",
+    "validate": "^[a-zA-Z0-9.:_-]+:\\d+$",
+    "help": "后端服务器地址 IP:port。这只是第一个 backend——更多后端在 /etc/haproxy/haproxy.cfg 的 backend_servers 段追加 server 行。"
+  },
+  "stats_port": {
+    "type": "port",
+    "label": "Stats 监控页端口",
+    "labelEn": "Stats page port",
+    "default": 8404,
+    "help": "HAProxy 自带的监控面板端口。强烈建议防火墙限制只本机或运维 IP 能访问。"
+  },
+  "stats_username": {
+    "type": "string",
+    "label": "Stats 页用户名",
+    "labelEn": "Stats username",
+    "default": "admin",
+    "validate": "^[a-zA-Z0-9_-]{3,32}$"
+  },
+  "stats_password": {
+    "type": "password",
+    "label": "Stats 页密码",
+    "labelEn": "Stats password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "登录 HAProxy stats 页的密码。留空自动生成 24 位强密码。"
+  }
+}

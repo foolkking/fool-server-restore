@@ -1,0 +1,69 @@
+{
+  "bantime": {
+    "type": "choice",
+    "label": "Ban 时长",
+    "labelEn": "Ban duration",
+    "default": "1h",
+    "options": [
+      { "value": "10m", "label": "10 分钟（开发测试）" },
+      { "value": "1h", "label": "1 小时（默认，常见配置）" },
+      { "value": "1d", "label": "1 天（生产环境推荐）" },
+      { "value": "1w", "label": "1 周" },
+      { "value": "-1", "label": "永久（直到手动 unban）" }
+    ],
+    "help": "源 IP 触发规则后被禁多久。生产环境建议 1d 起。永久 ban 容易把动态 IP 的合法用户也封住。"
+  },
+  "findtime": {
+    "type": "choice",
+    "label": "失败计数窗口",
+    "labelEn": "Find time window",
+    "default": "10m",
+    "options": [
+      { "value": "5m", "label": "5 分钟（严格）" },
+      { "value": "10m", "label": "10 分钟（默认）" },
+      { "value": "30m", "label": "30 分钟" },
+      { "value": "1h", "label": "1 小时" }
+    ],
+    "help": "在这段时间窗口内统计失败次数。窗口越短越严格但容错越少。10 分钟是经典默认值。"
+  },
+  "maxretry": {
+    "type": "number",
+    "label": "失败次数阈值",
+    "labelEn": "Max retry",
+    "default": 5,
+    "min": 1,
+    "max": 100,
+    "help": "失败超过此数就 ban。SSH 默认 5 次。如果你输错密码次数多，先调到 10。"
+  },
+  "ssh_enabled": {
+    "type": "boolean",
+    "label": "启用 SSH 保护",
+    "labelEn": "Enable SSH jail",
+    "default": true,
+    "help": "保护 sshd。强烈建议开启，是 fail2ban 最常用的 jail。"
+  },
+  "ssh_port": {
+    "type": "port",
+    "label": "SSH 端口",
+    "labelEn": "SSH port",
+    "default": 22,
+    "show_when": "ssh_enabled == true",
+    "help": "SSH 实际监听的端口。如果你改过 sshd_config 的 Port，这里也要改成同样的值。"
+  },
+  "ignoreip": {
+    "type": "string",
+    "label": "白名单 IP/CIDR",
+    "labelEn": "Whitelisted IPs",
+    "default": "127.0.0.1/8 ::1",
+    "validate": "^[0-9a-fA-F:.\\s\\/]+$",
+    "help": "永远不会被 ban 的 IP 列表，空格分隔。务必把你自己的运维 IP 加进来（多个用空格隔开），否则一个手抖输错密码 5 次会把自己锁出去。例：'127.0.0.1/8 ::1 1.2.3.4 10.0.0.0/8'"
+  },
+  "destemail": {
+    "type": "string",
+    "label": "邮件提醒地址",
+    "labelEn": "Notification email",
+    "default": "",
+    "help": "触发 ban 时给这个邮箱发提醒（需机器已配 sendmail 等 MTA）。留空则不发邮件。",
+    "validate": "^[^@]*@[^@]+\\.[^@]+$|^$"
+  }
+}

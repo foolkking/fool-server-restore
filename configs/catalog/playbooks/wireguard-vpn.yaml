@@ -1,40 +1,85 @@
-# Playbook: WireGuard VPN
-name: Install WireGuard VPN server
+# Playbook: WireGuard VPN (server side)
+#
+# WireGuard 是现代 VPN：极轻量（内核模块）、配置极简（一个 .conf 文件）、性能极好。
+# 此 Playbook 把目标机器配成 WireGuard 服务器：生成密钥对、写 /etc/wireguard/wg0.conf、
+# 启用 IP 转发、开 UDP 端口、启动 wg-quick@wg0 服务。
+#
+# Peer（客户端）配置不在这里——服务跑起来后用 'wg genkey | tee privkey | wg pubkey'
+# 在客户端机器生成密钥，把客户端公钥加入服务端配置，把服务端公钥告诉客户端。
+name: Install and configure WireGuard VPN server
 hosts: all
+
+vars:
+  listen_port: 51820
+  vpn_subnet: "10.10.0.0/24"
+  server_address: "10.10.0.1/24"
+  dns_servers: "1.1.1.1"
+  enable_ip_forward: true
 
 tasks:
   - name: Install WireGuard
     module: package
     args:
-      name:
-        - wireguard
-        - wireguard-tools
+      name: ["wireguard", "wireguard-tools"]
       state: present
 
-  - name: Enable IP forwarding
-    module: lineinfile
+  - name: Enable IPv4 forwarding (live)
+    module: sysctl
     args:
-      path: /etc/sysctl.conf
-      regexp: "^#?net.ipv4.ip_forward"
-      line: "net.ipv4.ip_forward = 1"
-      create: true
+      name: net.ipv4.ip_forward
+      value: 1
+    when: enable_ip_forward
 
-  - name: Apply sysctl changes
-    module: shell
-    args:
-      cmd: "sudo sysctl -p"
-
-  - name: Generate server keys if not exist
+  - name: Generate server keys (only if missing)
     module: shell
     args:
       cmd: |
         sudo mkdir -p /etc/wireguard
-        cd /etc/wireguard
-        umask 077
-        wg genkey | sudo tee privatekey | wg pubkey | sudo tee publickey
-      creates: /etc/wireguard/privatekey
+        sudo chmod 700 /etc/wireguard
+        if [ ! -f /etc/wireguard/server_private.key ]; then
+          umask 077
+          wg genkey | sudo tee /etc/wireguard/server_private.key > /dev/null
+          sudo cat /etc/wireguard/server_private.key | wg pubkey | sudo tee /etc/wireguard/server_public.key > /dev/null
+        fi
+      creates: /etc/wireguard/server_private.key
 
-  - name: Verify WireGuard installation
+  - name: Render wg0.conf (server interface)
     module: shell
     args:
-      cmd: "wg --version"
+      cmd: |
+        PRIV=$(sudo cat /etc/wireguard/server_private.key)
+        # 检测出口网卡名（默认路由的网卡）
+        WAN_IF=$(ip route | awk '/default/ {print $5; exit}')
+        sudo tee /etc/wireguard/wg0.conf > /dev/null <<EOF
+        [Interface]
+        Address = {{ server_address }}
+        ListenPort = {{ listen_port }}
+        PrivateKey = $PRIV
+
+        # 开启转发的 NAT 规则（让 peer 通过本机访问外网）
+        PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -A FORWARD -o wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o $WAN_IF -j MASQUERADE
+        PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -D FORWARD -o wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o $WAN_IF -j MASQUERADE
+
+        # Peer (客户端) 配置在这下面追加；安装完成后用：
+        #   sudo wg set wg0 peer <client_pubkey> allowed-ips 10.10.0.2/32
+        # 持久化时再编辑此文件追加 [Peer] 块
+        EOF
+        sudo chmod 600 /etc/wireguard/wg0.conf
+
+  - name: Enable and start wg-quick@wg0
+    module: service
+    args:
+      name: "wg-quick@wg0"
+      enabled: true
+      state: restarted
+
+verify:
+  - name: wg0 interface is up
+    cmd: "sudo wg show wg0 2>&1 | grep -E 'interface:|listening port:'"
+    hint: "wg0 没启动。看 'sudo systemctl status wg-quick@wg0'。常见：内核模块没加载（uname -r 看版本，确认 wireguard 内核模块存在）/ /etc/wireguard/wg0.conf 语法错。"
+  - name: listening on UDP port {{ listen_port }}
+    cmd: "sudo ss -ulnp | grep ':{{ listen_port }} '"
+    hint: "UDP 端口没监听：服务可能起了但绑端口失败（被占）。"
+  - name: IP forwarding is enabled
+    cmd: "sysctl net.ipv4.ip_forward | grep ' = 1'"
+    hint: "ip_forward 没开启，peer 无法通过本机访问外网。手动 'sudo sysctl -w net.ipv4.ip_forward=1'。"

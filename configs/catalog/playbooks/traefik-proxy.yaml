@@ -1,65 +1,153 @@
-# Playbook: Traefik 反向代理
-name: Install Traefik reverse proxy with auto-SSL
+# Playbook: Traefik 反向代理 + ACME
+#
+# Traefik v3 — 现代云原生反向代理。配置走 YAML（静态）+ providers（动态）。
+# 此 Playbook 装二进制 + systemd unit + 静态配置（监听 80/443/dashboard），
+# 启用 Let's Encrypt ACME，docker provider 准备好（如果机器装了 docker 自动用）。
+name: Install and configure Traefik v3 reverse proxy
 hosts: all
 
+vars:
+  acme_email: "you@example.com"
+  dashboard_port: 8080
+  dashboard_enable_insecure: false
+
 tasks:
-  - name: Download Traefik binary
+  - name: Install dependencies
+    module: package
+    args:
+      name: ["curl", "tar"]
+      state: present
+
+  - name: Download Traefik v3 binary
     module: shell
     args:
       cmd: |
-        TRAEFIK_VERSION=$(curl -s https://api.github.com/repos/traefik/traefik/releases/latest | grep tag_name | cut -d'"' -f4)
-        curl -fsSL "https://github.com/traefik/traefik/releases/download/${TRAEFIK_VERSION}/traefik_${TRAEFIK_VERSION}_linux_amd64.tar.gz" -o /tmp/traefik.tar.gz
-        sudo tar -xzf /tmp/traefik.tar.gz -C /usr/local/bin traefik
-        sudo chmod +x /usr/local/bin/traefik
-        rm -f /tmp/traefik.tar.gz
+        if [ ! -f /usr/local/bin/traefik ]; then
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64) BIN_ARCH=amd64 ;;
+            aarch64) BIN_ARCH=arm64 ;;
+            *) echo "unsupported arch: $ARCH"; exit 1 ;;
+          esac
+          VER="v3.1.6"
+          curl -fsSL "https://github.com/traefik/traefik/releases/download/${VER}/traefik_${VER}_linux_${BIN_ARCH}.tar.gz" | sudo tar -xz -C /usr/local/bin traefik
+          sudo chmod +x /usr/local/bin/traefik
+        fi
       creates: /usr/local/bin/traefik
 
-  - name: Create Traefik config directory
-    module: file
+  - name: Create traefik user + directories
+    module: shell
     args:
-      path: /etc/traefik
-      state: directory
+      cmd: |
+        getent passwd traefik >/dev/null || sudo useradd --system --no-create-home --shell /usr/sbin/nologin traefik
+        sudo mkdir -p /etc/traefik/dynamic /var/log/traefik /var/lib/traefik
+        sudo touch /var/lib/traefik/acme.json
+        sudo chown -R traefik:traefik /etc/traefik /var/log/traefik /var/lib/traefik
+        sudo chmod 600 /var/lib/traefik/acme.json
 
-  - name: Create basic Traefik config
+  - name: Render /etc/traefik/traefik.yml (static config)
     module: copy
     args:
       dest: /etc/traefik/traefik.yml
       content: |
+        # Traefik v3 static config — managed by EnvForge
+
+        global:
+          checkNewVersion: true
+          sendAnonymousUsage: false
+
+        api:
+          dashboard: true
+          insecure: {{ dashboard_enable_insecure }}
+
         entryPoints:
           web:
             address: ":80"
+            http:
+              redirections:
+                entryPoint:
+                  to: websecure
+                  scheme: https
           websecure:
             address: ":443"
-        api:
-          dashboard: true
-          insecure: true
+          dashboard:
+            address: ":{{ dashboard_port }}"
+
+        certificatesResolvers:
+          letsencrypt:
+            acme:
+              email: {{ acme_email }}
+              storage: /var/lib/traefik/acme.json
+              httpChallenge:
+                entryPoint: web
+
         providers:
           file:
-            directory: /etc/traefik/conf.d
+            directory: /etc/traefik/dynamic
+            watch: true
+          # Docker provider — 仅当本机装了 docker 才生效
+          docker:
+            exposedByDefault: false
 
-  - name: Create Traefik systemd service
+        log:
+          level: INFO
+          filePath: /var/log/traefik/traefik.log
+
+        accessLog:
+          filePath: /var/log/traefik/access.log
+
+  - name: Create example dynamic config (dashboard route)
+    module: copy
+    args:
+      dest: /etc/traefik/dynamic/dashboard.yml
+      content: |
+        # 示例：把 Traefik dashboard 暴露在 dashboard.your-domain.com
+        # 改 your-domain.com 为你自己的域名后取消注释，或者删除整个文件
+        # http:
+        #   routers:
+        #     dashboard:
+        #       rule: "Host(`dashboard.your-domain.com`)"
+        #       service: api@internal
+        #       entryPoints:
+        #         - websecure
+        #       tls:
+        #         certResolver: letsencrypt
+
+  - name: Render systemd unit
     module: copy
     args:
       dest: /etc/systemd/system/traefik.service
       content: |
         [Unit]
-        Description=Traefik Reverse Proxy
-        After=network.target
+        Description=Traefik
+        Documentation=https://doc.traefik.io
+        After=network-online.target
+        Wants=network-online.target
 
         [Service]
-        Type=simple
+        User=traefik
+        Group=traefik
         ExecStart=/usr/local/bin/traefik --configFile=/etc/traefik/traefik.yml
-        Restart=always
+        AmbientCapabilities=CAP_NET_BIND_SERVICE
+        Restart=on-failure
 
         [Install]
         WantedBy=multi-user.target
 
-  - name: Enable and start Traefik
+  - name: Reload systemd + enable + start traefik
     module: shell
     args:
-      cmd: "sudo systemctl daemon-reload && sudo systemctl enable traefik && sudo systemctl start traefik"
+      cmd: "sudo systemctl daemon-reload && sudo systemctl enable --now traefik"
 
-  - name: Verify Traefik
-    module: shell
-    args:
-      cmd: "traefik version"
+verify:
+  - name: traefik service is active
+    cmd: "systemctl is-active --quiet traefik"
+    hint: "服务未启动。看 'sudo journalctl -u traefik -n 50'。常见：80/443 端口被 nginx/apache 占用 / acme.json 权限不是 600 / config 文件 YAML 语法错。"
+  - name: HTTP 80 reachable (entrypoint)
+    cmd: "curl -fsS -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1/ 2>&1"
+    expect_stdout: "404"
+    hint: "80 端口没响应或返回了别的状态码。还没配 router 时 Traefik 默认对未匹配的请求返回 404，是正常的。"
+  - name: dashboard reachable when insecure mode
+    cmd: "if [ '{{ dashboard_enable_insecure }}' = 'true' ]; then curl -fsS -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:{{ dashboard_port }}/dashboard/ 2>&1; else echo 200; fi"
+    expect_stdout: "200"
+    hint: "dashboard 不可达：可能端口被占。生产环境推荐关闭 insecure 模式，通过 HTTPS + 认证暴露 dashboard。"

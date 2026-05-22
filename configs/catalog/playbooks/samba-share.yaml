@@ -1,24 +1,87 @@
 # Playbook: Samba 文件共享
-name: Install Samba file sharing
+#
+# Samba 提供 SMB/CIFS 协议的网络文件共享，让 Windows / macOS / Linux 客户端
+# 都能 mount 共享文件夹。配置一个 share 块到 /etc/samba/smb.conf。
+name: Install and configure Samba file sharing
 hosts: all
+
+vars:
+  share_name: "shared"
+  share_path: "/srv/samba/shared"
+  share_user: "envforge"
+  share_password: "change-me"
+  guest_ok: false
+  read_only: false
+  workgroup: "WORKGROUP"
 
 tasks:
   - name: Install Samba
     module: package
     args:
-      name:
-        - samba
-        - samba-common-bin
+      name: ["samba", "samba-common"]
       state: present
 
-  - name: Enable Samba services
+  - name: Create share directory
+    module: file
+    args:
+      path: "{{ share_path }}"
+      state: directory
+      owner: nobody
+      group: nogroup
+      mode: "0775"
+
+  - name: Create share user
+    module: user
+    args:
+      name: "{{ share_user }}"
+      shell: /usr/sbin/nologin
+      home: "{{ share_path }}"
+
+  - name: Set Samba password for share user
+    module: shell
+    args:
+      cmd: "echo -e '{{ share_password }}\\n{{ share_password }}' | sudo smbpasswd -a -s {{ share_user }}"
+
+  - name: Append share definition to smb.conf
+    module: shell
+    args:
+      cmd: |
+        if ! grep -q "^\[{{ share_name }}\]" /etc/samba/smb.conf; then
+          sudo tee -a /etc/samba/smb.conf > /dev/null <<EOF
+
+        [{{ share_name }}]
+           path = {{ share_path }}
+           browseable = yes
+           read only = {{ read_only }}
+           guest ok = {{ guest_ok }}
+           valid users = {{ share_user }}
+           create mask = 0664
+           directory mask = 0775
+           force user = {{ share_user }}
+        EOF
+        fi
+
+  - name: Set workgroup
+    module: lineinfile
+    args:
+      path: /etc/samba/smb.conf
+      regexp: "^\\s*workgroup\\s*="
+      line: "   workgroup = {{ workgroup }}"
+
+  - name: Enable and start smbd + nmbd
     module: service
     args:
       name: smbd
       enabled: true
-      state: started
+      state: restarted
 
-  - name: Verify Samba
-    module: shell
-    args:
-      cmd: "smbd --version"
+verify:
+  - name: smbd service is active
+    cmd: "systemctl is-active --quiet smbd"
+    hint: "smbd 没启动。看 'sudo journalctl -u smbd -n 30'。常见：smb.conf 语法错（'sudo testparm -s' 看具体哪行）。"
+  - name: smb.conf is syntactically valid
+    cmd: "sudo testparm -s 2>&1 | grep -E 'Loaded services|^\\[{{ share_name }}\\]'"
+    hint: "smb.conf 语法错。运行 'sudo testparm' 看具体问题。"
+  - name: share is listed
+    cmd: "sudo smbclient -L localhost -U '{{ share_user }}%{{ share_password }}' 2>&1 | grep '{{ share_name }}'"
+    hint: "share 列不出来：可能用户密码没设对，或 [share] 段语法问题。手动 'sudo testparm' 检查。"

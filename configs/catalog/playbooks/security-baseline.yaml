@@ -1,41 +1,127 @@
 # Playbook: 安全基线（UFW + Fail2Ban + 自动更新）
-name: Security baseline
+#
+# 一键安装 + 启用最常见的三件套：
+#   - 防火墙（UFW for Ubuntu / firewalld for RHEL）：默认拒绝入站
+#   - Fail2Ban：监控 sshd 日志，自动 ban 暴力破解
+#   - 自动安全更新：unattended-upgrades (Ubuntu) / dnf-automatic (RHEL)
+#
+# 这是组合 (combo)，每个独立功能也都有单独的 catalog 项可以用。
+name: Security baseline (firewall + fail2ban + auto updates)
 hosts: all
 
 tasks:
-  - name: Install ufw, fail2ban, unattended-upgrades
+  # ─── Firewall ───────────────────────────────────────────
+  - name: Install UFW (Debian/Ubuntu) or firewalld (RHEL)
     module: package
     args:
-      name:
-        - ufw
-        - fail2ban
-        - unattended-upgrades
+      name: ufw
       state: present
 
-  - name: Allow SSH on UFW before enabling
+  - name: Allow SSH (UFW)
     module: shell
     args:
-      cmd: "sudo ufw allow 22/tcp"
+      cmd: "if command -v ufw >/dev/null 2>&1; then sudo ufw allow 22/tcp; fi"
+    ignore_errors: true
 
-  - name: Allow HTTP and HTTPS
+  - name: Allow HTTP/HTTPS (UFW)
     module: shell
     args:
-      cmd: "sudo ufw allow 80/tcp && sudo ufw allow 443/tcp"
+      cmd: "if command -v ufw >/dev/null 2>&1; then sudo ufw allow 80/tcp && sudo ufw allow 443/tcp; fi"
+    ignore_errors: true
 
-  - name: Enable UFW with default deny
+  - name: Enable UFW
     module: shell
     args:
-      cmd: "echo 'y' | sudo ufw enable"
+      cmd: "if command -v ufw >/dev/null 2>&1; then echo y | sudo ufw enable; fi"
+    ignore_errors: true
 
-  - name: Enable fail2ban service
+  - name: Allow SSH/HTTP/HTTPS (firewalld for RHEL)
+    module: shell
+    args:
+      cmd: |
+        if command -v firewall-cmd >/dev/null 2>&1; then
+          sudo systemctl enable --now firewalld
+          sudo firewall-cmd --permanent --add-service=ssh
+          sudo firewall-cmd --permanent --add-service=http
+          sudo firewall-cmd --permanent --add-service=https
+          sudo firewall-cmd --reload
+        fi
+
+  # ─── Fail2Ban ───────────────────────────────────────────
+  - name: Install fail2ban
+    module: package
+    args:
+      name: fail2ban
+      state: present
+
+  - name: Render minimal jail.local
+    module: copy
+    args:
+      dest: /etc/fail2ban/jail.local
+      content: |
+        # /etc/fail2ban/jail.local — managed by EnvForge security-baseline
+
+        [DEFAULT]
+        ignoreip = 127.0.0.1/8 ::1
+        bantime = 1h
+        findtime = 10m
+        maxretry = 5
+        backend = systemd
+
+        [sshd]
+        enabled = true
+        port = ssh
+        logpath = %(sshd_log)s
+        backend = %(sshd_backend)s
+
+  - name: Enable fail2ban
     module: service
     args:
       name: fail2ban
       enabled: true
-      state: started
+      state: restarted
 
-  - name: Enable unattended-upgrades
+  # ─── Auto updates (Ubuntu/Debian) ───────────────────────
+  - name: Install unattended-upgrades (Debian/Ubuntu)
+    module: package
+    args:
+      name: unattended-upgrades
+      state: present
+      ignore_missing: true
+
+  - name: Enable unattended-upgrades (Debian/Ubuntu)
     module: shell
     args:
-      cmd: "sudo dpkg-reconfigure -f noninteractive unattended-upgrades 2>/dev/null || true"
+      cmd: |
+        if command -v dpkg-reconfigure >/dev/null 2>&1; then
+          sudo dpkg-reconfigure -f noninteractive unattended-upgrades 2>/dev/null || true
+        fi
     ignore_errors: true
+
+  # ─── Auto updates (RHEL/Anolis) ─────────────────────────
+  - name: Install dnf-automatic (RHEL/Anolis)
+    module: package
+    args:
+      name: dnf-automatic
+      state: present
+      ignore_missing: true
+
+  - name: Enable dnf-automatic timer (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if systemctl list-unit-files | grep -q dnf-automatic.timer; then
+          sudo systemctl enable --now dnf-automatic.timer
+        fi
+    ignore_errors: true
+
+verify:
+  - name: firewall is active (ufw or firewalld)
+    cmd: "(sudo ufw status 2>/dev/null | grep -i active) || (sudo firewall-cmd --state 2>/dev/null | grep running)"
+    hint: "防火墙没启用：手动 'sudo ufw enable' 或 'sudo systemctl enable --now firewalld'。"
+  - name: fail2ban is running
+    cmd: "systemctl is-active --quiet fail2ban"
+    hint: "fail2ban 没起来：看 'sudo journalctl -u fail2ban -n 30'。"
+  - name: sshd jail is active in fail2ban
+    cmd: "sudo fail2ban-client status sshd 2>&1 | grep -E 'Currently failed|Banned'"
+    hint: "sshd jail 没启动：检查 jail.local 的 [sshd] enabled = true。"

@@ -1,0 +1,40 @@
+{
+  "domain": {
+    "type": "string",
+    "label": "域名",
+    "labelEn": "Domain",
+    "required": true,
+    "validate": "^[a-zA-Z0-9]([a-zA-Z0-9-.]*[a-zA-Z0-9])?$",
+    "placeholder": "example.com",
+    "help": "你要签发证书的域名，必须已经有 A 记录指向本机公网 IP。多个域名暂不支持（每个域名跑一次 Playbook）。"
+  },
+  "email": {
+    "type": "string",
+    "label": "邮箱",
+    "labelEn": "Email",
+    "required": true,
+    "validate": "^[^@]+@[^@]+\\.[^@]+$",
+    "placeholder": "you@example.com",
+    "help": "Let's Encrypt 用此邮箱发送：1) 证书快过期提醒（仅当自动续签失败时）；2) 重要服务变更通知。务必填真实可用邮箱。"
+  },
+  "challenge_method": {
+    "type": "choice",
+    "label": "Challenge 方式",
+    "labelEn": "Challenge method",
+    "default": "nginx",
+    "options": [
+      { "value": "nginx", "label": "nginx 插件（推荐：自动改 nginx 配置开 HTTPS + 80→443 跳转）" },
+      { "value": "apache", "label": "apache 插件（自动改 Apache 配置）" },
+      { "value": "standalone", "label": "standalone（certbot 自起 80 端口验证；要求 80 不被占）" },
+      { "value": "webroot", "label": "webroot（已有 web server 且能写 /var/www/html，最不打扰）" }
+    ],
+    "help": "怎么向 Let's Encrypt 证明你拥有这个域名。nginx 插件最方便（已经装了 nginx 时）；standalone 适合还没装 web server 的机器（但要求 80 没被占）。"
+  },
+  "staging": {
+    "type": "boolean",
+    "label": "测试模式（staging）",
+    "labelEn": "Use staging server",
+    "default": false,
+    "help": "勾上后用 Let's Encrypt 的测试服务器签发，**返回的证书浏览器不信任**，但没有签发频率限制。第一次部署 / 调试时建议先用 staging 跑一遍，成功后关掉再签真证书。Let's Encrypt 生产环境每周每域名只能失败 5 次。"
+  }
+}

@@ -1,47 +1,110 @@
-# firewalld 防火墙
+# firewalld 动态防火墙
 
-动态防火墙管理器，UFW 替代品。
+firewalld 是 RHEL/CentOS/Fedora/Anolis 系统默认的防火墙管理器（取代 iptables 的高层 API）。
+和 UFW 不同的是，firewalld 用 zone 概念组织规则——同一台机器不同网卡可以属于不同 zone。
 
-*Dynamic firewall, UFW alternative.*
+> **注意**：UFW 和 firewalld 不能同时启用。RHEL 系统用 firewalld，Ubuntu 用 UFW。
 
 ## 你将得到什么
 
-- 📦 **firewalld** _(firewalld)_ — 通过 apt
+- 📦 **firewalld**
+- ✅ 服务启动并设开机自启
+- ✅ 默认 zone 是 `public`：允许 SSH，拒绝其它入站
+- ✅ SSH 服务已加入默认 zone 白名单
 
-## 自动化步骤
+## 安装后
 
-EnvForge 在目标机器上依次执行以下任务：
+### 看当前规则
 
-1. Install firewalld
-2. Enable firewalld
-3. Allow SSH service
-4. Verify firewalld
+```bash
+sudo firewall-cmd --list-all
+sudo firewall-cmd --list-services
+sudo firewall-cmd --list-ports
+```
+
+### 开放端口/服务
+
+```bash
+# 按服务名（推荐，自动包含端口和协议）
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --permanent --add-service=samba
+sudo firewall-cmd --reload
+
+# 按端口
+sudo firewall-cmd --permanent --add-port=8080/tcp
+sudo firewall-cmd --permanent --add-port=51820/udp
+sudo firewall-cmd --reload
+```
+
+### Rich rules（限制来源 IP）
+
+```bash
+# 只允许 1.2.3.4 访问 3306
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="1.2.3.4" port port=3306 protocol=tcp accept'
+
+# 拒绝某个 IP 全部连接
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="9.9.9.9" reject'
+
+sudo firewall-cmd --reload
+```
+
+### Zone 管理
+
+```bash
+# 看所有 zone
+sudo firewall-cmd --get-zones
+
+# 把网卡 eth1 划到 internal zone（允许更多服务）
+sudo firewall-cmd --permanent --zone=internal --change-interface=eth1
+```
+
+### 临时 vs 持久化
+
+不带 `--permanent` 的命令立即生效但**重启后失效**。一般工作流：
+```bash
+# 1. 先临时加规则测试
+sudo firewall-cmd --add-port=8080/tcp
+# 2. 测试 OK 后加到 permanent
+sudo firewall-cmd --permanent --add-port=8080/tcp
+# 3. 或者直接 --runtime-to-permanent 把当前所有临时规则固化
+sudo firewall-cmd --runtime-to-permanent
+```
+
+### 与 docker 共存
+
+Docker 启动时会写大量 iptables 规则到 DOCKER 链。firewalld 默认会刷新 iptables，
+导致 Docker 规则丢失，容器无法访问外网。解决：
+```bash
+# 让 firewalld 不去碰 DOCKER 链
+sudo firewall-cmd --permanent --zone=trusted --add-interface=docker0
+sudo systemctl restart firewalld docker
+```
 
 ## ⚠️ 敏感性
 
-此 Playbook 标记为 **privileged**：会修改系统级配置（用户、防火墙、systemd 服务、内核参数等）。建议先用 dry-run 模式预览影响，再执行真实安装。
+**privileged** — 防火墙是网络层最重要的安全屏障。配错可能：
+- 把自己锁出 SSH（强烈建议先确认 SSH 已开放！EnvForge 已自动加）
+- 阻断生产服务
 
-## 验证安装
+## 验证
 
 ```bash
-# 检查包是否已安装
-dpkg -l | grep firewalld      # Ubuntu/Debian
-rpm -q firewalld                # RHEL/CentOS/Anolis
-
-# 检查服务是否运行（如果有 systemd 单元）
 systemctl status firewalld --no-pager
+sudo firewall-cmd --state               # 应该返回 running
+sudo firewall-cmd --list-all
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **`Failed to start firewalld`** — 通常是 iptables-services 在跑，先 `sudo systemctl disable --now iptables` 再启 firewalld。
+- **规则不生效** — 忘了 `--reload` 或 `--permanent`。
+- **跨发行版**：firewalld 包在 Ubuntu 上也有，但 Ubuntu 默认用 UFW。在 Ubuntu 上装 firewalld 需要 `sudo systemctl disable --now ufw` 先关 UFW。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。包不重装，只确保 SSH 一直在白名单。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+防火墙规则不上传不同步。

@@ -97,10 +97,17 @@ function findVarReferences(node, found, parentKey = "") {
       let wm;
       while ((wm = wre.exec(node))) {
         const tok = wm[1];
-        // skip operators and known truthy/falsy tokens
-        if (!["true", "false", "null", "and", "or", "not", "in", "item"].includes(tok)) {
-          found.add(tok);
-        }
+        // skip operators and known truthy/falsy tokens; also skip tokens
+        // that appear inside string literals (e.g. "x == 'nginx'") since
+        // those are values, not var refs.
+        if (["true", "false", "null", "and", "or", "not", "in", "item"].includes(tok)) continue;
+        // Check whether this token is inside a quoted string in the expression
+        const ti = wm.index;
+        const before = node.slice(0, ti);
+        const singleQuotes = (before.match(/'/g) || []).length;
+        const doubleQuotes = (before.match(/"/g) || []).length;
+        if (singleQuotes % 2 === 1 || doubleQuotes % 2 === 1) continue; // inside a string
+        found.add(tok);
       }
     }
     return;

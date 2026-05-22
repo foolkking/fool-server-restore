@@ -1,6 +1,20 @@
-# Playbook: SSH 安全加固
+# Playbook: SSH 服务器加固
+#
+# 通过 lineinfile 修改 /etc/ssh/sshd_config 实现：改端口、禁 root、禁密码、限用户。
+# 注意：改完不立刻 restart sshd（避免把自己锁出去），先 sshd -t 验证语法，再用
+# `systemctl reload sshd` 优雅重载（不断现有连接）。
 name: Harden SSH server configuration
 hosts: all
+
+vars:
+  ssh_port: 22
+  permit_root_login: "no"
+  password_authentication: "no"
+  pubkey_authentication: "yes"
+  allow_users: ""
+  client_alive_interval: 300
+  client_alive_count_max: 2
+  max_auth_tries: 3
 
 tasks:
   - name: Ensure openssh-server is installed
@@ -9,46 +23,82 @@ tasks:
       name: openssh-server
       state: present
 
-  - name: Disable root login via SSH
+  - name: Set SSH port
     module: lineinfile
     args:
       path: /etc/ssh/sshd_config
-      regexp: "^#?PermitRootLogin"
-      line: "PermitRootLogin no"
-      create: true
-      backup: true
-    register: root_login_changed
+      regexp: "^#?\\s*Port\\s+"
+      line: "Port {{ ssh_port }}"
 
-  - name: Limit max auth tries
+  - name: PermitRootLogin
     module: lineinfile
     args:
       path: /etc/ssh/sshd_config
-      regexp: "^#?MaxAuthTries"
-      line: "MaxAuthTries 3"
-      create: true
-    register: max_auth_changed
+      regexp: "^#?\\s*PermitRootLogin\\s+"
+      line: "PermitRootLogin {{ permit_root_login }}"
 
-  - name: Set client alive interval
+  - name: PasswordAuthentication
     module: lineinfile
     args:
       path: /etc/ssh/sshd_config
-      regexp: "^#?ClientAliveInterval"
-      line: "ClientAliveInterval 300"
-      create: true
-    register: alive_changed
+      regexp: "^#?\\s*PasswordAuthentication\\s+"
+      line: "PasswordAuthentication {{ password_authentication }}"
 
-  - name: Disable password authentication
+  - name: PubkeyAuthentication
     module: lineinfile
     args:
       path: /etc/ssh/sshd_config
-      regexp: "^#?PasswordAuthentication"
-      line: "PasswordAuthentication no"
-      create: true
-    register: password_auth_changed
+      regexp: "^#?\\s*PubkeyAuthentication\\s+"
+      line: "PubkeyAuthentication {{ pubkey_authentication }}"
 
-  - name: Restart sshd if any setting changed
+  - name: ClientAliveInterval
+    module: lineinfile
+    args:
+      path: /etc/ssh/sshd_config
+      regexp: "^#?\\s*ClientAliveInterval\\s+"
+      line: "ClientAliveInterval {{ client_alive_interval }}"
+
+  - name: ClientAliveCountMax
+    module: lineinfile
+    args:
+      path: /etc/ssh/sshd_config
+      regexp: "^#?\\s*ClientAliveCountMax\\s+"
+      line: "ClientAliveCountMax {{ client_alive_count_max }}"
+
+  - name: MaxAuthTries
+    module: lineinfile
+    args:
+      path: /etc/ssh/sshd_config
+      regexp: "^#?\\s*MaxAuthTries\\s+"
+      line: "MaxAuthTries {{ max_auth_tries }}"
+
+  - name: AllowUsers (only when set)
+    module: lineinfile
+    args:
+      path: /etc/ssh/sshd_config
+      regexp: "^#?\\s*AllowUsers\\s+"
+      line: "AllowUsers {{ allow_users }}"
+    when: "allow_users"
+
+  - name: Verify sshd_config syntax before reload
+    module: shell
+    args:
+      cmd: "sudo sshd -t"
+
+  - name: Reload sshd (safer than restart — keeps existing connections)
     module: service
     args:
-      name: sshd
-      state: restarted
-    when: root_login_changed.changed
+      name: ssh
+      state: reloaded
+
+verify:
+  - name: sshd config syntax is valid
+    cmd: "sudo sshd -t 2>&1"
+    hint: "sshd 配置语法错。立即恢复：sudo sshd -t 看错误行，编辑 /etc/ssh/sshd_config 修正，sudo systemctl reload sshd。"
+  - name: sshd is listening on port {{ ssh_port }}
+    cmd: "sudo ss -tlnp | grep -E ':(22|{{ ssh_port }}) '"
+    hint: "sshd 没在 {{ ssh_port }} 监听。**立刻保留现有 SSH 连接不要退出！** 检查 'systemctl status sshd' 然后用现有连接修复。"
+  - name: Backup config exists at /etc/ssh/sshd_config.envforge.bak
+    cmd: "sudo test -f /etc/ssh/sshd_config.envforge.bak && echo OK"
+    expect_stdout: "OK"
+    hint: "EnvForge 第一次改文件时自动备份了原配置。回滚：'sudo cp /etc/ssh/sshd_config.envforge.bak /etc/ssh/sshd_config && sudo systemctl reload sshd'。"

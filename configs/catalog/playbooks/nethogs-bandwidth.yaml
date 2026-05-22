@@ -1,30 +1,28 @@
-# Playbook: 网络流量监控工具
-name: Install network monitoring tools
+# Playbook: 网络流量监控工具集
+#
+# 一组 CLI 工具，用来诊断"是哪个进程在吃带宽 / 是哪个 IP 在打我"等问题。
+# 都是 no-config，装上就能用。
+name: Install network bandwidth monitoring tools
 hosts: all
 
 tasks:
-  - name: Install network tools
+  - name: Install network monitoring tools
     module: package
     args:
-      name:
-        - nethogs
-        - iftop
-        - vnstat
-        - bmon
-        - tcpdump
-        - mtr
-        - nmap
+      name: ["nethogs", "iftop", "vnstat", "tcpdump", "nmap"]
       state: present
 
-  - name: Enable vnstat
+  - name: Enable vnstat data collection daemon
     module: service
     args:
       name: vnstat
       enabled: true
       state: started
 
-  - name: Verify nethogs
-    module: shell
-    args:
-      cmd: "nethogs -V"
-    ignore_errors: true
+verify:
+  - name: nethogs is installed
+    cmd: "command -v nethogs"
+    hint: "nethogs 没装上，可能 EPEL 仓库还没启用（preflight 阶段会自动启用）。"
+  - name: vnstat daemon is running
+    cmd: "systemctl is-active --quiet vnstat"
+    hint: "vnstat 守护进程没起来。它需要持续运行才能积累流量历史，建议保持启动。"

@@ -1,0 +1,59 @@
+{
+  "share_name": {
+    "type": "string",
+    "label": "共享名",
+    "labelEn": "Share name",
+    "default": "shared",
+    "required": true,
+    "validate": "^[a-zA-Z0-9_-]{1,32}$",
+    "help": "客户端 mount 时用的名字，例 \\\\server-ip\\shared。"
+  },
+  "share_path": {
+    "type": "string",
+    "label": "共享路径",
+    "labelEn": "Share path",
+    "default": "/srv/samba/shared",
+    "validate": "^/[a-zA-Z0-9/_.-]+$",
+    "help": "服务器上被共享的目录绝对路径。EnvForge 会自动创建（如不存在）。"
+  },
+  "share_user": {
+    "type": "string",
+    "label": "Samba 用户名",
+    "labelEn": "Samba username",
+    "default": "envforge",
+    "required": true,
+    "validate": "^[a-zA-Z][a-zA-Z0-9_-]{2,32}$",
+    "help": "客户端连接时使用的用户名。会创建一个系统用户 + smbpasswd。"
+  },
+  "share_password": {
+    "type": "password",
+    "label": "Samba 密码",
+    "labelEn": "Samba password",
+    "generate_length": 20,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "客户端连接密码。留空自动生成 20 位强密码（运行结束显示一次）。"
+  },
+  "guest_ok": {
+    "type": "boolean",
+    "label": "允许匿名访问",
+    "labelEn": "Allow guest",
+    "default": false,
+    "help": "勾上：任何客户端无需密码即可访问。**强烈不推荐**——除非你的网络本身就是受限可信内网。"
+  },
+  "read_only": {
+    "type": "boolean",
+    "label": "只读模式",
+    "labelEn": "Read only",
+    "default": false,
+    "help": "勾上：客户端只能读不能写。适合分发只读文件库。"
+  },
+  "workgroup": {
+    "type": "string",
+    "label": "工作组",
+    "labelEn": "Workgroup",
+    "default": "WORKGROUP",
+    "validate": "^[A-Z0-9_-]{1,15}$",
+    "help": "Windows 工作组名，全大写。家庭/小型办公室用默认 WORKGROUP 即可。AD 域环境填域名。"
+  }
+}

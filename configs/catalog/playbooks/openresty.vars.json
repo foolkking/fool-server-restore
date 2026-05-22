@@ -1,0 +1,9 @@
+{
+  "http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 80,
+    "help": "OpenResty 监听的端口。如果机器上已经跑着 nginx/apache 占了 80，请改用别的端口（如 8080）或先停掉它们。"
+  }
+}

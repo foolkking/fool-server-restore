@@ -1,0 +1,57 @@
+{
+  "port": {
+    "type": "port",
+    "label": "监听端口",
+    "labelEn": "Port",
+    "default": 1194,
+    "help": "OpenVPN 默认 1194。改成 443 之类的常见 web 端口能在某些受限网络里穿透（伪装成 HTTPS）。"
+  },
+  "protocol": {
+    "type": "choice",
+    "label": "传输协议",
+    "labelEn": "Protocol",
+    "default": "udp",
+    "options": [
+      { "value": "udp", "label": "UDP（默认，性能最好，几乎所有场景）" },
+      { "value": "tcp", "label": "TCP（在 UDP 被 QoS/丢包严重的网络里更稳）" }
+    ],
+    "help": "强烈建议 UDP——OpenVPN over TCP 会有 'TCP-over-TCP meltdown' 性能问题。仅当你的网络环境对 UDP 有严重 QoS 限制时才选 TCP。"
+  },
+  "vpn_subnet": {
+    "type": "string",
+    "label": "VPN 子网（基础地址）",
+    "labelEn": "VPN subnet base",
+    "default": "10.8.0.0",
+    "validate": "^(10\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.|192\\.168\\.)[0-9.]+$",
+    "help": "VPN 内部用的私有地址段。**不能和机器现有网卡 IP 重叠**。常用 10.8.0.0 / 10.66.0.0。"
+  },
+  "vpn_netmask": {
+    "type": "choice",
+    "label": "VPN 子网掩码",
+    "labelEn": "VPN netmask",
+    "default": "255.255.255.0",
+    "options": [
+      { "value": "255.255.255.0", "label": "/24 (255.255.255.0) — 254 个客户端" },
+      { "value": "255.255.0.0", "label": "/16 (255.255.0.0) — 65k 客户端" }
+    ]
+  },
+  "push_dns": {
+    "type": "string",
+    "label": "推送给客户端的 DNS",
+    "labelEn": "Push DNS to clients",
+    "default": "1.1.1.1",
+    "help": "客户端连上 VPN 后用的 DNS。1.1.1.1 / 8.8.8.8 / 内网 DNS（仅 Split tunnel 时有意义）。"
+  },
+  "cipher": {
+    "type": "choice",
+    "label": "加密算法",
+    "labelEn": "Cipher",
+    "default": "AES-256-GCM",
+    "options": [
+      { "value": "AES-256-GCM", "label": "AES-256-GCM（推荐，主流硬件加速）" },
+      { "value": "AES-128-GCM", "label": "AES-128-GCM（更快，依然安全）" },
+      { "value": "CHACHA20-POLY1305", "label": "CHACHA20-POLY1305（无硬件加速时更快）" }
+    ],
+    "help": "AES-256-GCM 是行业默认。CPU 没有 AES-NI 指令集（旧 ARM、低端嵌入式）时 CHACHA20 更快。"
+  }
+}

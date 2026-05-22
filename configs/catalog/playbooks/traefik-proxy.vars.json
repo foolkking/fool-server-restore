@@ -1,0 +1,25 @@
+{
+  "acme_email": {
+    "type": "string",
+    "label": "Let's Encrypt 邮箱",
+    "labelEn": "ACME email",
+    "required": true,
+    "validate": "^[^@]+@[^@]+\\.[^@]+$",
+    "placeholder": "you@example.com",
+    "help": "ACME 注册账号 + 证书过期通知。务必填真实邮箱。"
+  },
+  "dashboard_port": {
+    "type": "port",
+    "label": "Dashboard 端口",
+    "labelEn": "Dashboard port",
+    "default": 8080,
+    "help": "Traefik 内置 web dashboard 的端口。默认 8080。生产环境建议关闭 insecure 模式后通过 HTTPS + 认证访问。"
+  },
+  "dashboard_enable_insecure": {
+    "type": "boolean",
+    "label": "Dashboard 不要求认证（仅本机）",
+    "labelEn": "Insecure dashboard mode",
+    "default": false,
+    "help": "勾上：dashboard 端口直接打开就能用，无需认证（仅适合开发测试 + 防火墙限本机）。生产请保持关闭，通过 HTTPS router + basic auth 暴露 dashboard。"
+  }
+}

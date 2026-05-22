@@ -1,5 +1,8 @@
 # Playbook: firewalld 动态防火墙
-name: Install firewalld dynamic firewall
+#
+# firewalld 是 RHEL/Fedora 系统默认的防火墙管理器，UFW 在 RHEL 上的等价品。
+# 装上 + 启用 + 默认 zone 是 public（允许 SSH / 拒绝其它）。具体规则由用户后续添加。
+name: Install and enable firewalld
 hosts: all
 
 tasks:
@@ -9,19 +12,22 @@ tasks:
       name: firewalld
       state: present
 
-  - name: Enable firewalld
+  - name: Enable and start firewalld
     module: service
     args:
       name: firewalld
       enabled: true
       state: started
 
-  - name: Allow SSH service
+  - name: Make sure SSH service is allowed in default zone
     module: shell
     args:
       cmd: "sudo firewall-cmd --permanent --add-service=ssh && sudo firewall-cmd --reload"
 
-  - name: Verify firewalld
-    module: shell
-    args:
-      cmd: "sudo firewall-cmd --state"
+verify:
+  - name: firewalld service is active
+    cmd: "systemctl is-active --quiet firewalld"
+    hint: "服务未启动。看 'sudo journalctl -u firewalld -n 30'。常见：和 ufw / iptables-services 冲突——只能启用一个防火墙后端。"
+  - name: ssh service is allowed
+    cmd: "sudo firewall-cmd --list-services 2>&1 | grep -E '\\bssh\\b'"
+    hint: "SSH 没在防火墙白名单里——若你正在通过 SSH 操作，下次连接可能被拒绝！立即跑 'sudo firewall-cmd --permanent --add-service=ssh --reload'。"

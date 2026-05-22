@@ -1,0 +1,39 @@
+{
+  "listen_port": {
+    "type": "port",
+    "label": "WireGuard 端口 (UDP)",
+    "labelEn": "WG listen port",
+    "default": 51820,
+    "help": "WireGuard 默认 UDP 51820。建议改成不常见的高位端口（如 35821）减少扫描，但客户端配置要同步改。"
+  },
+  "vpn_subnet": {
+    "type": "string",
+    "label": "VPN 子网",
+    "labelEn": "VPN subnet (CIDR)",
+    "default": "10.10.0.0/24",
+    "validate": "^(10\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.|192\\.168\\.)[0-9.]+/[0-9]+$",
+    "help": "VPN 内的网段。**必须和你机器其它网卡的 IP 不冲突**。常用 10.10.0.0/24 / 10.66.66.0/24 / 192.168.66.0/24。"
+  },
+  "server_address": {
+    "type": "string",
+    "label": "服务端 VPN IP",
+    "labelEn": "Server VPN address",
+    "default": "10.10.0.1/24",
+    "validate": "^[0-9.]+/[0-9]+$",
+    "help": "服务端在 VPN 子网内的地址，包含 CIDR 掩码。一般是子网的 .1 地址。"
+  },
+  "dns_servers": {
+    "type": "string",
+    "label": "推送给客户端的 DNS",
+    "labelEn": "DNS for clients",
+    "default": "1.1.1.1",
+    "help": "客户端连上 VPN 后用的 DNS 服务器。1.1.1.1 (Cloudflare) / 8.8.8.8 (Google) / 内网 DNS（多个用空格隔开）。"
+  },
+  "enable_ip_forward": {
+    "type": "boolean",
+    "label": "启用 IP 转发（让客户端通过 VPN 访问外网）",
+    "labelEn": "Enable IP forwarding",
+    "default": true,
+    "help": "勾上：客户端的所有流量经过 VPN 到外网（典型翻墙/科学上网模式）。取消：客户端只能访问 VPN 子网内的资源（split tunnel 模式）。"
+  }
+}

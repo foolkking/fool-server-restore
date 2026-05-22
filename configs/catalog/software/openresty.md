@@ -1,47 +1,109 @@
-# OpenResty (Nginx+Lua)
+# OpenResty (Nginx + LuaJIT)
 
-Nginx + Lua 高性能 Web 平台。
-
-*Nginx + Lua high-performance web platform.*
+OpenResty 把 LuaJIT 嵌入 nginx，让你能在 nginx 配置里写 Lua 脚本——动态生成响应、
+做复杂鉴权、限流、AB 测试、API 网关、WAF。
 
 ## 你将得到什么
 
-- 📦 **openresty** _(OpenResty)_ — 通过 apt
+- 📦 **openresty**（来自 openresty 官方源）
+- ✅ 二进制装在 `/usr/local/openresty/`
+- ✅ nginx.conf 包含一个 `/lua` 演示 endpoint
+- ✅ openresty systemd 服务
 
-## 自动化步骤
+## 何时选 OpenResty 而非 nginx
 
-EnvForge 在目标机器上依次执行以下任务：
+- ✅ 需要在 nginx 配置里跑动态逻辑（鉴权、路由决策、计算）
+- ✅ 想做 API 网关（限流、API key 校验、签名）
+- ✅ 写 WAF 规则
+- ❌ 仅需静态文件 / 简单反向代理 → 用普通 nginx
 
-1. Install prerequisites
-2. Add OpenResty repository
-3. Install OpenResty
-4. Enable OpenResty
+## 安装后
+
+### 验证 Lua 工作
+
+```bash
+curl http://localhost/lua
+# Hello from OpenResty + LuaJIT
+# Time: 2024-...
+```
+
+### 写一个鉴权中间件
+
+```nginx
+location /api/ {
+    access_by_lua_block {
+        local token = ngx.var.http_authorization
+        if not token or token ~= "Bearer my-secret" then
+            ngx.status = 401
+            ngx.say("unauthorized")
+            ngx.exit(401)
+        end
+    }
+    proxy_pass http://backend;
+}
+```
+
+### 限流
+
+```nginx
+http {
+    lua_shared_dict ratelimit 10m;
+
+    server {
+        location / {
+            access_by_lua_block {
+                local limit = require "resty.limit.req"
+                local lim, _ = limit.new("ratelimit", 100, 200)  -- 100 req/s, burst 200
+                local key = ngx.var.binary_remote_addr
+                local delay, err = lim:incoming(key, true)
+                if not delay then
+                    if err == "rejected" then
+                        ngx.exit(429)
+                    end
+                end
+            }
+            proxy_pass http://backend;
+        }
+    }
+}
+```
+
+### 配置文件
+
+主配置：`/usr/local/openresty/nginx/conf/nginx.conf`
+
+业务子配置目录：`/usr/local/openresty/nginx/conf/conf.d/*.conf`（取消 nginx.conf 里 include 注释后启用）。
+
+### 测试 + reload
+
+```bash
+sudo /usr/local/openresty/bin/openresty -t                     # 语法检查
+sudo systemctl reload openresty                                # 平滑重载
+```
 
 ## ⚠️ 敏感性
 
-此 Playbook 标记为 **review**：会安装系统服务并改动配置文件。如果对该机器有现有依赖，请先确认不会冲突。
+**review** — OpenResty 占用 80 端口，**不能和普通 nginx 共存**。在已有 nginx 的机器上要先 `systemctl stop nginx` 再装 OpenResty，或者改 OpenResty 监听别的端口。
 
-## 验证安装
+## 验证
 
 ```bash
-# 检查包是否已安装
-dpkg -l | grep openresty      # Ubuntu/Debian
-rpm -q openresty                # RHEL/CentOS/Anolis
-
-# 检查服务是否运行（如果有 systemd 单元）
 systemctl status openresty --no-pager
+curl http://localhost/lua
+sudo /usr/local/openresty/bin/openresty -V    # 看编译进去的模块
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **`80 端口被占`** — 关掉 nginx 或改端口。
+- **Lua 报 `undefined symbol`** — 漏装某个 lua 库。OpenResty 包自带主流 lua-resty-* 库，但偶尔特殊场景需要 luarocks 装更多。
+- **跨发行版**：包不在默认仓库，需要 OpenResty 官方源（Playbook 已自动添加）。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。包不重装，nginx.conf 每次重写——如果你大量定制配置请放到 `conf.d/` 子目录。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+- 配置不上传不同步。
+- 访问/错误日志在 `/usr/local/openresty/nginx/logs/`。

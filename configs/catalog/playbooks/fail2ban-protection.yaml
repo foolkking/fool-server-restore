@@ -1,17 +1,79 @@
 # Playbook: Fail2Ban 入侵防护
-name: Install Fail2Ban and enable SSH protection
+#
+# Fail2Ban 监控日志，连续失败的源 IP 自动加入防火墙黑名单。最经典用法是防护
+# SSH 暴力破解（5 次失败就 ban 1 小时）。
+#
+# 配置策略：用户编辑 jail.local（不是默认的 jail.conf，包升级会覆盖默认配置）。
+# 我们只设几个最高频的参数，其它保留默认。
+name: Install and configure Fail2Ban
 hosts: all
 
+vars:
+  bantime: "1h"
+  findtime: "10m"
+  maxretry: 5
+  ssh_enabled: true
+  ssh_port: 22
+  ignoreip: "127.0.0.1/8 ::1"
+  destemail: ""
+
 tasks:
-  - name: Install fail2ban package
+  - name: Install Fail2Ban
     module: package
     args:
       name: fail2ban
       state: present
 
-  - name: Enable fail2ban service to start on boot
+  - name: Render jail.local with EnvForge settings
+    module: template
+    args:
+      dest: /etc/fail2ban/jail.local
+      content: |
+        # /etc/fail2ban/jail.local — managed by EnvForge
+        # 改 jail.local 而不是 jail.conf，避免被包升级覆盖
+
+        [DEFAULT]
+        # 不被 ban 的 IP（自己的运维机器要加进来！）
+        ignoreip = {{ ignoreip }}
+
+        # ban 多久（h=小时, m=分钟, s=秒, -1=永久）
+        bantime = {{ bantime }}
+
+        # 在多长时间窗口内统计失败次数
+        findtime = {{ findtime }}
+
+        # 失败多少次触发 ban
+        maxretry = {{ maxretry }}
+
+        # 后端：systemd 读 systemd journal（推荐，不依赖 syslog）
+        backend = systemd
+
+        # 触发 ban 时的动作
+        action = %(action_)s
+        # destemail = {{ destemail }}
+        # 如需邮件提醒，把上面注释取消，并把 action 改为 %(action_mwl)s
+
+        [sshd]
+        enabled = {{ ssh_enabled }}
+        port = {{ ssh_port }}
+        logpath = %(sshd_log)s
+        backend = %(sshd_backend)s
+        maxretry = {{ maxretry }}
+
+  - name: Enable and start Fail2Ban
     module: service
     args:
       name: fail2ban
       enabled: true
-      state: started
+      state: restarted
+
+verify:
+  - name: fail2ban service is active
+    cmd: "systemctl is-active --quiet fail2ban"
+    hint: "服务未启动。看 'sudo journalctl -u fail2ban -n 30'。常见：jail.local 语法错误（template 模块的 jinja2 占位符渲染问题）。"
+  - name: sshd jail is enabled and running
+    cmd: "sudo fail2ban-client status sshd 2>&1 | grep -E 'Currently failed|Banned'"
+    hint: "sshd jail 没启动：检查 /etc/fail2ban/jail.local 的 [sshd] enabled = true 是否生效。"
+  - name: fail2ban-client can list jails
+    cmd: "sudo fail2ban-client status 2>&1 | grep -E 'Number of jail|sshd'"
+    hint: "fail2ban-client 命令找不到或服务没起来。先确认服务在跑。"

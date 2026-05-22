@@ -1,25 +1,43 @@
-# Playbook: OpenResty (Nginx + Lua)
-name: Install OpenResty (Nginx with Lua)
+# Playbook: OpenResty (Nginx + LuaJIT)
+#
+# OpenResty = Nginx 集成大量第三方模块 + LuaJIT 脚本能力。可以在 nginx 配置里
+# 用 Lua 写复杂逻辑（路由、鉴权、限流、动态生成响应），适合做 API 网关 / WAF。
+#
+# 跨发行版：OpenResty 不在默认仓库，需要自己加 OpenResty 官方源。
+name: Install OpenResty (Nginx + Lua)
 hosts: all
 
+vars:
+  http_port: 80
+
 tasks:
-  - name: Install prerequisites
+  - name: Install dependencies
     module: package
     args:
-      name:
-        - wget
-        - gnupg
-        - software-properties-common
+      name: ["curl", "gnupg", "ca-certificates"]
       state: present
 
-  - name: Add OpenResty repository
+  - name: Add OpenResty apt repo (Debian/Ubuntu)
     module: shell
     args:
       cmd: |
-        wget -O - https://openresty.org/package/pubkey.gpg | sudo apt-key add -
-        echo "deb http://openresty.org/package/ubuntu $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/openresty.list
-        sudo apt-get update -qq
+        if command -v apt-get >/dev/null 2>&1; then
+          curl -fsSL https://openresty.org/package/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/openresty.gpg --yes
+          CODENAME=$(lsb_release -cs)
+          echo "deb [signed-by=/usr/share/keyrings/openresty.gpg] http://openresty.org/package/ubuntu $CODENAME main" | sudo tee /etc/apt/sources.list.d/openresty.list
+          sudo apt-get update -qq
+        fi
       creates: /etc/apt/sources.list.d/openresty.list
+
+  - name: Add OpenResty yum repo (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/openresty.repo ]; then
+          sudo dnf install -y yum-utils
+          sudo dnf config-manager --add-repo https://openresty.org/package/centos/openresty.repo
+        fi
+      creates: /etc/yum.repos.d/openresty.repo
 
   - name: Install OpenResty
     module: package
@@ -27,9 +45,62 @@ tasks:
       name: openresty
       state: present
 
-  - name: Enable OpenResty
+  - name: Render minimal /usr/local/openresty/nginx/conf/nginx.conf
+    module: copy
+    args:
+      dest: /usr/local/openresty/nginx/conf/nginx.conf
+      content: |
+        # /usr/local/openresty/nginx/conf/nginx.conf — managed by EnvForge
+
+        worker_processes auto;
+        error_log logs/error.log;
+        events { worker_connections 1024; }
+
+        http {
+            include       mime.types;
+            default_type  application/octet-stream;
+            sendfile      on;
+            keepalive_timeout 65;
+
+            # 一个示例 server，使用 Lua content_by_lua_block 返回响应
+            server {
+                listen {{ http_port }};
+                server_name _;
+
+                location / {
+                    root html;
+                    index index.html;
+                }
+
+                # Lua 示例 endpoint
+                location /lua {
+                    content_by_lua_block {
+                        ngx.say("Hello from OpenResty + LuaJIT")
+                        ngx.say("Time: ", ngx.localtime())
+                    }
+                }
+
+                # 你的业务路由放在这里或者 include 子目录配置
+                # include conf.d/*.conf;
+            }
+        }
+
+  - name: Enable and start openresty
     module: service
     args:
       name: openresty
       enabled: true
-      state: started
+      state: restarted
+
+verify:
+  - name: openresty service is active
+    cmd: "systemctl is-active --quiet openresty"
+    hint: "服务未启动。看 'sudo journalctl -u openresty -n 30'。常见：80 端口被 nginx 等占了，或 nginx.conf 语法错（'sudo /usr/local/openresty/bin/openresty -t' 检查）。"
+  - name: HTTP port {{ http_port }} responds
+    cmd: "curl -fsS -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:{{ http_port }}/lua"
+    expect_stdout: "200"
+    hint: "OpenResty 没正确响应 /lua：可能 Lua 模块没启用（OpenResty 包默认包含，应该没问题），或服务还在启动。"
+  - name: Lua content_by_lua_block works
+    cmd: "curl -fsS -m 5 http://127.0.0.1:{{ http_port }}/lua"
+    expect_stdout: "OpenResty"
+    hint: "Lua 块没执行：可能 nginx.conf 没正确加载（看 error.log）。"

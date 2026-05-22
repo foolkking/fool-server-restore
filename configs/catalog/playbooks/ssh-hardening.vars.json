@@ -1,0 +1,79 @@
+{
+  "ssh_port": {
+    "type": "port",
+    "label": "SSH 端口",
+    "labelEn": "SSH port",
+    "default": 22,
+    "help": "改成非标端口（如 2222 / 22222）能挡掉 90% 的自动扫描。改之前**务必先在防火墙放行新端口**，否则改完连不进来。"
+  },
+  "permit_root_login": {
+    "type": "choice",
+    "label": "允许 root 登录",
+    "labelEn": "PermitRootLogin",
+    "default": "no",
+    "options": [
+      { "value": "no", "label": "no（禁用，推荐）" },
+      { "value": "prohibit-password", "label": "prohibit-password（仅密钥可登录）" },
+      { "value": "yes", "label": "yes（允许密码登录，不推荐）" }
+    ],
+    "help": "强烈建议 'no'。如果非要用 root 远程操作，选 'prohibit-password' 至少要求密钥。'yes' 等于把 root 密码挂公网爆破。"
+  },
+  "password_authentication": {
+    "type": "choice",
+    "label": "允许密码认证",
+    "labelEn": "PasswordAuthentication",
+    "default": "no",
+    "options": [
+      { "value": "no", "label": "no（仅密钥登录，推荐）" },
+      { "value": "yes", "label": "yes（密码登录，不推荐）" }
+    ],
+    "help": "推荐 'no'——密钥认证更安全且无需记密码。**改之前务必先验证你的 SSH 密钥能登录**，否则改完连不进来。"
+  },
+  "pubkey_authentication": {
+    "type": "choice",
+    "label": "允许公钥认证",
+    "labelEn": "PubkeyAuthentication",
+    "default": "yes",
+    "options": [
+      { "value": "yes", "label": "yes（推荐）" },
+      { "value": "no", "label": "no（极少场景）" }
+    ],
+    "help": "保持 'yes'。除非你出于某种原因强制只用密码（不推荐），否则永远开启。"
+  },
+  "allow_users": {
+    "type": "string",
+    "label": "允许登录的用户（空格分隔）",
+    "labelEn": "AllowUsers",
+    "default": "",
+    "validate": "^[a-zA-Z0-9_@.\\s-]*$",
+    "placeholder": "alice bob",
+    "help": "白名单用户。留空则不限制（所有有 shell 的用户都能登录）。填写时务必把你自己用得上的账号都列进去，否则锁出去。例：'alice bob ops@*'"
+  },
+  "client_alive_interval": {
+    "type": "number",
+    "label": "ClientAlive 探测间隔 (秒)",
+    "labelEn": "ClientAliveInterval (sec)",
+    "default": 300,
+    "min": 0,
+    "max": 7200,
+    "help": "服务端每隔几秒发一次探测包给客户端，闲置连接不被中间防火墙断掉。0=不发。300（5分钟）是常用值。"
+  },
+  "client_alive_count_max": {
+    "type": "number",
+    "label": "无响应几次后断连",
+    "labelEn": "ClientAliveCountMax",
+    "default": 2,
+    "min": 0,
+    "max": 100,
+    "help": "客户端连续 N 次没响应探测就断开。配合 ClientAliveInterval 形成 N*Interval 秒的总超时。"
+  },
+  "max_auth_tries": {
+    "type": "number",
+    "label": "认证失败最大次数",
+    "labelEn": "MaxAuthTries",
+    "default": 3,
+    "min": 1,
+    "max": 20,
+    "help": "单次连接里最多 N 次认证失败后断开。配合 fail2ban 一起用更有效。"
+  }
+}

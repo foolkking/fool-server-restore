@@ -19,31 +19,31 @@
 
 - [x] nginx-web-service ← 已完成
 - [x] x-ui-panel ← 已完成
-- [x] postgres-profile (PostgreSQL)
-- [x] redis-server (Redis)
-- [x] mysql-server (MySQL)
-- [x] mariadb (MariaDB)
-- [x] mongodb (MongoDB)
-- [x] elasticsearch (Elasticsearch)
-- [x] memcached (Memcached)
-- [x] sqlite (SQLite — 不需要 schema，库不是 server)
+- [x] postgres-profile (PostgreSQL) ← ✓ batch1
+- [x] redis-server (Redis) ← ✓ batch1
+- [x] mysql-server (MySQL) ← ✓ batch1
+- [x] mariadb (MariaDB) ← ✓ batch1
+- [x] mongodb (MongoDB) ← ✓ batch1
+- [x] elasticsearch (Elasticsearch) ← ✓ batch1
+- [x] memcached (Memcached) ← ✓ batch1
+- [x] sqlite (no-schema, CLI tool) ← ✓ batch1
 
 ## 第 2 批：网络/安全（部分需要 schema）
 
-- [x] fail2ban-protection (Fail2Ban — schema: jail config, ban time, max retry)
-- [x] certbot-ssl (Certbot — schema: domain list, email, webroot/standalone, staging)
-- [x] wireguard-vpn (WireGuard — schema: subnet, peers, port, dns)
-- [x] openvpn-server (OpenVPN — schema: subnet, port, protocol, dns)
-- [x] traefik-proxy (Traefik — schema: dashboard port, ACME email, providers)
-- [x] haproxy-lb (HAProxy — schema: stats port, mode, basic backends)
-- [x] firewalld (firewalld — no-schema, just installs)
-- [x] firewall-baseline (combo, no-schema)
-- [x] ssh-hardening (combo — schema: ssh port, allow_users, password_auth)
-- [x] security-baseline (combo, no-schema, just composes)
-- [x] samba-share (Samba — schema: share path, share name, user, guest)
-- [x] openresty (OpenResty — uses nginx schema-style fields)
-- [x] vault-secrets (Vault — schema: storage path, listener addr, dev mode flag)
-- [x] nethogs-bandwidth (no-schema, CLI tools)
+- [x] fail2ban-protection ← ✓ batch2
+- [x] certbot-ssl ← ✓ batch2
+- [x] wireguard-vpn ← ✓ batch2
+- [x] openvpn-server ← ✓ batch2
+- [x] traefik-proxy ← ✓ batch2
+- [x] haproxy-lb ← ✓ batch2
+- [x] firewalld (no-schema) ← ✓ batch2
+- [x] firewall-baseline (combo, no-schema) ← ✓ earlier
+- [x] ssh-hardening (combo + schema) ← ✓ batch2
+- [x] security-baseline (combo, no-schema) ← ✓ batch2
+- [x] samba-share ← ✓ batch2
+- [x] openresty ← ✓ batch2
+- [x] vault-secrets ← ✓ batch2
+- [x] nethogs-bandwidth (no-schema) ← ✓ batch2
 
 ## 第 3 批：服务面板/监控
 

@@ -1,17 +1,106 @@
-# Playbook: Certbot / Let's Encrypt SSL
-name: Install Certbot for free SSL certificates
+# Playbook: Certbot / Let's Encrypt SSL 证书
+#
+# 用 snapd / apt / dnf 装 certbot，根据用户选择的方式（standalone / nginx / webroot）
+# 跑 certbot 命令签发证书，并配置自动续签。
+#
+# 使用前提：domain 已经有 A/AAAA 记录指向本机公网 IP，且 80 端口可达。
+name: Install Certbot and obtain Let's Encrypt SSL certificates
 hosts: all
 
+vars:
+  email: "you@example.com"
+  domain: "example.com"
+  challenge_method: "nginx"
+  staging: false
+
 tasks:
-  - name: Install certbot and nginx plugin
+  - name: Install certbot package
     module: package
     args:
-      name:
-        - certbot
-        - python3-certbot-nginx
+      name: certbot
       state: present
 
-  - name: Verify certbot installation
+  - name: Install nginx plugin (when using nginx method)
+    module: package
+    args:
+      name: python3-certbot-nginx
+      state: present
+    when: "challenge_method == 'nginx'"
+
+  - name: Install apache plugin (when using apache method)
+    module: package
+    args:
+      name: python3-certbot-apache
+      state: present
+    when: "challenge_method == 'apache'"
+
+  - name: Obtain certificate (nginx plugin auto-configures vhost)
     module: shell
     args:
-      cmd: "certbot --version"
+      cmd: "sudo certbot --nginx -d {{ domain }} --email {{ email }} --agree-tos --non-interactive --redirect"
+    when: "challenge_method == 'nginx' and not staging"
+
+  - name: Obtain certificate (nginx, staging)
+    module: shell
+    args:
+      cmd: "sudo certbot --nginx -d {{ domain }} --email {{ email }} --agree-tos --non-interactive --redirect --staging"
+    when: "challenge_method == 'nginx' and staging"
+
+  - name: Obtain certificate (apache plugin auto-configures vhost)
+    module: shell
+    args:
+      cmd: "sudo certbot --apache -d {{ domain }} --email {{ email }} --agree-tos --non-interactive --redirect"
+    when: "challenge_method == 'apache' and not staging"
+
+  - name: Obtain certificate (apache, staging)
+    module: shell
+    args:
+      cmd: "sudo certbot --apache -d {{ domain }} --email {{ email }} --agree-tos --non-interactive --redirect --staging"
+    when: "challenge_method == 'apache' and staging"
+
+  - name: Obtain certificate (standalone — temporarily binds 80)
+    module: shell
+    args:
+      cmd: "sudo certbot certonly --standalone -d {{ domain }} --email {{ email }} --agree-tos --non-interactive"
+    when: "challenge_method == 'standalone' and not staging"
+
+  - name: Obtain certificate (standalone, staging)
+    module: shell
+    args:
+      cmd: "sudo certbot certonly --standalone -d {{ domain }} --email {{ email }} --agree-tos --non-interactive --staging"
+    when: "challenge_method == 'standalone' and staging"
+
+  - name: Obtain certificate (webroot — needs running web server with /.well-known)
+    module: shell
+    args:
+      cmd: "sudo mkdir -p /var/www/html && sudo certbot certonly --webroot -w /var/www/html -d {{ domain }} --email {{ email }} --agree-tos --non-interactive"
+    when: "challenge_method == 'webroot' and not staging"
+
+  - name: Obtain certificate (webroot, staging)
+    module: shell
+    args:
+      cmd: "sudo mkdir -p /var/www/html && sudo certbot certonly --webroot -w /var/www/html -d {{ domain }} --email {{ email }} --agree-tos --non-interactive --staging"
+    when: "challenge_method == 'webroot' and staging"
+
+  - name: Enable certbot timer for auto-renewal (modern systems use systemd timer)
+    module: shell
+    args:
+      cmd: |
+        if systemctl list-unit-files 2>/dev/null | grep -q certbot.timer; then
+          sudo systemctl enable --now certbot.timer
+        elif systemctl list-unit-files 2>/dev/null | grep -q snap.certbot.renew.timer; then
+          sudo systemctl enable --now snap.certbot.renew.timer
+        fi
+
+verify:
+  - name: certificate file exists for {{ domain }}
+    cmd: "sudo test -f /etc/letsencrypt/live/{{ domain }}/fullchain.pem && echo OK"
+    expect_stdout: "OK"
+    hint: "证书没签发成功。常见原因：80 端口被防火墙挡了、域名 DNS 还没生效、challenge_method 选错（用 nginx 但还没装 nginx）。"
+  - name: certificate is valid (not expired, signed)
+    cmd: "sudo openssl x509 -in /etc/letsencrypt/live/{{ domain }}/fullchain.pem -noout -checkend 86400 && echo OK"
+    expect_stdout: "OK"
+    hint: "证书已经过期或将在 24 小时内过期。检查 'sudo certbot renew --dry-run'。"
+  - name: auto-renewal timer is active
+    cmd: "systemctl list-timers --all 2>&1 | grep -E 'certbot|snap.certbot' | head -1"
+    hint: "续签 timer 没启用：手动 'sudo systemctl enable --now certbot.timer'。"

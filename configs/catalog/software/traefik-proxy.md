@@ -1,46 +1,132 @@
 # Traefik 反向代理
 
-Traefik 现代反向代理，自动 SSL 证书，支持 Docker 服务发现。
-
-*Traefik modern reverse proxy with auto-SSL and Docker service discovery.*
+Traefik 是云原生的反向代理（v3）。和 nginx 比，最大优势是**自动发现路由**——
+你跑了一个新的 Docker 容器、加几个 label，Traefik 立刻代理它，不用改配置文件。
+ACME / Let's Encrypt 内置，无需手动跑 certbot。
 
 ## 你将得到什么
 
-- ▶ **安装 Traefik** _(Install Traefik)_ — 通过 binary download
+- ✅ Traefik v3 二进制装到 `/usr/local/bin/traefik`
+- ✅ systemd 单元 + 专用 traefik 用户
+- ✅ 静态配置 `/etc/traefik/traefik.yml`：80/443 entrypoint + dashboard + ACME + file/docker provider
+- ✅ ACME 证书存储 `/var/lib/traefik/acme.json` (600 权限)
+- ✅ 动态配置目录 `/etc/traefik/dynamic/` 准备好（自动 watch 重载）
+- ✅ 80 → 443 自动跳转
 
-## 自动化步骤
+## 表单字段说明
 
-EnvForge 在目标机器上依次执行以下任务：
+### Let's Encrypt 邮箱 `acme_email`
 
-1. Download Traefik binary
-2. Create Traefik config directory
-3. Create basic Traefik config
-4. Create Traefik systemd service
-5. Enable and start Traefik
-6. Verify Traefik
+ACME 协议要求注册一个邮箱，证书快过期且续签失败时会发提醒。务必真实邮箱。
+
+### Dashboard 端口 `dashboard_port`
+
+Traefik 自带 web 管理面板，默认 `:8080`。
+
+### Insecure 模式 `dashboard_enable_insecure`
+
+- ❌ **关闭（默认）**：dashboard 必须通过 HTTPS + 认证 router 访问。生产环境正确选择。
+- ✅ 开启：dashboard 端口裸暴露。仅开发测试 + 防火墙限本机时用。
+
+## 安装后
+
+服务起来了，但**还没有任何代理规则**——Traefik 现在对所有请求返回 404。要让它代理你的服务：
+
+### 方式 1：File provider（适合非 Docker 服务）
+
+新建 `/etc/traefik/dynamic/myapp.yml`：
+
+```yaml
+http:
+  routers:
+    myapp:
+      rule: "Host(`app.example.com`)"
+      service: myapp
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+  services:
+    myapp:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:3000"
+```
+
+Traefik 会自动重载，几秒后 `app.example.com` 就被代理到本机 :3000。
+
+### 方式 2：Docker labels（适合 Docker 容器）
+
+```yaml
+# docker-compose.yml
+services:
+  myapp:
+    image: myapp:latest
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.myapp.rule=Host(`app.example.com`)"
+      - "traefik.http.routers.myapp.entrypoints=websecure"
+      - "traefik.http.routers.myapp.tls.certresolver=letsencrypt"
+      - "traefik.http.services.myapp.loadbalancer.server.port=3000"
+```
+
+`docker compose up`，Traefik 立刻发现并代理。
+
+### 暴露 Dashboard（HTTPS + auth，生产推荐）
+
+新建 `/etc/traefik/dynamic/dashboard.yml`：
+
+```yaml
+http:
+  routers:
+    dashboard:
+      rule: "Host(`traefik.example.com`)"
+      service: api@internal
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - dashboard-auth
+  middlewares:
+    dashboard-auth:
+      basicAuth:
+        users:
+          - "admin:$apr1$xxx..."   # 用 htpasswd -nB admin 生成
+```
+
+### 防火墙
+
+```bash
+sudo ufw allow 80,443/tcp
+sudo firewall-cmd --add-service={http,https} --permanent && sudo firewall-cmd --reload
+```
 
 ## ⚠️ 敏感性
 
-此 Playbook 标记为 **review**：会安装系统服务并改动配置文件。如果对该机器有现有依赖，请先确认不会冲突。
+**review** — Traefik 占用 80/443 + dashboard 端口。**不要和 nginx/apache 同时跑**——会争 80/443。
 
-## 验证安装
+## 验证
 
 ```bash
-# 根据安装内容运行对应的健康检查命令
-# 例如查看进程: ps aux | grep <name>
-# 例如查看端口: ss -tlnp
+systemctl status traefik --no-pager
+sudo journalctl -u traefik -n 30
+curl http://localhost   # 应返回 404 (没匹配到 router)
+sudo cat /var/lib/traefik/acme.json   # 应该是 {} 直到第一个域名签证书
 ```
 
 ## 排错
 
-- **包找不到（RHEL/CentOS/Anolis）**：可能需要启用 EPEL 仓库或某个 dnf module stream。EnvForge 在安装时已经主动尝试这两步，看任务日志的 `preflight:` 段落确认结果。
-- **服务启动失败**：日志会自动包含 `systemctl status` 和 `journalctl` 摘要；按 🔍 标记的根因提示处理（端口冲突、配置语法错误、SELinux 等）。
-- **跨发行版兼容**：从 Ubuntu 捕获的 Playbook 在 RHEL 系统上跑时，部分包名/服务名会自动翻译（如 `apache2 → httpd`），看任务日志末尾的 `[renamed for dnf: ...]` 段落确认。
+- **`bind: address already in use`** — 80/443 被 nginx/apache 占了。先停掉它们或者把 Traefik 改用别的端口。
+- **ACME 证书签不下来** — 域名 DNS 没指向本机 / 80 端口防火墙没开 / `acme.json` 权限不是 600。
+- **Docker provider 不工作** — Traefik 用户需要能读 docker.sock：`sudo usermod -aG docker traefik && sudo systemctl restart traefik`。
+- **跨发行版**：用二进制安装，不依赖发行版包管理器。
 
 ## 多次运行
 
-Playbook 是幂等的：重复运行不会产生重复安装，已经安装的包/服务/配置会被跳过。`installMode: skip-existing`。
+`installMode: skip-existing`。已下载的二进制不会重下；静态配置每次重写。`/etc/traefik/dynamic/` 下的用户文件不会被动。
 
 ## 隐私说明
 
-此 Playbook 不上传任何凭据或私钥。如果安装内容会生成本地 secret（数据库密码、API token 等），请在目标机器上单独处理，不要提交回市场。
+- ACME 私钥在 `/var/lib/traefik/acme.json`（600 权限），不会被上传。
+- 访问日志在 `/var/log/traefik/access.log`，含每个请求的 IP。
