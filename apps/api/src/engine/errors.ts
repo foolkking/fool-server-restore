@@ -169,14 +169,28 @@ export function classifyError(
     combined.includes("failed to start") ||
     combined.includes("service not found")
   ) {
-    const svcMatch = cmdStr.match(/systemctl\s+\w+\s+(\S+)/);
-    const svcName = svcMatch?.[1] ?? "service";
+    // Extract real service name from stderr "Unit foo.service not found" or from cmdStr
+    const combinedRaw = `${stderr}\n${stdout}`;
+    let svcName: string | undefined;
+    const unitHit = combinedRaw.match(/Unit\s+([a-zA-Z0-9._@-]+?)(?:\.service)?\s+(?:not found|could not be found)/i);
+    if (unitHit) {
+      svcName = unitHit[1];
+    } else {
+      const svcMatch = cmdStr.match(/systemctl\s+\w+\s+(\S+)/);
+      if (svcMatch?.[1]) svcName = svcMatch[1];
+      else if (cmdStr.trim() && cmdStr !== "service") {
+        // cmdStr might be the service name itself (when args.name was passed directly)
+        const tokens = cmdStr.split(/\s+/).filter((t) => t && !/^[-=]/.test(t));
+        if (tokens.length > 0) svcName = tokens[0];
+      }
+    }
+    svcName = svcName ?? "(未知)";
     return {
       category: "not_found",
       messageZh: `服务 "${svcName}" 不存在或未安装`,
       messageEn: `Service "${svcName}" not found or not installed`,
-      fixHintZh: "请先安装对应的软件包，再启动服务",
-      fixHintEn: "Install the corresponding package before starting the service",
+      fixHintZh: "请先安装对应的软件包，再启动服务。如果 Playbook 是从 Ubuntu 捕获的，部分服务（如 apparmor、ufw、snapd）在 RHEL/CentOS 上不存在，可以从 Playbook 中删除",
+      fixHintEn: "Install the corresponding package first. If this Playbook was captured from Ubuntu, services like apparmor / ufw / snapd don't exist on RHEL/CentOS — remove them from the Playbook",
       raw: stderr
     };
   }

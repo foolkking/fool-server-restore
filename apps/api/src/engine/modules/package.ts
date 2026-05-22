@@ -104,15 +104,22 @@ async function isInstalled(executor: SshExecutor, pm: "apt" | "yum" | "dnf", pkg
   return r.exitCode === 0;
 }
 
-/** Try to install a single package on the given pm; returns ok=true on success. */
-async function installOne(executor: SshExecutor, pm: "apt" | "yum" | "dnf", pkg: string): Promise<{ ok: boolean; stderr: string; stdout: string }> {
+/** Try to install a single package on the given pm; returns ok=true on success.
+ *  When `disableExcludes=true` (dnf only) we add `--disableexcludes=all` to bypass
+ *  /etc/dnf/dnf.conf exclude lists (common on Anolis/Aliyun customised images). */
+async function installOne(
+  executor: SshExecutor,
+  pm: "apt" | "yum" | "dnf",
+  pkg: string,
+  disableExcludes = false
+): Promise<{ ok: boolean; stderr: string; stdout: string }> {
   let cmd: string;
   if (pm === "apt") {
     cmd = `sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ${pkg}`;
   } else if (pm === "dnf") {
-    cmd = `sudo dnf install -y ${pkg}`;
+    cmd = `sudo dnf install -y${disableExcludes ? " --disableexcludes=all" : ""} ${pkg}`;
   } else {
-    cmd = `sudo yum install -y ${pkg}`;
+    cmd = `sudo yum install -y${disableExcludes ? " --disableexcludes=all" : ""} ${pkg}`;
   }
   const { stdout, stderr, exitCode } = await executor.exec(cmd);
   return { ok: exitCode === 0, stdout, stderr };
@@ -138,6 +145,13 @@ function looksLikeMissingRepo(stderr: string, stdout: string): boolean {
          msg.includes("unable to find a match") ||
          msg.includes("no package") ||
          msg.includes("all matches were filtered out") ||
+         msg.includes("excluded by exclude filtering");
+}
+
+/** Detect whether the failure is specifically "all matches filtered out by exclude config". */
+function looksLikeExcludeFilter(stderr: string, stdout: string): boolean {
+  const msg = `${stderr}\n${stdout}`.toLowerCase();
+  return msg.includes("all matches were filtered out") ||
          msg.includes("excluded by exclude filtering");
 }
 
@@ -261,26 +275,41 @@ export const packageModule: AnsibleModule<PackageArgs> = {
       // Batch worked
       succeeded.push(...targets);
     } else {
-      // Batch failed — try one-by-one, optionally enabling EPEL on RHEL for known-EPEL packages
+      // Batch failed — try one-by-one, with progressive recovery strategies on RHEL/dnf:
+      //   1. Plain retry (transient failures)
+      //   2. If excluded by config → retry with --disableexcludes=all
+      //   3. If "no match" + known dnf module → enable module, retry
+      //   4. If "no match" + known EPEL package → install EPEL, retry
       let epelTried = false;
       const dnfModulesTried = new Set<string>();
       for (const t of needAction) {
         let result = await op(executor, pm, t.name);
+
         if (!result.ok && state === "present" && pm !== "apt" && looksLikeMissingRepo(result.stderr, result.stdout)) {
-          // Strategy 1: enable a dnf module stream if applicable (nginx, php, postgresql, redis, mariadb)
-          if (NEEDS_DNF_MODULE.has(t.name) && !dnfModulesTried.has(t.name)) {
+          // Strategy 1: bypass dnf exclude config (common on Anolis/Aliyun custom images)
+          if (looksLikeExcludeFilter(result.stderr, result.stdout)) {
+            result = await installOne(executor, pm, t.name, /*disableExcludes*/ true);
+          }
+          // Strategy 2: enable a dnf module stream (nginx, php, postgresql, redis, mariadb)
+          if (!result.ok && NEEDS_DNF_MODULE.has(t.name) && !dnfModulesTried.has(t.name)) {
             dnfModulesTried.add(t.name);
             const moduleEnabled = await tryEnableDnfModule(executor, pm, t.name);
             if (moduleEnabled) {
               result = await op(executor, pm, t.name);
+              if (!result.ok && looksLikeExcludeFilter(result.stderr, result.stdout)) {
+                result = await installOne(executor, pm, t.name, true);
+              }
             }
           }
-          // Strategy 2: enable EPEL once if any failing package commonly lives there
+          // Strategy 3: enable EPEL once if any failing package commonly lives there
           if (!result.ok && !epelTried && (NEEDS_EPEL.has(t.name) || NEEDS_EPEL.has(t.original))) {
             epelTried = true;
             const enabled = await tryEnableEpel(executor, pm);
             if (enabled) {
               result = await op(executor, pm, t.name);
+              if (!result.ok && looksLikeExcludeFilter(result.stderr, result.stdout)) {
+                result = await installOne(executor, pm, t.name, true);
+              }
             }
           }
         }
@@ -288,8 +317,10 @@ export const packageModule: AnsibleModule<PackageArgs> = {
           succeeded.push(t.name);
         } else {
           // Extract the most informative line
-          const reason = looksLikeMissingRepo(result.stderr, result.stdout)
-            ? "not in any enabled repo"
+          const reason = looksLikeExcludeFilter(result.stderr, result.stdout)
+            ? "excluded by dnf exclude config"
+            : looksLikeMissingRepo(result.stderr, result.stdout)
+            ? "not in any enabled repo (try EPEL or check distro compatibility)"
             : (result.stderr || result.stdout || "exit non-zero").split("\n").filter((l) => l.trim()).slice(-1)[0]?.slice(0, 200) || "failed";
           failed.push({ name: t.name, reason });
         }
