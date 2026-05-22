@@ -96,3 +96,120 @@ mongosh --eval "db.runCommand({ping:1})"
 ## 隐私说明
 
 不上传任何数据库内容。配置文件 `/etc/mongod.conf` 由 mongodb 包安装，EnvForge 不会替换。如需自定义配置，建议放到 `/etc/mongod.conf.d/`（mongo 7+ 支持）保留升级时的兼容性。
+
+## /etc/mongod.conf 完整示例（生产参考）
+
+MongoDB 配置是 YAML 格式（缩进敏感）。下面是一份常用配置，按需复制到 `/etc/mongod.conf`：
+
+```yaml
+# === 存储 ===
+storage:
+  dbPath: /var/lib/mongodb
+  journal:
+    enabled: true               # WAL，掉电不丢数据
+  wiredTiger:
+    engineConfig:
+      cacheSizeGB: 1.5          # 物理内存的 50% 减去 1GB（默认是 (RAM-1GB)/2）
+      journalCompressor: snappy
+    collectionConfig:
+      blockCompressor: snappy   # 数据块压缩，节省磁盘 + IO（snappy 兼顾速度/压缩比）
+    indexConfig:
+      prefixCompression: true
+
+# === 系统日志 ===
+systemLog:
+  destination: file
+  logAppend: true
+  path: /var/log/mongodb/mongod.log
+  logRotate: reopen             # 配合 logrotate 切割
+
+# === 进程管理 ===
+processManagement:
+  fork: false                   # systemd 管理模式下保持 false
+  pidFilePath: /var/run/mongodb/mongod.pid
+  timeZoneInfo: /usr/share/zoneinfo
+
+# === 网络 ===
+net:
+  port: 27017
+  bindIp: 127.0.0.1             # 改 0.0.0.0 之前务必先开 authorization
+  maxIncomingConnections: 1000
+  # tls:                        # 公网/跨机部署务必开 TLS
+  #   mode: requireTLS
+  #   certificateKeyFile: /etc/mongo/mongo.pem
+  #   CAFile: /etc/mongo/ca.pem
+
+# === 安全 ===
+security:
+  authorization: enabled        # 创建管理员账号后必开！
+  # keyFile: /etc/mongo/keyfile  # 副本集成员之间认证用
+
+# === 慢查询 ===
+operationProfiling:
+  mode: slowOp                  # off / slowOp / all
+  slowOpThresholdMs: 100        # 超过 100ms 记录到 system.profile
+  slowOpSampleRate: 1.0
+
+# === 副本集（高可用，单机可不写）===
+# replication:
+#   replSetName: rs0
+
+# === 分片（水平扩容，单机可不写）===
+# sharding:
+#   clusterRole: shardsvr
+```
+
+应用配置：
+```bash
+sudo systemctl restart mongod
+sudo journalctl -u mongod -n 30 --no-pager
+```
+
+### 创建管理员（authorization 启用前的最后一步）
+
+启用 authorization 之前先创建好账号，否则 enabled 之后就连不进去了。
+完整流程参见前面 "创建管理员账号" 一节。
+
+### 副本集快速搭建（3 节点最小集群）
+
+`mongod.conf` 在三台机器都加：
+```yaml
+replication:
+  replSetName: rs0
+```
+
+任意一台启动后：
+```javascript
+mongosh
+> rs.initiate({
+    _id: "rs0",
+    members: [
+      { _id: 0, host: "node1.example.com:27017" },
+      { _id: 1, host: "node2.example.com:27017" },
+      { _id: 2, host: "node3.example.com:27017" }
+    ]
+  })
+> rs.status()       // 等几秒，观察 PRIMARY/SECONDARY 角色就绪
+```
+
+应用连接串改成 SRV / multi-host 形式：
+```
+mongodb://node1,node2,node3/?replicaSet=rs0&readPreference=secondaryPreferred
+```
+
+### 备份 / 恢复速查
+
+```bash
+# 完整备份（dump 整库）
+mongodump --uri="mongodb://admin:pwd@localhost" -o /var/backups/mongo/$(date +%F)
+
+# 单库备份
+mongodump --uri="mongodb://admin:pwd@localhost/myapp" -o /backup/
+
+# 还原
+mongorestore --uri="mongodb://admin:pwd@localhost" /var/backups/mongo/2024-01-15/
+
+# 副本集场景：在线物理备份（更快）
+sudo cp -al /var/lib/mongodb /var/backups/mongo-physical
+# 但要先 db.fsyncLock() 锁定写入；副本集集群推荐用 mongodump --oplog
+```

@@ -2,7 +2,7 @@
  * @Author: fool
  * @Date: 2026-05-19 21:03:39
  * @LastEditors: fool
- * @LastEditTime: 2026-05-22 16:00:13
+ * @LastEditTime: 2026-05-22 21:10:33
  * @FilePath: \EnvForge\README.md
  * @Description:  
  * @Note:  
@@ -43,6 +43,9 @@ export ENVFORGE_MASTER_KEY=$(node -e "console.log(require('crypto').randomBytes(
 docker compose up -d
 ```
 
+> 完整的从零部署步骤（前置依赖、HTTPS 反代、systemd 自启、备份恢复、升级卸载、排错）见
+> **[docs/DEPLOY.md](./docs/DEPLOY.md)**。
+
 ## 沙盒演示（含一台 Ubuntu target VM，免买 VPS）
 
 ```bash
@@ -57,6 +60,8 @@ docker compose -f docker-compose.demo.yml up -d
 |------|------|
 | [docs/PRODUCT.md](./docs/PRODUCT.md) | 产品定位、信息架构、用户角色、隐私模型、Roadmap |
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | 工程架构、目录结构、引擎设计、关键决策 |
+| [docs/DEPLOY.md](./docs/DEPLOY.md) | Docker 从零部署：依赖、HTTPS、systemd、备份、升级、排错 |
+| [docs/DEPLOY_SELF.md](./docs/DEPLOY_SELF.md) | 用 EnvForge 自管 EnvForge 宿主机：5 次 UI 点击替代 80 行手工配置 |
 | [docs/STATUS.md](./docs/STATUS.md) | 当前实现状态、启动命令、测试 |
 
 ## 技术栈

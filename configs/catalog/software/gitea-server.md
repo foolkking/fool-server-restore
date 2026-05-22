@@ -83,3 +83,198 @@ sudo journalctl -u gitea -n 30 --no-pager
 ## 隐私说明
 
 `/etc/gitea/app.ini` 含数据库连接信息和 SECRET_KEY；备份这台机器时，记得排除或加密这个文件。EnvForge 的环境捕获默认会扫描其中的 secret 值并脱敏。
+
+## /etc/gitea/app.ini 关键 section
+
+Gitea 的所有运行时行为都在 `app.ini` 里——首次 web 安装向导生成基础内容后，
+后续所有调整都改这个文件。下面是常用的几个 section（每个 section 末尾配示例值）。
+
+> **改完一定要重启 Gitea**：`sudo systemctl restart gitea`。
+> 部分 section（mailer / cache）支持热加载，重启更稳。
+
+### `[server]` — 端口、域名、SSH
+
+```ini
+[server]
+PROTOCOL          = http                         ; 走反向代理时保持 http；不挂代理跑 HTTPS 时改 https
+DOMAIN            = git.example.com
+ROOT_URL          = https://git.example.com/
+HTTP_ADDR         = 127.0.0.1                    ; 仅本机监听，让 nginx 反代；裸跑改 0.0.0.0
+HTTP_PORT         = 3000
+
+; 内置 SSH server（端口已被 sshd 占用 22 时用）
+START_SSH_SERVER  = true
+SSH_PORT          = 2222                         ; clone 用 ssh://git@host:2222/...
+SSH_LISTEN_HOST   = 0.0.0.0
+SSH_LISTEN_PORT   = 2222
+
+; 大仓库 push 必须给够时间
+LFS_START_SERVER  = true
+LFS_JWT_SECRET    = <运行 gitea generate secret JWT_SECRET 生成>
+```
+
+### `[database]` — 数据库后端
+
+```ini
+; SQLite（默认，单机够用）
+[database]
+DB_TYPE  = sqlite3
+PATH     = /var/lib/gitea/data/gitea.db
+
+; PostgreSQL（推荐，> 100 用户必上）
+[database]
+DB_TYPE  = postgres
+HOST     = 127.0.0.1:5432
+NAME     = gitea
+USER     = gitea
+PASSWD   = <强密码>
+SSL_MODE = disable                              ; 同机用 disable；跨机改 require + ssl
+
+; MySQL/MariaDB
+[database]
+DB_TYPE  = mysql
+HOST     = 127.0.0.1:3306
+NAME     = gitea
+USER     = gitea
+PASSWD   = <强密码>
+CHARSET  = utf8mb4
+```
+
+### `[mailer]` — 邮件提醒（注册激活、issue 提醒）
+
+```ini
+[mailer]
+ENABLED      = true
+PROTOCOL     = smtps                            ; smtp / smtps / smtp+starttls
+SMTP_ADDR    = smtp.gmail.com
+SMTP_PORT    = 465
+USER         = git-notify@example.com
+PASSWD       = <SMTP 密码或 app password>
+FROM         = "Gitea <git-notify@example.com>"
+SUBJECT_PREFIX = "[Gitea] "
+```
+
+测试邮件发送：用户菜单 → Site Administration → Configuration → Send Test Email。
+
+### `[security]` — 关键安全开关
+
+```ini
+[security]
+INSTALL_LOCK                  = true            ; 安装完成后锁定，防止有人重新跑 /install
+SECRET_KEY                    = <gitea generate secret SECRET_KEY 生成>
+INTERNAL_TOKEN                = <gitea generate secret INTERNAL_TOKEN 生成>
+PASSWORD_HASH_ALGO            = pbkdf2_hi
+LOGIN_REMEMBER_DAYS           = 7
+DISABLE_GIT_HOOKS             = true            ; 强烈建议开！git hooks 等于服务器命令执行
+```
+
+### `[service]` — 注册策略
+
+```ini
+[service]
+DISABLE_REGISTRATION              = true        ; 公开实例必关，否则被刷垃圾仓库
+REQUIRE_SIGNIN_VIEW               = false       ; 改 true 仓库要登录才能看
+REGISTER_EMAIL_CONFIRM            = true
+ENABLE_NOTIFY_MAIL                = true
+DEFAULT_ALLOW_CREATE_ORGANIZATION = true
+DEFAULT_ENABLE_TIMETRACKING       = true
+NO_REPLY_ADDRESS                  = noreply.localhost
+```
+
+### `[oauth2]` / `[openid]` — 第三方登录
+
+```ini
+[openid]
+ENABLE_OPENID_SIGNIN = true
+ENABLE_OPENID_SIGNUP = true
+WHITELISTED_URIS     = "https://accounts.google.com https://github.com"
+```
+
+UI 里 → Site Administration → Authentication Sources → Add → 选 OAuth2 / LDAP / SMTP / SSPI 等接入企业身份。
+
+### `[storage]` — 大文件 / Avatar / LFS 改 S3
+
+```ini
+[storage]
+STORAGE_TYPE = local                            ; 默认本地
+
+; 改 minio / S3：
+[storage]
+STORAGE_TYPE  = minio
+MINIO_ENDPOINT       = minio.example.com:9000
+MINIO_ACCESS_KEY_ID  = gitea
+MINIO_SECRET_ACCESS_KEY = <密钥>
+MINIO_BUCKET         = gitea
+MINIO_LOCATION       = us-east-1
+MINIO_USE_SSL        = false
+```
+
+### `[log]` — 日志级别
+
+```ini
+[log]
+MODE      = console                             ; console / file
+LEVEL     = info                                ; trace / debug / info / warn / error
+ROOT_PATH = /var/lib/gitea/log
+
+[log.file]
+LEVEL = warn
+FILE_NAME = gitea.log
+LOG_ROTATE = true
+MAX_DAYS = 7
+```
+
+### `[cron]` / `[cron.update_mirrors]` — 定时任务
+
+Gitea 内置定时任务：清理旧 session、刷新 mirror 仓库等。可调度间隔：
+
+```ini
+[cron.update_mirrors]
+SCHEDULE = @every 10m                           ; 拉取 mirror 仓库间隔
+[cron.repo_health_check]
+SCHEDULE = @every 24h
+[cron.archive_cleanup]
+SCHEDULE = @midnight
+OLDER_THAN = 24h
+```
+
+### CLI 工具速查
+
+```bash
+# 生成各种 secret 值
+sudo -u git gitea generate secret SECRET_KEY
+sudo -u git gitea generate secret JWT_SECRET
+sudo -u git gitea generate secret INTERNAL_TOKEN
+
+# 改密码
+sudo -u git gitea admin user change-password --username admin --password "..."
+
+# 创建管理员
+sudo -u git gitea admin user create --admin --username root --password "..." --email "..."
+
+# 转 SQLite → PostgreSQL（迁移）
+sudo systemctl stop gitea
+sudo -u git gitea dump -c /etc/gitea/app.ini -t /tmp -f /tmp/gitea-dump.zip
+# 改 app.ini 的 DB_TYPE 为 postgres，再 restore
+sudo -u git gitea migrate -c /etc/gitea/app.ini
+
+# 修复仓库元数据不一致
+sudo -u git gitea doctor check --all
+sudo -u git gitea doctor check --fix
+```
+
+### 备份建议
+
+最关键的两份内容：
+```bash
+# 1. app.ini（含 SECRET_KEY，丢了重启后所有 token / OAuth 失效）
+sudo cp /etc/gitea/app.ini /backup/
+
+# 2. 数据库 + 仓库目录
+sudo systemctl stop gitea
+sudo tar czf /backup/gitea-data-$(date +%F).tar.gz /var/lib/gitea
+sudo systemctl start gitea
+
+# 或者用 gitea 自带 dump（含 db + repos + attachments + lfs）
+sudo -u git gitea dump -c /etc/gitea/app.ini -f /backup/gitea-$(date +%F).zip
+```

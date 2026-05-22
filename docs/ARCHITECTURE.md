@@ -305,6 +305,12 @@ export ENVFORGE_MASTER_KEY=$(node -e "console.log(require('crypto').randomBytes(
 docker compose up -d
 ```
 
+> 从零开始的详细步骤（装 Docker、生成 master key、git clone、配 .env、HTTPS 反代、
+> systemd 自启、备份恢复、升级卸载、排错）见 **[docs/DEPLOY.md](./DEPLOY.md)**。
+>
+> 想用 EnvForge 自己来加固 EnvForge 宿主机（5 次 UI 点击替代 80 行手工配置）见
+> **[docs/DEPLOY_SELF.md](./DEPLOY_SELF.md)**。
+
 ### 沙盒演示（含一台 Ubuntu target VM）
 
 ```bash

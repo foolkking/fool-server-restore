@@ -25,94 +25,26 @@ tasks:
       name: nginx
       state: present
 
-  # 禁用发行版自带的 default server。三个常见位置：
-  #   1. Ubuntu/Debian: /etc/nginx/sites-enabled/default
-  #   2. RHEL/CentOS/Anolis/Rocky: /etc/nginx/conf.d/default.conf
-  #   3. RHEL 系新版：直接内嵌在 /etc/nginx/nginx.conf 主文件里的 server { listen 80; ... } 块
-  # 这些 default 都标了 default_server 或 server_name _，会拦截请求返回小写 "nginx"
-  # 的 404 页面，让 envforge-default.conf 看上去"配了等于没配"。
-  # 备份到 .envforge.bak 而不是删，方便回滚。
+  # 禁用发行版自带的 default server（Ubuntu sites-enabled/default + RHEL conf.d/default.conf）。
+  # 这两个文件都标了 default_server 或 server_name localhost/_，会在用户用 IP 访问、
+  # 或 DNS 解析不一致时拦截请求并返回 nginx 默认 404 页面（小写 "nginx" 那个），
+  # 让我们的 envforge-default.conf 看上去"配了等于没配"。
+  # 备份到 .envforge.bak 而不是 rm，防误删；卸载时可恢复。
   - name: Disable distro-provided default server (避免 default_server 抢占)
     module: shell
     args:
       cmd: |
-        # 1. Ubuntu/Debian: sites-enabled/default 是软链 → sites-available/default
+        # Ubuntu/Debian: sites-enabled/default 是软链 → sites-available/default
         if [ -e /etc/nginx/sites-enabled/default ]; then
           sudo mv /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/default.envforge.bak
           echo "Disabled /etc/nginx/sites-enabled/default"
         fi
-        # 2. RHEL/CentOS/Anolis/Rocky: conf.d/default.conf 是普通文件
+        # RHEL/CentOS/Anolis/Rocky: conf.d/default.conf 是普通文件
         if [ -e /etc/nginx/conf.d/default.conf ] && [ ! -e /etc/nginx/conf.d/default.conf.envforge.bak ]; then
           sudo mv /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf.envforge.bak
           echo "Disabled /etc/nginx/conf.d/default.conf"
         fi
-        # 3. /etc/nginx/nginx.conf 内嵌的 server 块（RHEL 系常见）。
-        #    用 awk 跟踪大括号深度——遇到含 "include /etc/nginx/default.d/" 的
-        #    server 块整段注释掉，加 envforge 块标签做幂等。
-        if [ -f /etc/nginx/nginx.conf ] && grep -qE 'include\s+/etc/nginx/default\.d/' /etc/nginx/nginx.conf; then
-          if grep -q '>>> envforge: nginx-conf-default-disabled >>>' /etc/nginx/nginx.conf; then
-            echo "nginx.conf default server already disabled by EnvForge"
-          else
-            sudo cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.envforge.bak
-            sudo awk '
-              BEGIN { depth = 0; in_server = 0; buf = ""; matched = 0 }
-              {
-                line = $0
-                # 计算本行 { 和 } 的净增量（粗略，不处理字符串里的花括号——
-                # nginx 配置里几乎不会有，可接受）
-                opens = gsub(/\{/, "{", line); line = $0
-                closes = gsub(/\}/, "}", line); line = $0
-                # 是否本行开始一个 server 块？
-                if (in_server == 0 && match(line, /^[ \t]*server[ \t]*\{/)) {
-                  in_server = 1; buf = line; depth = opens - closes
-                  if (depth == 0) {
-                    # 单行 server 块（罕见）
-                    if (buf ~ /default\.d/) print_commented(buf)
-                    else print buf
-                    in_server = 0; buf = ""
-                  }
-                  next
-                }
-                if (in_server == 1) {
-                  buf = buf "\n" line
-                  depth += opens - closes
-                  if (depth <= 0) {
-                    # 块结束
-                    if (buf ~ /\/etc\/nginx\/default\.d\//) {
-                      print_commented(buf); matched++
-                    } else {
-                      print buf
-                    }
-                    in_server = 0; buf = ""
-                  }
-                  next
-                }
-                print line
-              }
-              END {
-                if (in_server == 1) {
-                  # 文件末尾仍未闭合 → 原样输出（不破坏）
-                  print buf
-                }
-                if (matched > 0) {
-                  print "# matched " matched " default server block(s)" > "/dev/stderr"
-                }
-              }
-              function print_commented(b,    n, lines, i) {
-                print "# >>> envforge: nginx-conf-default-disabled >>>"
-                print "# 这段是发行版自带的 default server，会返回小写 nginx 的 404。"
-                print "# 由 EnvForge 自动注释（备份: nginx.conf.envforge.bak）。"
-                n = split(b, lines, "\n")
-                for (i = 1; i <= n; i++) {
-                  if (lines[i] ~ /^[[:space:]]*$/) print lines[i]
-                  else print "#" lines[i]
-                }
-                print "# <<< envforge: nginx-conf-default-disabled <<<"
-              }
-            ' /etc/nginx/nginx.conf.envforge.bak | sudo tee /etc/nginx/nginx.conf > /dev/null
-            echo "Disabled inline default server in /etc/nginx/nginx.conf"
-          fi
-        fi
+        # 都不存在时（重装或精简版）静默通过
 
   # 孤儿 nginx 清理：systemd 之外手工跑过 `sudo nginx`（或 nginx 服务异常退出
   # 但 worker 残留）会留下 systemd 不认识的进程，导致 systemctl restart 时

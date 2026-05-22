@@ -154,3 +154,186 @@ sudo cat /var/lib/jenkins/secrets/initialAdminPassword
 
 - initial admin 密码在 `/var/lib/jenkins/secrets/initialAdminPassword`，仅 jenkins 用户可读。
 - Jenkins 自身不发遥测，但很多插件会（如 Adobe Analytics 插件）。
+
+## 关键配置文件 / 路径
+
+```
+/etc/default/jenkins (Ubuntu)        # 启动参数：JVM 选项、HTTP 端口、JENKINS_HOME
+/etc/sysconfig/jenkins (RHEL)        # 同上
+/lib/systemd/system/jenkins.service  # systemd 单元（不要直接改，用 override）
+/var/lib/jenkins/                    # JENKINS_HOME（核心数据目录）
+├── config.xml                       # 全局配置
+├── jenkins.model.JenkinsLocationConfiguration.xml   # Jenkins URL 等
+├── credentials.xml                  # 全局凭据（加密存储）
+├── secrets/                         # SECRET key + 加密 token
+├── jobs/                            # 每个 Job 一个目录（含构建历史 build/）
+├── plugins/                         # 已装插件 .hpi/.jpi
+├── workspace/                       # 各 Job 的工作区（构建产物）
+├── nodes/                           # Agent 节点定义
+└── users/                           # 本地认证用户
+/var/log/jenkins/jenkins.log         # 主日志
+```
+
+> **JENKINS_HOME (`/var/lib/jenkins`) = Jenkins 的全部状态**。备份/迁移的全部就是这一个目录。
+
+### `/etc/default/jenkins`（Ubuntu）/ `/etc/sysconfig/jenkins`（RHEL）
+
+控制 systemd 启动 Jenkins 时的 Java 参数 + 监听端口：
+
+```bash
+# 端口
+HTTP_PORT=8080
+HTTPS_PORT=-1                          # -1 = 不开 HTTPS（推荐通过反代上 HTTPS）
+
+# JVM 参数（堆 + GC + 字符集）
+JAVA_ARGS="-Djava.awt.headless=true \
+  -Xms2g -Xmx2g \
+  -XX:+UseG1GC \
+  -XX:+ExplicitGCInvokesConcurrent \
+  -XX:+ParallelRefProcEnabled \
+  -XX:+UseStringDeduplication \
+  -Dfile.encoding=UTF-8 \
+  -Duser.timezone=Asia/Shanghai \
+  -Djenkins.install.runSetupWizard=false"  # 已经初始化过的实例可跳过向导
+
+# Jenkins 自带参数
+JENKINS_ARGS="--httpPort=$HTTP_PORT \
+  --httpListenAddress=127.0.0.1 \        # 仅本机监听，挂反代时用
+  --prefix=/jenkins"                     # URL 前缀，挂在 /jenkins/ 路径下时填
+```
+
+> Ubuntu 22+ 上 jenkins.service 不再读 `/etc/default/jenkins`，要用 systemd override：
+> ```bash
+> sudo systemctl edit jenkins
+> ```
+> 在打开的编辑器里写：
+> ```
+> [Service]
+> Environment="JAVA_OPTS=-Xms2g -Xmx2g -Duser.timezone=Asia/Shanghai"
+> Environment="JENKINS_OPTS=--httpListenAddress=127.0.0.1"
+> ```
+
+改完：
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart jenkins
+```
+
+### Reverse-proxy（必备）：禁用 jenkins 直接 HTTPS，全部托给 nginx
+
+`Manage Jenkins` → `Configure System` → `Jenkins URL` 填 `https://jenkins.example.com/`
+（让生成的链接是 https）。
+
+nginx 配置：
+```nginx
+upstream jenkins {
+    server 127.0.0.1:8080;
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name jenkins.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/jenkins.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/jenkins.example.com/privkey.pem;
+
+    # Jenkins 文件上传 / 大产物下载需要大 buffer
+    client_max_body_size 200m;
+    sendfile             on;
+
+    location / {
+        proxy_pass         http://jenkins;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Connection        "";
+
+        proxy_read_timeout 600s;            # 长跑的 console 流式输出需要
+
+        # WebSocket（agent ↔ master 通信、blue ocean 实时面板）
+        proxy_set_header Upgrade             $http_upgrade;
+        proxy_set_header Connection          $http_connection;
+    }
+}
+```
+
+### CSP（Content Security Policy）放宽（HTML report 显示问题）
+
+Jenkins 默认 CSP 很严格——很多 HTML report（test report、coverage）样式/JS 不显示。
+方法 1（推荐，每个用户都生效）：`Manage Jenkins` → `Script Console`：
+```groovy
+System.setProperty("hudson.model.DirectoryBrowserSupport.CSP",
+    "sandbox allow-scripts; default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval';")
+```
+但**重启 Jenkins 后失效**。要持久化，改 `JAVA_ARGS` 加：
+```
+-Dhudson.model.DirectoryBrowserSupport.CSP="sandbox allow-scripts; default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval';"
+```
+
+### Jenkins-as-Code（JCasC）— 配置可重复
+
+UI 点配置改的所有内容都是 `JENKINS_HOME/*.xml` 文件。直接改 XML 容易出错——
+推荐用 **JCasC 插件** 把配置写成 yaml：
+
+```bash
+# 装插件 configuration-as-code
+# Manage Jenkins → Plugins → Available → "Configuration as Code"
+```
+
+`/var/lib/jenkins/casc.yaml`：
+```yaml
+jenkins:
+  systemMessage: "Welcome to EnvForge-managed Jenkins"
+  numExecutors: 4
+  mode: NORMAL
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: ${ADMIN_PASS}        # 从环境变量读
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+unclassified:
+  location:
+    url: https://jenkins.example.com/
+
+  gitHubPluginConfig:
+    configs:
+      - name: github.com
+        apiUrl: https://api.github.com
+        credentialsId: github-token
+```
+
+设环境变量 `CASC_JENKINS_CONFIG=/var/lib/jenkins/casc.yaml`，下次启动应用。
+
+### 备份 JENKINS_HOME（每天必做）
+
+```bash
+sudo systemctl stop jenkins
+sudo tar czf /backup/jenkins-$(date +%F).tar.gz \
+    --exclude='/var/lib/jenkins/workspace' \
+    --exclude='/var/lib/jenkins/caches' \
+    --exclude='/var/lib/jenkins/.cache' \
+    /var/lib/jenkins
+sudo systemctl start jenkins
+```
+
+`workspace/` 和 `caches/` 可以从源码 + 缓存重建，不用备份。
+
+### 升级 Jenkins
+
+```bash
+sudo apt-get update && sudo apt-get install --only-upgrade jenkins   # Ubuntu
+sudo dnf upgrade jenkins                                              # RHEL
+sudo systemctl restart jenkins
+```
+
+升级前**务必先备份 JENKINS_HOME**——大版本升级偶尔有不向后兼容的插件。

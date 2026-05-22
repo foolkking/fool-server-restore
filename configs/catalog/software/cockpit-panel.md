@@ -89,3 +89,212 @@ curl -k https://localhost:9090/ -o /dev/null -w '%{http_code}'   # 应返回 200
 
 - Cockpit 用系统已有认证，不存独立凭据。
 - 不发任何遥测数据。
+
+## 配置文件 / 路径速查
+
+```
+/etc/cockpit/
+├── cockpit.conf                    # 主配置（很少需要改）
+├── ws-certs.d/                     # TLS 证书（按字母序加载第一个）
+│   ├── 0-self-signed.cert          # 默认自签证书
+│   └── 0-letsencrypt.cert          # 替换为 LE 证书时这个名字
+└── disallowed-users                # 这个文件里列的用户禁止登录（默认有 root）
+
+/usr/share/cockpit/                  # 内置模块
+/usr/lib/cockpit-bridge              # 后台 bridge 进程
+
+/lib/systemd/system/cockpit.socket   # socket activation（按需启动主服务）
+/lib/systemd/system/cockpit.service  # 主服务单元
+```
+
+> Cockpit 平时**不在跑**——`cockpit.socket` 监听 9090，第一个浏览器访问时才启动 service。
+> 没访问时几乎不占资源，所以"装上不用也没事"。
+
+### `/etc/cockpit/cockpit.conf` 主要选项
+
+```ini
+[WebService]
+# 监听端口 / 地址（默认 9090，监听所有 IP）
+# 这个文件里改 Origin 不改端口；改端口要改 cockpit.socket
+Origins = https://cockpit.example.com wss://cockpit.example.com
+ProtocolHeader = X-Forwarded-Proto      ; 挂反代时让 Cockpit 知道 scheme
+ForwardedForHeader = X-Forwarded-For
+LoginTitle = "EnvForge 服务器"            ; 登录页标题
+LoginTo = false                          ; 禁用 "Connect to other host" 输入框
+AllowUnencrypted = false                 ; HTTPS 强制（默认 false）
+
+[Session]
+IdleTimeout = 30                         ; 闲置 30 分钟自动登出
+Banner = /etc/issue                      ; 登录页底部显示的 banner
+
+[Log]
+Fatal = criticals
+```
+
+改完 reload：
+```bash
+sudo systemctl restart cockpit
+```
+
+### 改监听端口（不再用 9090）
+
+Cockpit 的 9090 端口是 systemd socket 决定的，不是 cockpit.conf。要改：
+
+```bash
+sudo systemctl edit cockpit.socket
+```
+
+```ini
+[Socket]
+ListenStream=
+ListenStream=9999
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart cockpit.socket
+sudo firewall-cmd --add-port=9999/tcp --permanent && sudo firewall-cmd --reload
+```
+
+### 替换自签证书为 Let's Encrypt
+
+```bash
+# 用 Certbot 签证书
+sudo certbot certonly --standalone -d cockpit.example.com
+
+# 软链或拷贝到 cockpit 证书目录
+sudo cp /etc/letsencrypt/live/cockpit.example.com/fullchain.pem \
+        /etc/cockpit/ws-certs.d/0-letsencrypt.cert
+sudo cp /etc/letsencrypt/live/cockpit.example.com/privkey.pem \
+        /etc/cockpit/ws-certs.d/0-letsencrypt.key
+
+# 权限
+sudo chown root:cockpit-ws /etc/cockpit/ws-certs.d/0-letsencrypt.*
+sudo chmod 640 /etc/cockpit/ws-certs.d/0-letsencrypt.*
+
+# 重启
+sudo systemctl restart cockpit
+```
+
+> 文件名按字母序加载。`0-letsencrypt.*` 会先于 `0-self-signed.*` 加载（如果都存在）。
+> 把自签的删了/改名为 `9-self-signed.*` 也行。
+
+#### 自动续签后自动 reload
+
+```bash
+sudo tee /etc/letsencrypt/renewal-hooks/deploy/cockpit.sh <<'EOF'
+#!/bin/sh
+DOMAIN="cockpit.example.com"
+cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem /etc/cockpit/ws-certs.d/0-letsencrypt.cert
+cp /etc/letsencrypt/live/$DOMAIN/privkey.pem   /etc/cockpit/ws-certs.d/0-letsencrypt.key
+chown root:cockpit-ws /etc/cockpit/ws-certs.d/0-letsencrypt.*
+chmod 640 /etc/cockpit/ws-certs.d/0-letsencrypt.*
+systemctl restart cockpit
+EOF
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/cockpit.sh
+```
+
+### 反向代理（推荐生产部署）
+
+挂在 nginx 后用 443 + 域名比直接暴露 9090 安全。`cockpit.conf` 必须配 Origins / ProtocolHeader：
+
+```ini
+[WebService]
+Origins = https://cockpit.example.com wss://cockpit.example.com
+ProtocolHeader = X-Forwarded-Proto
+AllowUnencrypted = true                 ; 仅允许从信任的反代过来的 HTTP（不让外网直连）
+```
+
+nginx：
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name cockpit.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/cockpit.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cockpit.example.com/privkey.pem;
+
+    # 长连接（终端 / 文件传输）
+    proxy_read_timeout 7d;
+    proxy_buffering    off;
+
+    location / {
+        proxy_pass         http://127.0.0.1:9090;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        $http_connection;
+    }
+}
+```
+
+⚠️ 记得在防火墙关掉 9090 直接暴露：`sudo firewall-cmd --remove-port=9090/tcp --permanent && sudo firewall-cmd --reload`
+
+### 限制谁能登录
+
+`/etc/cockpit/disallowed-users` 每行一个用户名（默认含 root）：
+```
+root
+admin                     # 阻止某些账号通过 Cockpit 登录
+```
+
+**白名单更严**：通过 PAM 限制：
+```bash
+# /etc/pam.d/cockpit 里加（在 auth 段开头）：
+auth required pam_listfile.so item=user sense=allow file=/etc/cockpit/allowed-users
+```
+
+`/etc/cockpit/allowed-users`：
+```
+ops
+deploy
+```
+
+### 加 Cockpit 模块（功能扩展）
+
+每个模块是独立的包：
+
+```bash
+# Ubuntu
+sudo apt-get install \
+  cockpit-storaged           \  # 磁盘 / LVM / 文件系统管理
+  cockpit-podman             \  # Podman 容器
+  cockpit-machines           \  # KVM 虚拟机
+  cockpit-networkmanager     \  # 网络配置
+  cockpit-packagekit         \  # 软件包升级 GUI
+  cockpit-pcp                \  # Performance Co-Pilot 监控
+
+# RHEL
+sudo dnf install \
+  cockpit-storaged cockpit-podman cockpit-machines \
+  cockpit-networkmanager cockpit-packagekit cockpit-pcp
+```
+
+刷新浏览器，左侧菜单就有新条目。
+
+### 多机管理（dashboard）
+
+Cockpit 可以一个面板管多台机器（不需要在每台机器上单独打开）：
+
+UI 顶部 → "Add new host" → 输入其它机器的 SSH 地址 + 凭据。
+前提：所有机器都装了 cockpit + 你的用户在那些机器上能 SSH。
+
+### 排查登录失败
+
+最常见 3 个原因：
+```bash
+# 1. 用户 shell 是 nologin
+grep ^username /etc/passwd | tail -1
+# 如果显示 /usr/sbin/nologin，登录会被 PAM 拒绝
+sudo usermod -s /bin/bash username
+
+# 2. PAM 配置问题
+sudo journalctl -u cockpit -n 50 --no-pager | grep -i auth
+
+# 3. cockpit-ws 用户读不到证书
+sudo ls -la /etc/cockpit/ws-certs.d/
+# 应该是 root:cockpit-ws 640
+```

@@ -1085,52 +1085,122 @@ button:disabled {
   margin-bottom: 18px;
 }
 
-.markdown-preview h1,
-.markdown-preview h2,
-.markdown-preview h3 {
-  color: #0f172a;
-  letter-spacing: 0;
-  margin: 22px 0 10px;
+/* ────────────────────────────────────────────────────────────────
+ * GitHub-style Markdown body
+ *
+ * github-markdown-css 给 .markdown-body 注入完整的 GitHub 风格排版
+ * （标题层级、表格、引用块、列表、内联 code、分割线等），我们只在
+ * 它的基础上做三件事：
+ *   1. 字号微调到 15px（GitHub 默认 16px 略大）+ 给标题留呼吸空间
+ *   2. 让代码块继承 highlight.js 的 github-dark-dimmed 主题（已在
+ *      MarkdownOverlay.tsx 里 import），覆盖 github-markdown-css 自带
+ *      的浅色 .markdown-body pre 样式
+ *   3. 兜底支持暗色模式（github-markdown-css 自己也响应
+ *      prefers-color-scheme，但要确保我们的 wrapper 颜色一致）
+ * ──────────────────────────────────────────────────────────────── */
+
+.markdown-preview .markdown-body {
+  background: transparent;
+  color: #24292f;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+               Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  font-size: 15px;
+  line-height: 1.7;
 }
 
-.markdown-preview h1 {
-  font-size: 30px;
+/* GitHub 默认在容器上加 margin，我们已有 padding，去掉避免双重间距 */
+.markdown-preview .markdown-body > *:first-child { margin-top: 0; }
+.markdown-preview .markdown-body > *:last-child  { margin-bottom: 0; }
+
+/* 标题加点呼吸感 + 强调下划线（GitHub 风） */
+.markdown-preview .markdown-body h1 { font-size: 28px; padding-bottom: 10px; }
+.markdown-preview .markdown-body h2 { font-size: 22px; padding-bottom: 8px; margin-top: 32px; }
+.markdown-preview .markdown-body h3 { font-size: 18px; margin-top: 24px; }
+.markdown-preview .markdown-body h4 { font-size: 16px; }
+
+/* 内联 code：浅灰背景 + 等宽字体 + 圆角，跟 GitHub 一致 */
+.markdown-preview .markdown-body code:not(pre code) {
+  background: rgba(175, 184, 193, 0.2);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+               "Liberation Mono", monospace;
+  font-size: 86%;
+  padding: 0.2em 0.4em;
 }
 
-.markdown-preview h2 {
-  border-bottom: 1px solid #e5e7eb;
-  font-size: 24px;
-  padding-bottom: 8px;
-}
-
-.markdown-preview h3 {
-  font-size: 19px;
-}
-
-.markdown-preview p,
-.markdown-preview li {
-  color: #334155;
-  font-size: 16px;
-  line-height: 1.72;
-}
-
-.markdown-preview ul {
-  margin: 8px 0 16px;
-  padding-left: 22px;
-}
-
-.markdown-preview pre {
-  background: #f6f8fa;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  color: #202124;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 14px;
-  line-height: 1.65;
-  margin: 14px 0;
+/* 代码块：使用 hljs 的 github-dark-dimmed 主题色（深色，适合长代码） */
+.markdown-preview .markdown-body pre {
+  background-color: #22272e !important;       /* github-dark-dimmed bg */
+  border: 1px solid #2d333b;
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  margin: 16px 0;
   overflow: auto;
-  padding: 16px;
-  white-space: pre-wrap;
+  padding: 14px 16px;
+}
+
+.markdown-preview .markdown-body pre code,
+.markdown-preview .markdown-body pre code.hljs {
+  background: transparent !important;
+  border: 0;
+  color: #adbac7;                              /* github-dark-dimmed fg */
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+               "Liberation Mono", monospace;
+  font-size: inherit;
+  padding: 0;
+  white-space: pre;                            /* 不强制换行，保持代码可读 */
+  word-wrap: normal;
+}
+
+/* 表格：撑满宽度 + 斑马纹 */
+.markdown-preview .markdown-body table {
+  border-collapse: collapse;
+  display: table;
+  margin: 16px 0;
+  width: 100%;
+}
+
+.markdown-preview .markdown-body table th,
+.markdown-preview .markdown-body table td {
+  border: 1px solid #d0d7de;
+  padding: 8px 14px;
+}
+
+.markdown-preview .markdown-body table tr:nth-child(2n) {
+  background-color: #f6f8fa;
+}
+
+.markdown-preview .markdown-body table th {
+  background-color: #f6f8fa;
+  font-weight: 600;
+}
+
+/* 引用块：左侧蓝色竖条（替代 GitHub 默认灰条，更有视觉层次） */
+.markdown-preview .markdown-body blockquote {
+  border-left: 4px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.06);
+  border-radius: 0 8px 8px 0;
+  color: #475569;
+  margin: 16px 0;
+  padding: 10px 16px;
+}
+
+.markdown-preview .markdown-body blockquote > :first-child { margin-top: 0; }
+.markdown-preview .markdown-body blockquote > :last-child  { margin-bottom: 0; }
+
+/* 链接 */
+.markdown-preview .markdown-body a {
+  color: #0969da;
+  text-decoration: none;
+}
+.markdown-preview .markdown-body a:hover { text-decoration: underline; }
+
+/* 任务列表（GFM `- [ ]` / `- [x]`）— 让 checkbox 与文字对齐 */
+.markdown-preview .markdown-body input[type="checkbox"] {
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 .privacy-note {
@@ -4128,6 +4198,44 @@ button:disabled {
   .markdown-preview {
     background: #0f172a;
     border-color: #334155;
+  }
+
+  /* 暗色下 markdown-body 文字 / 链接 / 表格 / blockquote 颜色 */
+  .markdown-preview .markdown-body {
+    color: #c9d1d9;
+  }
+  .markdown-preview .markdown-body h1,
+  .markdown-preview .markdown-body h2,
+  .markdown-preview .markdown-body h3,
+  .markdown-preview .markdown-body h4 {
+    color: #e6edf3;
+    border-bottom-color: #21262d;
+  }
+  .markdown-preview .markdown-body code:not(pre code) {
+    background: rgba(110, 118, 129, 0.4);
+    color: #f0f6fc;
+  }
+  /* 代码块本来就是 github-dark-dimmed，暗色下保持原样 */
+  .markdown-preview .markdown-body table th,
+  .markdown-preview .markdown-body table td {
+    border-color: #30363d;
+  }
+  .markdown-preview .markdown-body table tr:nth-child(2n) {
+    background-color: #161b22;
+  }
+  .markdown-preview .markdown-body table th {
+    background-color: #161b22;
+  }
+  .markdown-preview .markdown-body blockquote {
+    background: rgba(59, 130, 246, 0.1);
+    border-left-color: #58a6ff;
+    color: #8b949e;
+  }
+  .markdown-preview .markdown-body a {
+    color: #58a6ff;
+  }
+  .markdown-preview .markdown-body hr {
+    background-color: #30363d;
   }
 
   .avatar {
