@@ -72,4 +72,34 @@ describe("classifyError", () => {
     assert.ok(err.fixHintZh !== undefined);
     assert.ok(err.fixHintEn !== undefined);
   });
+
+  test("does not crash when command is an array (e.g. package args.name)", () => {
+    // Regression: the `package` module passes `args.name` as the command,
+    // which can be an array of package names. classifyError must not crash.
+    const err = classifyError(
+      "E: Unable to locate package nope",
+      "",
+      100,
+      ["bat", "btop", "caddy"] as unknown as string
+    );
+    assert.equal(err.category, "not_found");
+    assert.ok(err.messageZh);
+  });
+
+  test("does not crash when command is undefined or null", () => {
+    const err1 = classifyError("some error", "", 1, undefined as unknown as string);
+    assert.ok(err1);
+    const err2 = classifyError("some error", "", 1, null as unknown as string);
+    assert.ok(err2);
+  });
+
+  test("does not crash when command is an object", () => {
+    const err = classifyError(
+      "permission denied",
+      "",
+      1,
+      { not: "a string" } as unknown as string
+    );
+    assert.equal(err.category, "permission");
+  });
 });

@@ -35,8 +35,15 @@ export function classifyError(
   stderr: string,
   stdout: string,
   exitCode: number,
-  command: string
+  command: string | string[] | unknown
 ): ClassifiedError {
+  // Normalise — `command` may be a string, an array of package names, or
+  // anything else (e.g. an object) depending on the calling module.
+  const cmdStr = Array.isArray(command)
+    ? command.join(" ")
+    : typeof command === "string"
+      ? command
+      : String(command ?? "");
   const combined = `${stderr}\n${stdout}`.toLowerCase();
 
   // 网络/连接错误
@@ -62,7 +69,7 @@ export function classifyError(
     combined.includes("access denied") ||
     combined.includes("operation not permitted")
   ) {
-    if (combined.includes("sudo") || command.startsWith("sudo")) {
+    if (combined.includes("sudo") || cmdStr.startsWith("sudo")) {
       return {
         category: "permission",
         messageZh: "sudo 权限不足，无法执行此操作",
@@ -90,7 +97,7 @@ export function classifyError(
     combined.includes("e: package") ||
     combined.includes("no match for argument")
   ) {
-    const pkgMatch = command.match(/install\s+(-y\s+)?(\S+)/);
+    const pkgMatch = cmdStr.match(/install\s+(-y\s+)?(\S+)/);
     const pkgName = pkgMatch?.[2] ?? "package";
     return {
       category: "not_found",
@@ -141,7 +148,7 @@ export function classifyError(
     combined.includes("failed to start") ||
     combined.includes("service not found")
   ) {
-    const svcMatch = command.match(/systemctl\s+\w+\s+(\S+)/);
+    const svcMatch = cmdStr.match(/systemctl\s+\w+\s+(\S+)/);
     const svcName = svcMatch?.[1] ?? "service";
     return {
       category: "not_found",

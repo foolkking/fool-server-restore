@@ -1,3 +1,12 @@
+<!--
+ * @Author: fool
+ * @Date: 2026-05-19 21:03:39
+ * @LastEditors: fool
+ * @LastEditTime: 2026-05-22 14:02:00
+ * @FilePath: \EnvForge\README.md
+ * @Description:  
+ * @Note:  
+-->
 # EnvForge
 
 自托管的 Linux 服务器配置管理平台。通过 SSH 连接虚拟机，一键安装软件、管理配置、保留环境，把整套系统状态变成可重用的 Playbook。

@@ -42,19 +42,48 @@ echo "===SECTION:os-release==="
 cat /etc/os-release 2>/dev/null | grep -E '^(PRETTY_NAME|ID|VERSION_ID)=' | head -3
 
 echo "===SECTION:apt==="
-# Collect user-installed apt packages by subtracting Ubuntu's installation baseline
-# from apt-mark showmanual. Uses temp files (POSIX-compatible, no bash-isms).
-# Reference: https://askubuntu.com/questions/17823/how-to-list-all-installed-packages
+# Strategy (in order of preference):
+#   1. /var/log/installer/initial-status.gz exists (official Ubuntu installer)
+#      → manual list MINUS that baseline = user installs
+#   2. /var/log/dpkg.log* parseable (most cloud images including Aliyun)
+#      → "user installs" = packages whose first install was >2 hours after earliest dpkg activity
+#        (cloud-init seeds the image in the first few minutes of boot; anything installed
+#         hours/days later is user-driven)
+#   3. apt-mark showmanual fallback (last resort; TS filter will drop known cloud bloat)
 APT_TMP=$(mktemp -d 2>/dev/null || mktemp -d -t envforge.XXXXXX 2>/dev/null || echo /tmp/envforge.$$)
 mkdir -p "$APT_TMP" 2>/dev/null
 apt-mark showmanual 2>/dev/null | sort -u > "$APT_TMP/manual.txt"
+
 if [ -f /var/log/installer/initial-status.gz ]; then
   gzip -dc /var/log/installer/initial-status.gz 2>/dev/null | sed -n 's/^Package: //p' | sort -u > "$APT_TMP/base.txt"
   comm -23 "$APT_TMP/manual.txt" "$APT_TMP/base.txt" > "$APT_TMP/user.txt"
+elif ls /var/log/dpkg.log* >/dev/null 2>&1; then
+  # Parse dpkg.log* for install events. Use awk-only timestamp comparison
+  # (string-sortable ISO format YYYY-MM-DD HH:MM:SS) - no per-line date subprocess.
+  zcat -f /var/log/dpkg.log* 2>/dev/null \
+    | awk '/ install /{pkg=$4; sub(/:.*/, "", pkg); print $1" "$2"|"pkg}' \
+    | sort -u > "$APT_TMP/installs.txt" 2>/dev/null
+  if [ -s "$APT_TMP/installs.txt" ]; then
+    FIRST_TS=$(head -1 "$APT_TMP/installs.txt" | cut -d'|' -f1)
+    # Compute cutoff: 2 hours after FIRST_TS, in same string-sortable format.
+    CUTOFF_TS=$(date -d "$FIRST_TS + 2 hours" '+%Y-%m-%d %H:%M:%S' 2>/dev/null)
+    if [ -n "$CUTOFF_TS" ]; then
+      awk -F'|' -v cutoff="$CUTOFF_TS" '$1 > cutoff {print $2}' "$APT_TMP/installs.txt" \
+        | sort -u > "$APT_TMP/user.txt"
+      # Intersect with manual list to filter out auto-installed dependencies
+      comm -12 "$APT_TMP/manual.txt" "$APT_TMP/user.txt" > "$APT_TMP/final.txt"
+      mv "$APT_TMP/final.txt" "$APT_TMP/user.txt"
+    else
+      cp "$APT_TMP/manual.txt" "$APT_TMP/user.txt"
+    fi
+  else
+    cp "$APT_TMP/manual.txt" "$APT_TMP/user.txt"
+  fi
 else
-  # Fallback: no initial-status.gz (Docker/non-Ubuntu) — use full manual list, TS filter will clean up
+  # Last resort: use full manual list, TS filter cleans cloud bloat
   cp "$APT_TMP/manual.txt" "$APT_TMP/user.txt"
 fi
+
 while IFS= read -r pkg; do
   [ -z "$pkg" ] && continue
   ver=$(dpkg-query -W -f='\${Version}' "$pkg" 2>/dev/null)
@@ -698,6 +727,15 @@ const SYSTEM_APT_PREFIXES = [
   "parted", "mdadm", "lvm2", "dmsetup", "multipath", "open-iscsi",
   "sg3-utils", "smartmontools", "ethtool", "bridge-utils", "irqbalance",
   "numactl", "pciutils", "usbutils", "dmidecode",
+  // Cloud-image-specific (Aliyun, AWS, GCP, Azure)
+  "aliyun-", "alibaba-", "ali-cloud", "amazon-", "aws-", "ec2-", "gce-",
+  "google-", "azure-cli", "azure-cli-", "tianyi-", "cloudmonitor-",
+  "perl", "perl-modules", "fonts-", "x11-", "xserver-", "xinit", "xauth",
+  "icu-", "libicu", "libldap", "libsasl", "libpam", "libssl", "libxml",
+  "libgssapi", "libkrb5", "libk5", "libsqlite", "libnss", "libnspr",
+  // Cloud-init / firstboot artifacts
+  "growpart", "cloud-utils", "cloud-guest", "open-vm-tools", "qemu-guest",
+  "virtio-",
 ];
 
 const SYSTEM_APT_EXACT = new Set([
@@ -708,6 +746,13 @@ const SYSTEM_APT_EXACT = new Set([
   "tmux", "at", "acl", "attr", "ftp", "telnet", "traceroute", "whois",
   "dnsutils", "vlan", "mcelog", "sosreport", "lshw", "hwinfo", "inxi",
   "tcl", "openssh-server",
+  // Common Aliyun / cloud image bloat
+  "aliyun-assist", "aliyun-cli", "tzdata", "ucf", "xz-utils", "bzip2",
+  "gzip", "tar", "gnupg", "gnupg-l10n", "gnupg-utils", "gpg", "gpg-agent",
+  "dirmngr", "groff-base", "rsyslog", "logsave", "mlocate", "plocate",
+  "publicsuffix", "ntfs-3g", "wireless-regdb", "wpasupplicant",
+  "libnewt0.52", "libsemanage-common", "libtext-charwidth-perl",
+  "libterm-readkey-perl", "ncurses-term",
 ]);
 
 function isSystemAptPackage(name: string): boolean {

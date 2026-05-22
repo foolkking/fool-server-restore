@@ -54,8 +54,10 @@ export async function captureEnvironment(executor: SshExecutor): Promise<Capture
   const allRedactions: RedactionHit[] = [];
   const skippedPaths: string[] = [];
 
-  // 1. 已安装的 apt 包：用户手动安装减去 Ubuntu 基线（initial-status.gz）
-  //    fallback：没有 initial-status.gz 时用 apt-mark showmanual + TS 过滤
+  // 1. 已安装的 apt 包：三层 fallback 策略
+  //    1) 有 /var/log/installer/initial-status.gz → manual minus baseline (Ubuntu installer)
+  //    2) 有 /var/log/dpkg.log → 安装时间晚于首次 dpkg 活动 +2h 的包（云镜像如 Aliyun 适用）
+  //    3) 都没有 → apt-mark showmanual + TS 过滤
   try {
     const captureScript = String.raw`
 TMPD=$(mktemp -d 2>/dev/null || mktemp -d -t envforge.XXXXXX 2>/dev/null || echo /tmp/envforge.$$)
@@ -64,6 +66,23 @@ apt-mark showmanual 2>/dev/null | sort -u > "$TMPD/manual.txt"
 if [ -f /var/log/installer/initial-status.gz ]; then
   gzip -dc /var/log/installer/initial-status.gz 2>/dev/null | sed -n 's/^Package: //p' | sort -u > "$TMPD/base.txt"
   comm -23 "$TMPD/manual.txt" "$TMPD/base.txt"
+elif ls /var/log/dpkg.log* >/dev/null 2>&1; then
+  zcat -f /var/log/dpkg.log* 2>/dev/null \
+    | awk '/ install /{pkg=$4; sub(/:.*/, "", pkg); print $1" "$2"|"pkg}' \
+    | sort -u > "$TMPD/installs.txt" 2>/dev/null
+  if [ -s "$TMPD/installs.txt" ]; then
+    FIRST_TS=$(head -1 "$TMPD/installs.txt" | cut -d'|' -f1)
+    CUTOFF_TS=$(date -d "$FIRST_TS + 2 hours" '+%Y-%m-%d %H:%M:%S' 2>/dev/null)
+    if [ -n "$CUTOFF_TS" ]; then
+      awk -F'|' -v cutoff="$CUTOFF_TS" '$1 > cutoff {print $2}' "$TMPD/installs.txt" \
+        | sort -u > "$TMPD/user.txt"
+      comm -12 "$TMPD/manual.txt" "$TMPD/user.txt"
+    else
+      cat "$TMPD/manual.txt"
+    fi
+  else
+    cat "$TMPD/manual.txt"
+  fi
 else
   cat "$TMPD/manual.txt"
 fi
