@@ -25,6 +25,38 @@ tasks:
       name: nginx
       state: present
 
+  # 预检：端口 listen_port 是否已被 nginx 之外的服务占用
+  # 提前在这里 fail，比之后 systemctl start 报 "bind() to 0.0.0.0:80 failed"
+  # 有用得多——能直接告诉用户是谁占着端口、怎么处理。
+  - name: Pre-check listen_port is not held by another service
+    module: shell
+    args:
+      cmd: |
+        PORT="{{ listen_port }}"
+        # ss 列出所有 LISTEN 的 socket；过滤本端口
+        OCC=$(sudo ss -tlnp 2>/dev/null | awk -v p=":${PORT}$" 'NR>1 && $4 ~ p { print; exit }')
+        if [ -z "$OCC" ]; then
+          echo "✓ Port $PORT is free"
+          exit 0
+        fi
+        # nginx 自己占用 → OK，service: restarted 会重新绑
+        if echo "$OCC" | grep -q '"nginx"'; then
+          echo "✓ Port $PORT is currently held by nginx itself (will be restarted)"
+          exit 0
+        fi
+        # 是别人 → fail with friendly message
+        echo "✗ Port $PORT is already occupied by another process:"
+        echo "  $OCC"
+        echo ""
+        echo "请先停止占用进程，或在表单中改用其它 listen_port（如 8080）。"
+        echo "常见 web 服务的关停 + 禁用自启命令："
+        echo "  apache2  : sudo systemctl disable --now apache2"
+        echo "  httpd    : sudo systemctl disable --now httpd"
+        echo "  caddy    : sudo systemctl disable --now caddy"
+        echo "  lighttpd : sudo systemctl disable --now lighttpd"
+        echo "  openresty: sudo systemctl disable --now openresty"
+        exit 1
+
   - name: Render default site config (静态站点)
     module: template
     args:
@@ -92,12 +124,18 @@ tasks:
 verify:
   - name: nginx process is active
     cmd: "systemctl is-active --quiet nginx"
-    hint: "服务未启动，运行 'sudo systemctl status nginx' 查看具体原因（端口冲突、配置错误等）。"
+    hint: |
+      Nginx 没启起来。最常见原因（按可能性排序）：
+        1. 端口 {{ listen_port }} 被另一个 web 服务占用——sudo ss -tlnp | grep :{{ listen_port }} 查谁
+           常见占用：apache2 / httpd / caddy / openresty / 容器
+        2. 配置文件语法错误——sudo nginx -t 看具体行号
+        3. SELinux/AppArmor 阻止 nginx 监听该端口（非 80/443 时常见）
+      详情：sudo systemctl status nginx --no-pager -l && sudo journalctl -u nginx -n 50
   - name: HTTP endpoint responds
     cmd: "curl -fsS -m 5 http://localhost:{{ listen_port }}/ -o /dev/null -w '%{http_code}'"
     expect_stdout: "200"
-    hint: "Nginx 在线但 HTTP 请求失败，可能是上游 {{ upstream_url }} 不可达（如开启了反向代理但后端没启动）。"
+    hint: "Nginx 在线但 HTTP 请求失败：开了反向代理时多半是上游 {{ upstream_url }} 不可达（后端没启动 / IP 错 / 端口错）。关闭反向代理时则可能是 server_name 不匹配，curl localhost 走了默认站点。"
   - name: nginx config is syntactically valid
     cmd: "sudo nginx -t 2>&1"
     expect_stdout: "syntax is ok"
-    hint: "Nginx 配置语法错误。运行 'sudo nginx -t' 查看具体一行。"
+    hint: "Nginx 配置语法错误。看 stderr 里 'in /etc/nginx/...' 这一行的具体错误。常见：proxy_pass URL 格式错、include 路径不存在。"

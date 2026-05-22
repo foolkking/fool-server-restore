@@ -110,12 +110,20 @@ export function ConfigureRunPanel({
   const [preview, setPreview] = useState<PlaybookPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
-  // Re-init when schema changes (different Playbook selected)
+  // Re-init when schema changes (different Playbook selected, or initial null→object
+  // when MarketPage's fetchVarsSchema resolves after the modal has already mounted).
   useEffect(() => {
     setValues(initialValues(schema));
     setLocalErrors({});
     setPreview(null);
     setPreviewError(null);
+    // Critical: reset previewing too. Otherwise, when the modal mounts with
+    // schema=null (parent's fetchVarsSchema not yet resolved), the auto-preview
+    // effect below sets previewing=true, and when schema later becomes non-null,
+    // that effect's cleanup marks the in-flight request as "cancelled"; the
+    // request's finally then skips setPreviewing(false) because cancelled=true.
+    // Result: previewing stuck at true → "生成预览中…" button never recovers.
+    setPreviewing(false);
   }, [schema]);
 
   // 没有 schema 的 Playbook：打开时自动获取预览（不需要用户填表单）。
@@ -136,6 +144,9 @@ export function ConfigureRunPanel({
         setPreviewError(result.error ?? (locale === "zh" ? "预览失败" : "Preview failed"));
       }
     }).finally(() => {
+      // 即使 cancelled 也要清 previewing — 否则父组件 schema 后续变化触发
+      // 复位 effect 时会再清一次（cheap），但万一中途 unmount，也不留垃圾 state。
+      // cancelled 的请求已经被 if (cancelled) 拦截，不会污染数据。
       if (!cancelled) setPreviewing(false);
     });
     return () => { cancelled = true; };
