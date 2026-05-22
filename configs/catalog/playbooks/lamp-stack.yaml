@@ -1,9 +1,17 @@
-# Playbook: LAMP 全栈
+# Playbook: LAMP 栈 (Linux + Apache + MySQL + PHP)
+#
+# 经典的 PHP 应用栈。EnvForge 处理跨发行版包名差异：
+#   apache2 (Ubuntu) → httpd (RHEL)
+#   mysql (Ubuntu) → mysqld (RHEL)
+#   libapache2-mod-php (Ubuntu) → php (RHEL 自带 mod_php)
 name: LAMP stack (Apache + MySQL + PHP)
 hosts: all
 
+vars:
+  mysql_root_password: "change-me"
+
 tasks:
-  - name: Install Apache, MySQL, PHP
+  - name: Install Apache + MySQL + PHP + 常用模块
     module: package
     args:
       name:
@@ -14,24 +22,55 @@ tasks:
         - php-mysql
         - php-curl
         - php-mbstring
+        - php-xml
+        - php-gd
+        - php-zip
       state: present
+      ignore_missing: true
 
-  - name: Enable apache2
+  - name: Enable + start Apache
     module: service
     args:
       name: apache2
       enabled: true
       state: started
 
-  - name: Enable mysql
+  - name: Enable + start MySQL
     module: service
     args:
       name: mysql
       enabled: true
       state: started
 
-  - name: Verify Apache is serving
+  - name: Set MySQL root password (best-effort)
     module: shell
     args:
-      cmd: "curl -s -o /dev/null -w '%{http_code}' http://localhost | grep -q 200 && echo 'Apache OK'"
+      cmd: |
+        if mysql -uroot -e "SELECT 1;" 2>/dev/null; then
+          mysql -uroot <<EOF
+        ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ mysql_root_password }}';
+        FLUSH PRIVILEGES;
+        EOF
+        elif sudo mysql -uroot -e "SELECT 1;" 2>/dev/null; then
+          sudo mysql -uroot <<EOF
+        ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ mysql_root_password }}';
+        FLUSH PRIVILEGES;
+        EOF
+        fi
     ignore_errors: true
+
+verify:
+  - name: Apache responds with HTTP 200
+    cmd: "curl -fsS -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1/"
+    expect_stdout: "200"
+    hint: "Apache 没响应。看 'sudo systemctl status apache2 / httpd'。"
+  - name: PHP works
+    cmd: "php --version | head -1"
+    expect_stdout: "PHP"
+    hint: "PHP 没装上：包名翻译有问题，看任务日志。"
+  - name: PHP-MySQL extension loaded
+    cmd: "php -m | grep -E 'mysqli|pdo_mysql' | head -1"
+    hint: "PHP MySQL 扩展没加载：检查 php-mysql 包是否装上了。"
+  - name: MySQL root password works
+    cmd: "mysql -uroot -p'{{ mysql_root_password }}' -e 'SELECT VERSION();' 2>&1 | head -1"
+    hint: "MySQL root 密码不对。可能 MySQL 还没初始化（首次安装可能有临时密码在 /var/log/mysqld.log）。"

@@ -1,0 +1,29 @@
+{
+  "node_version": {
+    "type": "choice",
+    "label": "Node.js 版本",
+    "labelEn": "Node.js version",
+    "default": "22",
+    "options": [
+      { "value": "20", "label": "20 LTS (Iron, 2026-04 EOL)" },
+      { "value": "22", "label": "22 LTS (Jod, 推荐)" },
+      { "value": "24", "label": "24 (最新非 LTS)" }
+    ]
+  },
+  "app_port": {
+    "type": "port",
+    "label": "Node 应用监听端口",
+    "labelEn": "App port",
+    "default": 3000,
+    "help": "你的 Node 应用监听的端口（nginx 反代的目标）。常见 3000 / 4000 / 8080。"
+  },
+  "domain": {
+    "type": "string",
+    "label": "对外域名（可选）",
+    "labelEn": "Public domain",
+    "default": "",
+    "validate": "^[a-zA-Z0-9.-]*$",
+    "placeholder": "myapp.example.com",
+    "help": "服务器对外的域名，用作 nginx 的 server_name。留空 = 用 IP 访问。"
+  }
+}

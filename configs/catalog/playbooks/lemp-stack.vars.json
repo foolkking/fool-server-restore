@@ -1,0 +1,11 @@
+{
+  "mysql_root_password": {
+    "type": "password",
+    "label": "MySQL root 密码",
+    "labelEn": "MySQL root password",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "required": true,
+    "help": "MySQL 根账号密码。留空自动生成 24 位（运行结束显示一次）。"
+  }
+}

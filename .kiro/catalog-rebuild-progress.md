@@ -98,10 +98,10 @@ Developer tools:
 
 ## 第 5 批：组合 (combo)
 
-- [x] lamp-stack (combo)
-- [x] lemp-stack (combo)
-- [x] docker-compose-dev (combo)
-- [x] node-production-deploy (combo)
+- [x] lamp-stack (combo + schema mysql_root_password) ← ✓ batch5
+- [x] lemp-stack (combo + schema mysql_root_password) ← ✓ batch5
+- [x] docker-compose-dev (combo, no-schema) ← ✓ batch5
+- [x] node-production-deploy (combo + schema node_version/app_port/domain) ← ✓ batch5
 
 ## 验证
 

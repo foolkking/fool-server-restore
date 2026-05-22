@@ -1,44 +1,118 @@
 # Playbook: Node.js 生产部署
-name: Node.js production deploy (Node LTS + PM2 + Nginx)
+#
+# 一键搭起 Node.js 生产部署所需要的全部基础设施：
+#   - Node 22 LTS（NodeSource 官方仓库，跨发行版）
+#   - nginx（监听 80，反代到 PM2 管理的 Node 进程）
+#   - PM2（进程管理）
+name: Node.js production deploy (Node LTS + PM2 + Nginx reverse proxy)
 hosts: all
 
+vars:
+  node_version: "22"
+  app_port: 3000
+  domain: ""
+
 tasks:
-  - name: Install curl for NodeSource setup
+  - name: Install dependencies
     module: package
     args:
-      name: curl
+      name: ["curl", "ca-certificates"]
       state: present
 
-  - name: Add NodeSource LTS repository (Node 20.x)
+  - name: Add NodeSource apt repo (Debian/Ubuntu)
     module: shell
     args:
-      cmd: "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1 && ! command -v node >/dev/null 2>&1; then
+          curl -fsSL https://deb.nodesource.com/setup_{{ node_version }}.x | sudo -E bash -
+        fi
       creates: /etc/apt/sources.list.d/nodesource.list
 
-  - name: Install Node.js and Nginx
+  - name: Add NodeSource yum repo (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && ! command -v node >/dev/null 2>&1; then
+          curl -fsSL https://rpm.nodesource.com/setup_{{ node_version }}.x | sudo -E bash -
+        fi
+      creates: /etc/yum.repos.d/nodesource-nodejs.repo
+
+  - name: Install Node.js + nginx
     module: package
     args:
-      name:
-        - nodejs
-        - nginx
+      name: ["nodejs", "nginx"]
       state: present
-      update_cache: true
 
-  - name: Install PM2 globally via npm
+  - name: Install PM2 globally
     module: shell
     args:
       cmd: "sudo npm install -g pm2"
-      creates: /usr/lib/node_modules/pm2
+      creates: /usr/local/bin/pm2
 
-  - name: Setup PM2 startup script
+  - name: Setup PM2 systemd startup (for current login user)
     module: shell
     args:
-      cmd: "sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u $USER --hp $HOME || true"
+      cmd: |
+        USR=$(logname 2>/dev/null || echo $USER)
+        if [ "$USR" != "root" ] && id -u "$USR" >/dev/null 2>&1; then
+          sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u "$USR" --hp /home/$USR
+        fi
     ignore_errors: true
 
-  - name: Enable nginx service
+  - name: Render nginx reverse-proxy site for Node app
+    module: template
+    args:
+      dest: /etc/nginx/conf.d/envforge-node.conf
+      content: |
+        # /etc/nginx/conf.d/envforge-node.conf — managed by EnvForge
+
+        upstream node_app {
+            server 127.0.0.1:{{ app_port }};
+            keepalive 32;
+        }
+
+        server {
+            listen 80;
+            server_name {{ domain }} _;
+
+            client_max_body_size 50m;
+
+            location / {
+                proxy_pass http://node_app;
+                proxy_http_version 1.1;
+                proxy_set_header Host              $host;
+                proxy_set_header X-Real-IP         $remote_addr;
+                proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+
+                # WebSocket 支持
+                proxy_set_header Upgrade           $http_upgrade;
+                proxy_set_header Connection        "upgrade";
+
+                proxy_read_timeout 120s;
+            }
+
+            access_log /var/log/nginx/node-access.log;
+            error_log  /var/log/nginx/node-error.log;
+        }
+
+  - name: Enable + start nginx
     module: service
     args:
       name: nginx
       enabled: true
-      state: started
+      state: reloaded
+
+verify:
+  - name: node + npm work
+    cmd: "node --version && npm --version"
+    hint: "Node 没装好。看任务日志的 NodeSource setup 那步。"
+  - name: pm2 works
+    cmd: "pm2 --version"
+    hint: "PM2 没装上：'sudo npm install -g pm2' 失败。"
+  - name: nginx is active
+    cmd: "systemctl is-active --quiet nginx"
+    hint: "nginx 没起来。可能 80 端口被占了。"
+  - name: nginx config is valid
+    cmd: "sudo nginx -t 2>&1 | grep 'syntax is ok'"
+    hint: "nginx 配置语法错。'sudo nginx -t' 看具体哪行。"

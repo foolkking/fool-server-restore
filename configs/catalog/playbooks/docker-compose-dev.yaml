@@ -1,47 +1,97 @@
 # Playbook: Docker + Compose 开发环境
+#
+# 这个组合 = docker-host-profile + 一些开发友好的默认（debug 友好的日志驱动、
+# 当前用户加 docker 组、装一个 docker 命令补全）。
 name: Docker development environment
 hosts: all
 
 tasks:
-  - name: Install prerequisites for Docker
+  - name: Install prerequisites
     module: package
     args:
-      name:
-        - ca-certificates
-        - curl
-        - gnupg
+      name: ["ca-certificates", "curl", "gnupg"]
       state: present
 
-  - name: Add Docker official GPG key and repository
+  - name: Add Docker apt repo (Debian/Ubuntu)
     module: shell
     args:
       cmd: |
-        sudo install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-        sudo apt-get update -qq
+        if command -v apt-get >/dev/null 2>&1; then
+          sudo install -m 0755 -d /etc/apt/keyrings
+          source /etc/os-release
+          curl -fsSL "https://download.docker.com/linux/${ID}/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update -qq
+        fi
       creates: /etc/apt/sources.list.d/docker.list
 
-  - name: Install Docker Engine, Compose plugin, Buildx plugin
+  - name: Add Docker yum repo (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/docker-ce.repo ]; then
+          sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        fi
+      creates: /etc/yum.repos.d/docker-ce.repo
+
+  - name: Install Docker + plugins
     module: package
     args:
-      name:
-        - docker-ce
-        - docker-ce-cli
-        - containerd.io
-        - docker-compose-plugin
-        - docker-buildx-plugin
+      name: ["docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin", "docker-compose-plugin"]
       state: present
 
-  - name: Enable docker service
+  - name: Render dev-friendly daemon.json (含日志轮转避免开发时被吃光磁盘)
+    module: copy
+    args:
+      dest: /etc/docker/daemon.json
+      content: |
+        {
+          "log-driver": "json-file",
+          "log-opts": {
+            "max-size": "50m",
+            "max-file": "3"
+          },
+          "experimental": false,
+          "features": {
+            "buildkit": true
+          }
+        }
+
+  - name: Enable + start docker
     module: service
     args:
       name: docker
       enabled: true
-      state: started
+      state: restarted
 
-  - name: Add current user to docker group (requires re-login)
+  - name: Add current user to docker group
     module: shell
     args:
-      cmd: "sudo usermod -aG docker $USER || true"
+      cmd: |
+        USR=$(logname 2>/dev/null || echo $USER)
+        if [ "$USR" != "root" ] && id -u "$USR" >/dev/null 2>&1; then
+          sudo usermod -aG docker "$USR"
+        fi
     ignore_errors: true
+
+  - name: Install docker compose bash completion (helpful for dev)
+    module: shell
+    args:
+      cmd: |
+        if [ -d /etc/bash_completion.d ] && ! [ -f /etc/bash_completion.d/docker ]; then
+          curl -fsSL https://raw.githubusercontent.com/docker/cli/master/contrib/completion/bash/docker -o /tmp/docker-completion 2>/dev/null && \
+            sudo mv /tmp/docker-completion /etc/bash_completion.d/docker || true
+        fi
+    ignore_errors: true
+
+verify:
+  - name: docker daemon active
+    cmd: "systemctl is-active --quiet docker"
+    hint: "docker 服务没起来。看 'sudo journalctl -u docker -n 30'。"
+  - name: docker compose v2 plugin works
+    cmd: "sudo docker compose version"
+    expect_stdout: "Docker Compose"
+    hint: "compose plugin 没装上。"
+  - name: hello-world container runs
+    cmd: "sudo docker run --rm hello-world 2>&1 | grep -E 'Hello from Docker'"
+    hint: "Docker 拉镜像失败：可能国内服务器到 docker.io 不通。建议用 docker-host-profile Playbook 配镜像加速。"

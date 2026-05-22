@@ -1,9 +1,15 @@
-# Playbook: LEMP 全栈
-name: LEMP stack (Nginx + MySQL + PHP-FPM)
+# Playbook: LEMP 栈 (Linux + Nginx + MySQL + PHP-FPM)
+#
+# LAMP 的现代版本——nginx 替代 apache。性能更好，配置更清晰。
+# PHP 通过 PHP-FPM (FastCGI) 运行，nginx 转发 .php 请求到 unix socket。
+name: LEMP stack (nginx + MySQL + PHP-FPM)
 hosts: all
 
+vars:
+  mysql_root_password: "change-me"
+
 tasks:
-  - name: Install Nginx, MySQL, PHP-FPM
+  - name: Install nginx + MySQL + PHP-FPM + 常用扩展
     module: package
     args:
       name:
@@ -13,24 +19,97 @@ tasks:
         - php-mysql
         - php-curl
         - php-mbstring
+        - php-xml
+        - php-gd
+        - php-zip
       state: present
+      ignore_missing: true
 
-  - name: Enable nginx
+  - name: Enable + start nginx
     module: service
     args:
       name: nginx
       enabled: true
       state: started
 
-  - name: Enable mysql
+  - name: Enable + start MySQL
     module: service
     args:
       name: mysql
       enabled: true
       state: started
 
-  - name: Verify Nginx is serving
+  - name: Enable + start PHP-FPM (best-effort, 服务名因版本不同)
     module: shell
     args:
-      cmd: "curl -s -o /dev/null -w '%{http_code}' http://localhost | grep -q 200 && echo 'Nginx OK'"
+      cmd: |
+        # 找到 PHP-FPM 服务名（php8.1-fpm / php8.3-fpm / php-fpm）
+        for SVC in php-fpm php8.3-fpm php8.2-fpm php8.1-fpm; do
+          if systemctl list-unit-files 2>/dev/null | grep -q "$SVC.service"; then
+            sudo systemctl enable --now $SVC
+            break
+          fi
+        done
+
+  - name: Render minimal nginx site for PHP
+    module: copy
+    args:
+      dest: /etc/nginx/conf.d/envforge-lemp.conf
+      content: |
+        # /etc/nginx/conf.d/envforge-lemp.conf — managed by EnvForge LEMP
+
+        server {
+            listen 80 default_server;
+            server_name _;
+            root /var/www/html;
+            index index.php index.html;
+
+            location / {
+                try_files $uri $uri/ =404;
+            }
+
+            location ~ \.php$ {
+                # 不同发行版/PHP 版本的 socket 路径不同，用通配
+                fastcgi_pass unix:/run/php/php-fpm.sock;
+                # 如果上面的不存在，常见路径：
+                # /var/run/php/php8.3-fpm.sock
+                # /run/php-fpm/www.sock
+                fastcgi_index index.php;
+                include fastcgi_params;
+                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            }
+
+            access_log /var/log/nginx/lemp-access.log;
+            error_log  /var/log/nginx/lemp-error.log;
+        }
+
+  - name: Reload nginx to pick up new site
+    module: shell
+    args:
+      cmd: "sudo nginx -t && sudo systemctl reload nginx"
+
+  - name: Set MySQL root password (best-effort)
+    module: shell
+    args:
+      cmd: |
+        if mysql -uroot -e "SELECT 1;" 2>/dev/null; then
+          mysql -uroot <<EOF
+        ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ mysql_root_password }}';
+        FLUSH PRIVILEGES;
+        EOF
+        elif sudo mysql -uroot -e "SELECT 1;" 2>/dev/null; then
+          sudo mysql -uroot <<EOF
+        ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ mysql_root_password }}';
+        FLUSH PRIVILEGES;
+        EOF
+        fi
     ignore_errors: true
+
+verify:
+  - name: nginx responds on port 80
+    cmd: "curl -fsS -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1/"
+    expect_stdout: "200|404"
+    hint: "nginx 没响应。常见：80 端口被 apache 占了（确认没装 lamp-stack 后再装 lemp）。"
+  - name: PHP-FPM service is active
+    cmd: "systemctl is-active --quiet php-fpm || systemctl is-active --quiet php8.3-fpm || systemctl is-active --quiet php8.2-fpm || systemctl is-active --quiet php8.1-fpm"
+    hint: "PHP-FPM 服务没起来。看 /var/log/php-fpm.log 或 journalctl -u php8.x-fpm。"
