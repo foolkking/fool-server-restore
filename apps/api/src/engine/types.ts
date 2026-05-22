@@ -35,6 +35,12 @@ export interface VerifyCheck {
   expect_stdout?: string;
   /** Optional: a description of what success looks like, shown in the UI when the check fails */
   hint?: string;
+  /**
+   * Optional: run the cmd inside a login shell (`bash -l -c ...`). Useful when
+   * the check needs PATH/env from /etc/profile.d/* or ~/.bashrc — for example
+   * after the Playbook called env_path. Default: false.
+   */
+  login?: boolean;
 }
 
 /** 单个任务调用一个模块 */

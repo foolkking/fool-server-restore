@@ -1,8 +1,18 @@
 # Playbook: Go 语言运行时
+#
+# 装到 /usr/local/go（系统级），用 env_path 把 PATH 加到 /etc/profile.d/golang.sh
+# (system) + 当前用户的 ~/.bashrc / ~/.zshenv / ~/.config/fish/config.fish (user)。
+# GOPATH 也用 env_path 设到用户作用域。
 name: Install Go language runtime
 hosts: all
 
 tasks:
+  - name: Install dependencies
+    module: package
+    args:
+      name: ["curl", "tar"]
+      state: present
+
   - name: Download and install Go (latest stable)
     module: shell
     args:
@@ -14,30 +24,39 @@ tasks:
         rm -f /tmp/go.tar.gz
       creates: /usr/local/go/bin/go
 
-  - name: Add Go to PATH in profile
-    module: lineinfile
+  - name: Add /usr/local/go/bin to system PATH
+    module: env_path
     args:
-      path: /etc/profile.d/golang.sh
-      line: 'export PATH=$PATH:/usr/local/go/bin'
-      create: true
+      name: PATH
+      value: /usr/local/go/bin
+      mode: append
+      scope: system
+      id: golang
 
-  - name: Set GOPATH in bashrc
-    module: lineinfile
+  - name: Set GOPATH for current user
+    module: env_path
     args:
-      path: ~/.bashrc
-      regexp: "^export GOPATH="
-      line: 'export GOPATH="$HOME/go"'
-      create: true
+      name: GOPATH
+      value: $HOME/go
+      mode: set
+      scope: user
+      id: golang-gopath
 
-  - name: Add GOPATH/bin to PATH in bashrc
-    module: lineinfile
+  - name: Add $GOPATH/bin to user PATH
+    module: env_path
     args:
-      path: ~/.bashrc
-      regexp: "^export PATH=.*GOPATH"
-      line: 'export PATH="$PATH:$GOPATH/bin"'
-      create: true
+      name: PATH
+      value: $HOME/go/bin
+      mode: append
+      scope: user
+      id: golang-gopath-bin
 
-  - name: Verify Go installation
-    module: shell
-    args:
-      cmd: "/usr/local/go/bin/go version"
+verify:
+  - name: go binary exists
+    cmd: "ls /usr/local/go/bin/go"
+    hint: "Go 二进制不在预期位置。"
+  - name: go runs (using login shell to pick up PATH)
+    cmd: "go version"
+    expect_stdout: "go version"
+    login: true
+    hint: "go 命令找不到。env_path 已经把 PATH 写到 /etc/profile.d/golang.sh，verify 用 login shell 启动应该能读到。如非 login shell 仍找不到，请直接调用 /usr/local/go/bin/go。"

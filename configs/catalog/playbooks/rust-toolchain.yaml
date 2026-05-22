@@ -1,9 +1,13 @@
-# Playbook: Rust 工具链
+# Playbook: Rust 工具链 (rustup)
+#
+# rustup 的安装脚本会自动写 ~/.cargo/env 和 ~/.bashrc/~/.profile。但我们额外用
+# env_path 显式确保 cargo bin 在所有 shell（bash/zsh/fish）的 PATH 里 — rustup
+# 默认只改 .bashrc/.profile，zsh/fish 用户得自己处理。
 name: Install Rust toolchain via rustup
 hosts: all
 
 tasks:
-  - name: Install build-essential and curl (required by rustup)
+  - name: Install build dependencies (rustup needs curl + cc + ssl)
     module: package
     args:
       name:
@@ -12,22 +16,30 @@ tasks:
         - pkg-config
         - libssl-dev
       state: present
+      ignore_missing: true
 
-  - name: Install rustup non-interactively
+  - name: Install rustup non-interactively (idempotent via creates)
     module: shell
     args:
-      cmd: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable"
-      creates: ~/.cargo/bin/rustc
+      cmd: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --no-modify-path"
+      creates: $HOME/.cargo/bin/rustc
 
-  - name: Add cargo bin to PATH in bashrc
-    module: lineinfile
+  - name: Add cargo bin to PATH (cross-shell)
+    module: env_path
     args:
-      path: ~/.bashrc
-      regexp: "^\\..*cargo/env"
-      line: '. "$HOME/.cargo/env"'
-      create: true
+      name: PATH
+      value: $HOME/.cargo/bin
+      mode: append
+      scope: user
+      id: rust-cargo
 
-  - name: Verify Rust installation
-    module: shell
-    args:
-      cmd: "source ~/.cargo/env && rustc --version && cargo --version"
+verify:
+  - name: rustc command works
+    cmd: "rustc --version"
+    expect_stdout: "rustc"
+    login: true
+    hint: "rustc 找不到。env_path 已经把 ~/.cargo/bin 写到 .bashrc/.zshenv，verify 用 login shell 启动应该能读到。"
+  - name: cargo command works
+    cmd: "cargo --version"
+    login: true
+    hint: "同上。"

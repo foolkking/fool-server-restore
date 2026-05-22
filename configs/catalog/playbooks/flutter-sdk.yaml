@@ -26,12 +26,14 @@ tasks:
         fi
       creates: /opt/flutter/bin/flutter
 
-  - name: Add /opt/flutter/bin to PATH (system-wide)
-    module: lineinfile
+  - name: Add /opt/flutter/bin to system PATH (cross-shell)
+    module: env_path
     args:
-      path: /etc/profile.d/flutter.sh
-      line: 'export PATH=$PATH:/opt/flutter/bin'
-      create: true
+      name: PATH
+      value: /opt/flutter/bin
+      mode: append
+      scope: system
+      id: flutter
 
   - name: Run flutter precache (download dart sdk + linux toolchain)
     module: shell

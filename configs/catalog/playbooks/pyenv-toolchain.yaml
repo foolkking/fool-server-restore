@@ -59,6 +59,19 @@ tasks:
         fi
       creates: "$HOME/.pyenv/bin/pyenv"
 
+  - name: Ensure pyenv is on PATH for all user shells (incl. fish)
+    # pyenv.run 自动写 ~/.bashrc 和 ~/.profile/.zshrc 的 init 段，但不写 fish。
+    # 这里额外用 env_path 保证 PYENV_ROOT/bin 出现在所有 shell 的 PATH 里。
+    # pyenv 完整工作还需要 `eval "$(pyenv init -)"` —— 那部分在 .bashrc/.zshrc/.zprofile
+    # 中由 pyenv.run 处理；fish 用户需要自己装 pyenv-fish 或调 status --is-interactive。
+    module: env_path
+    args:
+      name: PATH
+      value: $HOME/.pyenv/bin
+      mode: append
+      scope: user
+      id: pyenv
+
   - name: Install default Python version
     module: shell
     args:

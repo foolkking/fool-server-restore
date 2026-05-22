@@ -24,6 +24,7 @@ import { cronModule } from "./modules/cron.js";
 import { systemdUnitModule } from "./modules/systemd_unit.js";
 import { sysctlModule } from "./modules/sysctl.js";
 import { acmeModule } from "./modules/acme.js";
+import { envPathModule } from "./modules/env_path.js";
 import { classifyError } from "./errors.js";
 
 const REGISTRY: Record<string, AnsibleModule<any>> = {
@@ -43,7 +44,8 @@ const REGISTRY: Record<string, AnsibleModule<any>> = {
   cron: cronModule,
   systemd_unit: systemdUnitModule,
   sysctl: sysctlModule,
-  acme: acmeModule
+  acme: acmeModule,
+  env_path: envPathModule
 };
 
 export interface RunOptions {
@@ -280,7 +282,11 @@ export async function runPlaybook(
       options.onProgress?.(log);
 
       const resolvedCmd = substitute(check.cmd, vars) as string;
-      const r = await executor.exec(resolvedCmd);
+      // Optionally wrap in login shell so PATH from /etc/profile.d/* + ~/.bashrc are loaded
+      const finalCmd = check.login
+        ? `bash -l -c "$(echo ${Buffer.from(resolvedCmd, "utf8").toString("base64")} | base64 -d)"`
+        : resolvedCmd;
+      const r = await executor.exec(finalCmd);
       const stdout = r.stdout ?? "";
       const stderr = r.stderr ?? "";
       let pass = r.exitCode === 0;
