@@ -4,7 +4,7 @@
  * 在 capture / 上传配置文件前调用，把疑似 secret 替换为 <REDACTED-...>
  * 并返回命中清单，供前端展示给用户「这些行被脱敏了」。
  *
- * 设计原则（参考 PRIVACY_AND_RESTORE_STRATEGY.md）：
+ * 设计原则（参考 docs/PRODUCT.md 隐私模型章节）：
  * - 多层匹配：路径 / 关键字 / 内容形态
  * - 可读保留：脱敏后仍能看到原行结构（key 保留，value 替换）
  * - 防误杀：常见配置 KV（如 `bind 127.0.0.1`）不命中
