@@ -51,7 +51,8 @@ export function PreviewPanel({
   locale,
   onBack,
   onConfirm,
-  submitting
+  submitting,
+  hideBackButton
 }: {
   preview: PlaybookPreview;
   locale: Locale;
@@ -61,10 +62,12 @@ export function PreviewPanel({
   onConfirm: () => void;
   /** 父组件正在提交时锁住按钮 */
   submitting?: boolean;
+  /** 当 Playbook 没有 schema 时（直接进预览，没有"编辑"阶段），把"返回编辑"改成"取消" */
+  hideBackButton?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("tasks");
   const t = locale === "zh"
-    ? { back: "← 返回编辑", confirm: "✓ 确认并安装", submitting: "运行中…",
+    ? { back: "← 返回编辑", cancel: "取消", confirm: "✓ 确认并安装", submitting: "运行中…",
         tasks: "任务清单", files: "受影响文件", yaml: "完整 YAML",
         tasksDesc: "EnvForge 会按顺序执行以下任务（被 when: 跳过的会标灰）",
         filesDesc: "这些远端文件会被创建、修改或删除", filesEmpty: "此次运行不会修改任何文件（只装包/启服务）",
@@ -73,7 +76,7 @@ export function PreviewPanel({
         hiddenVarsLabel: "因表单条件而被隐藏的字段（不会传给运行器）：",
         skipped: "（跳过）", impact: "影响范围",
         actionLabels: { "create-or-replace": "创建/覆盖", "edit-line": "行级修改", "delete": "删除" } }
-    : { back: "← Back to edit", confirm: "✓ Apply & install", submitting: "Running…",
+    : { back: "← Back to edit", cancel: "Cancel", confirm: "✓ Apply & install", submitting: "Running…",
         tasks: "Tasks", files: "Affected files", yaml: "Rendered YAML",
         tasksDesc: "EnvForge will run these tasks in order (skipped ones are dimmed)",
         filesDesc: "These remote files will be created, modified, or deleted", filesEmpty: "No files will be modified by this run.",
@@ -105,7 +108,7 @@ export function PreviewPanel({
 
       <div className="preview-actions">
         <button type="button" className="ghost-action" onClick={onBack} disabled={submitting}>
-          <ChevronLeft size={14} /> {t.back}
+          {hideBackButton ? t.cancel : <><ChevronLeft size={14} /> {t.back}</>}
         </button>
         <button type="button" className="primary-action" onClick={onConfirm} disabled={submitting}>
           {submitting ? t.submitting : t.confirm}

@@ -287,9 +287,12 @@ export function MarketPage({
 
   /**
    * Open the configure-and-run modal for a Playbook. Fetches the vars schema
-   * and the guide markdown in parallel; if the Playbook has no schema, falls
-   * back to a direct install with default values (preserving the simpler UX
-   * for the 70+ Playbooks that don't need configuration).
+   * and the guide markdown in parallel.
+   *
+   * - 有 schema: 显示表单 → 用户填写 → 预览 → 确认安装
+   * - 无 schema: 直接进入预览阶段（任务清单 / 受影响文件 / YAML），用户确认即装
+   *
+   * 这样所有 Playbook 都走"先预览再执行"的安全流程，避免一点齿轮就闷头跑。
    */
   async function handleOpenConfigure(item: CatalogItem) {
     if (!canExecute) {
@@ -304,14 +307,7 @@ export function MarketPage({
         fetchVarsSchema(item.id),
         fetchCatalogGuide(item.id).catch(() => null)
       ]);
-      if (!schema) {
-        // No schema → just run directly with defaults. This keeps existing
-        // Playbooks working unchanged; only configurable ones get the modal.
-        setConfigureItem(null);
-        setConfigureLoading(false);
-        void handleExecute(item.id, false);
-        return;
-      }
+      // schema 为 null 时也打开 modal — ConfigureRunPanel 会跳过表单步骤直接进预览
       setConfigureSchema(schema);
       setConfigureGuide(guide);
     } catch (err) {
@@ -670,8 +666,9 @@ export function MarketPage({
         </div>
       ) : null}
 
-      {/* 配置并运行 split-pane modal — only renders when a Playbook has a vars schema */}
-      {configureItem && configureSchema ? (
+      {/* 配置并运行 split-pane modal — 所有 Playbook 都走预览流程：
+          有 schema 时显示表单，无 schema 时直接进预览 */}
+      {configureItem ? (
         <ConfigureRunPanel
           guide={configureGuide}
           schema={configureSchema}

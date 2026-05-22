@@ -1,16 +1,17 @@
 /**
- * ConfigureRunPanel — split-pane modal for configurable Playbooks.
+ * ConfigureRunPanel — split-pane modal for catalog Playbooks.
  *
- * 两阶段交互：
- *   1. 编辑表单（左：guide，右：表单字段）→ 用户点"预览"
- *   2. 预览（左：guide 仍可见，右：PreviewPanel 展示渲染 YAML / 任务清单 / 文件清单）
- *      → 用户点"确认并安装"才真正提交
+ * 三种工作流（schema 决定）：
+ *   1. 有 schema 的 Playbook（如 nginx / x-ui-panel / postgres）：
+ *      - 阶段 A：左 README，右表单 → 用户点"预览"
+ *      - 阶段 B：左 README，右 PreviewPanel（任务/文件/YAML）→ 用户确认安装
+ *   2. 没有 schema 的 Playbook（如 git-version-control / htop-tools）：
+ *      - 跳过阶段 A，打开时自动获取预览，直接进入阶段 B
+ *      - 用户仍能看到任务清单 / 受影响文件 / YAML，确认无误才执行
  *
- * 让用户在真正动远端机器之前看到完整的 "如果点 Run 会发生什么"。预览阶段可以
- * 随时返回编辑某个值，预览本身是纯本地计算（不连远端 SSH），即时返回。
+ * 让所有 Playbook 都走"先预览再执行"的安全流程，避免点齿轮就闷头跑。
  *
- * 没有 schema 的 Playbook 不走这个组件，由 MarketPage 直接 fallthrough 到
- * 简单的 install 流程。
+ * 预览本身是纯本地计算（不连远端 SSH），即时返回。
  */
 import React, { useState, useEffect, useMemo } from "react";
 import { X, Eye, EyeOff, RotateCw } from "lucide-react";
@@ -40,8 +41,11 @@ function evalShowWhen(expr: string, vars: Record<string, unknown>): boolean {
   return op === "==" ? equal : !equal;
 }
 
-/** Initial form values from schema defaults. Booleans always have a default. */
-function initialValues(schema: VarsSchema): Record<string, unknown> {
+/** Initial form values from schema defaults. Booleans always have a default.
+ *  schema=null（无 schema）→ 返回空对象。
+ */
+function initialValues(schema: VarsSchema | null): Record<string, unknown> {
+  if (!schema) return {};
   const out: Record<string, unknown> = {};
   for (const [name, field] of Object.entries(schema)) {
     if ("default" in field && field.default !== undefined) {
@@ -78,7 +82,8 @@ export function ConfigureRunPanel({
 }: {
   /** Markdown guide shown on the left side */
   guide: CatalogGuide | null;
-  schema: VarsSchema;
+  /** vars schema. null 表示这个 Playbook 没有可配置参数（直接进预览阶段） */
+  schema: VarsSchema | null;
   locale: Locale;
   /** When true, show a "Edit YAML directly" link for power users */
   isAdmin?: boolean;
@@ -113,8 +118,34 @@ export function ConfigureRunPanel({
     setPreviewError(null);
   }, [schema]);
 
-  // Filter out fields hidden by show_when, in the same order the schema declares them
+  // 没有 schema 的 Playbook：打开时自动获取预览（不需要用户填表单）。
+  // 注意：依赖 schema 而不是 onPreview 引用——onPreview 是父组件的 inline 闭包，
+  // 引用每次渲染都变，加进依赖会无限循环。
+  useEffect(() => {
+    if (schema !== null) return;       // 有 schema 走表单流程，不自动预览
+    if (preview !== null) return;      // 已经有预览结果，避免重复请求
+    if (previewing) return;            // 已经在请求中
+    let cancelled = false;
+    setPreviewing(true);
+    setPreviewError(null);
+    void onPreview({}).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setPreview(result.preview);
+      } else {
+        setPreviewError(result.error ?? (locale === "zh" ? "预览失败" : "Preview failed"));
+      }
+    }).finally(() => {
+      if (!cancelled) setPreviewing(false);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schema]);
+
+  // Filter out fields hidden by show_when, in the same order the schema declares them.
+  // schema=null（无 schema）→ 空数组
   const visibleFields = useMemo(() => {
+    if (!schema) return [];
     return Object.entries(schema).filter(([, field]) =>
       !field.show_when || evalShowWhen(field.show_when, values)
     );
@@ -203,12 +234,22 @@ export function ConfigureRunPanel({
   }
 
   function handleBackToEdit() {
+    // 没 schema 的 Playbook 没有"编辑"阶段，直接关闭 modal
+    if (!schema) {
+      onClose();
+      return;
+    }
     setPreview(null);
     setPreviewError(null);
   }
 
   function handleConfirm() {
     if (submitting) return;
+    // 没 schema 时直接提交空 vars（用 Playbook 自身的默认值）
+    if (!schema) {
+      onSubmit({});
+      return;
+    }
     const submitted = buildSubmittedVars();
     if (!submitted) {
       // 不太可能走到这里：能进预览说明已经过校验
@@ -234,7 +275,9 @@ export function ConfigureRunPanel({
             <p className="eyebrow">
               {preview
                 ? (locale === "zh" ? "预览：将要执行的内容" : "Preview: what will run")
-                : (locale === "zh" ? "配置并运行" : "Configure & Run")}
+                : !schema
+                  ? (locale === "zh" ? "执行预览" : "Execution preview")
+                  : (locale === "zh" ? "配置并运行" : "Configure & Run")}
             </p>
             <h2>{guide ? (locale === "zh" ? guide.item.name : guide.item.nameEn) : (locale === "zh" ? "配置 Playbook" : "Configure Playbook")}</h2>
           </div>
@@ -251,7 +294,9 @@ export function ConfigureRunPanel({
               : <p className="muted">{locale === "zh" ? "（此 Playbook 没有提供使用说明）" : "(No guide available for this Playbook)"}</p>}
           </section>
 
-          {/* Right pane: 表单 OR 预览（取决于 preview 是否已 load） */}
+          {/* Right pane: 预览 / 表单 / 加载中
+              schema 为 null（无表单）：直接显示预览或加载状态
+              schema 非 null：根据 preview 是否已 load 切换表单/预览 */}
           {preview ? (
             <section className="configure-run-form" aria-label={locale === "zh" ? "执行预览" : "Execution preview"}>
               <PreviewPanel
@@ -260,7 +305,26 @@ export function ConfigureRunPanel({
                 onBack={handleBackToEdit}
                 onConfirm={handleConfirm}
                 submitting={submitting}
+                hideBackButton={!schema}
               />
+            </section>
+          ) : !schema ? (
+            <section className="configure-run-form" aria-label={locale === "zh" ? "加载预览" : "Loading preview"}>
+              <div className="configure-run-loading">
+                {previewError ? (
+                  <>
+                    <p className="form-summary-error">{previewError}</p>
+                    <button type="button" className="ghost-action" onClick={onClose}>
+                      {locale === "zh" ? "关闭" : "Close"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="spinning" style={{ fontSize: 28 }}>↻</span>
+                    <p className="muted">{locale === "zh" ? "正在生成预览…" : "Generating preview…"}</p>
+                  </>
+                )}
+              </div>
             </section>
           ) : (
             <section className="configure-run-form" aria-label={locale === "zh" ? "配置参数" : "Configuration"}>
