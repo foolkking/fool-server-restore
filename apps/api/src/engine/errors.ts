@@ -95,16 +95,37 @@ export function classifyError(
     combined.includes("no package") ||
     combined.includes("package not found") ||
     combined.includes("e: package") ||
-    combined.includes("no match for argument")
+    combined.includes("no match for argument") ||
+    combined.includes("unable to find a match") ||
+    combined.includes("all matches were filtered out")
   ) {
-    const pkgMatch = cmdStr.match(/install\s+(-y\s+)?(\S+)/);
-    const pkgName = pkgMatch?.[2] ?? "package";
+    // Try to find the package name. Three sources, in order of accuracy:
+    //   1. Stderr/stdout from the package manager (dnf "No match for argument: X")
+    //   2. The shell command if it had an install verb
+    //   3. The args themselves (when the module passed an array of package names)
+    let pkgName: string | undefined;
+    const combinedRaw = `${stderr}\n${stdout}`;
+    const noMatchRe = /(?:No match for argument|Unable to locate package|Unable to find a match):\s*([^\n]+)/i;
+    const noMatchHit = combinedRaw.match(noMatchRe);
+    if (noMatchHit) {
+      pkgName = noMatchHit[1].trim().split(/\s+/).slice(0, 5).join(", ");
+    } else {
+      const pkgMatch = cmdStr.match(/install\s+(-y\s+)?(\S+)/);
+      if (pkgMatch?.[2]) {
+        pkgName = pkgMatch[2];
+      } else if (cmdStr.trim()) {
+        // cmdStr might already be the package list (when args.name was an array)
+        const tokens = cmdStr.split(/\s+/).filter((t) => t && !/^[-=]/.test(t)).slice(0, 5);
+        if (tokens.length > 0) pkgName = tokens.join(", ");
+      }
+    }
+    pkgName = pkgName ?? "(未知)";
     return {
       category: "not_found",
       messageZh: `找不到软件包 "${pkgName}"，可能包名有误或需要添加软件源`,
       messageEn: `Package "${pkgName}" not found in repositories`,
-      fixHintZh: `请检查包名是否正确，或运行 apt-get update 更新软件源索引`,
-      fixHintEn: `Check the package name or run apt-get update to refresh the index`,
+      fixHintZh: `请检查包名是否正确，或运行 apt-get update / dnf makecache 更新软件源索引。RHEL/CentOS 系统可能需要启用 EPEL 软件源（dnf install epel-release）`,
+      fixHintEn: `Check the package name or refresh the index (apt-get update / dnf makecache). RHEL/CentOS may need EPEL: dnf install epel-release`,
       raw: stderr
     };
   }

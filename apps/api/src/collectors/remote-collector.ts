@@ -331,10 +331,14 @@ function parseFullOutput(raw: string, host: string, _latencyMs: number): FullSys
     });
   }
 
-  // rpm packages
+  // rpm packages — RHEL/CentOS/Anolis cloud images preinstall ~800 packages.
+  // Same trust filter as apt: known-user-packages whitelist marks "user", everything
+  // else marked "uncertain" (hidden by default in UI; user can flip "show all").
   const rpmPackages = parseKeyValueLines(sections.rpm, "|");
   for (const { key, value } of rpmPackages) {
-    software.push({ name: key, version: value, source: "rpm", status: "installed", trust: "user" });
+    if (isSystemRpmPackage(key)) continue;
+    const trust: "user" | "uncertain" = isKnownUserPackage(key) ? "user" : "uncertain";
+    software.push({ name: key, version: value, source: "rpm", status: "installed", trust });
   }
 
   // snap (filter out system snaps)
@@ -751,6 +755,162 @@ function isSystemAptPackage(name: string): boolean {
 }
 
 export { isSystemAptPackage, isSystemService };
+
+/**
+ * RHEL / CentOS / Rocky / Alma / Fedora / Anolis system packages.
+ * Cloud images on RPM systems preinstall ~800 packages; this filter handles the
+ * obvious system-level ones. Combined with the whitelist (isKnownUserPackage),
+ * the UI only shows actual user-installed software.
+ */
+const SYSTEM_RPM_PREFIXES = [
+  "lib",                    // libc, libstdc++, libgcc, etc.
+  "kernel-",                // kernel-core, kernel-modules, etc.
+  "centos-",                // centos-release, centos-stream-release, etc.
+  "rocky-", "almalinux-", "fedora-", "rhel-", "anolis-", "openeuler-",
+  "redhat-",
+  "python3-",               // python3-libs, python3-rpm, etc. (lots of these)
+  "python2-",
+  "perl-",
+  "glibc-",
+  "kmod-",
+  "selinux-",
+  "policycoreutils-",
+  "systemd-",
+  "udev",
+  "dbus-",
+  "dracut-",
+  "device-mapper-",
+  "lvm2-",
+  "iproute-", "iptables-", "iputils-",
+  "openssh-",               // openssh-server is in whitelist; this catches *-clients etc.
+  "openssl-",
+  "ca-certificates-",
+  "crypto-",
+  "gnutls-",
+  "krb5-",
+  "ncurses-",
+  "rpm-",                   // rpm-libs, rpm-build, etc.
+  "yum-", "dnf-",           // package manager internals
+  "tuned-",
+  "hwdata-",
+  "pciutils-", "usbutils-",
+  "ethtool-",
+  "filesystem-",
+  "elfutils-",
+  "audit-",
+  "shadow-",                // shadow-utils components
+  "passwd-",
+  "util-linux-",
+  "coreutils-", "diffutils-", "findutils-",
+  "glib2-",
+  "GeoIP-",
+  "gpg-pubkey",
+  "info",
+  "tzdata-",
+  "publicsuffix-",
+  "shared-mime-",
+  "iso-codes",
+  "fontpackages-", "fontconfig-",
+  "wireless-",
+  "NetworkManager-",
+  "PackageKit-",
+  "polkit-",
+  "yajl",
+  "alsa-",
+  // Cloud-specific
+  "cloud-init",
+  "aliyun-", "alibaba-", "tianyi-",
+  "amazon-", "aws-", "ec2-",
+  "google-cloud-", "gce-",
+  "azure-",
+  "WALinuxAgent",
+];
+
+const SYSTEM_RPM_EXACT = new Set([
+  "setup", "filesystem", "basesystem", "rootfiles",
+  "bash", "zsh-common", "dash",
+  "grep", "gzip", "bzip2", "xz", "zstd",
+  "tar", "cpio",
+  "sed", "gawk", "mawk",
+  "less", "more", "which",
+  "coreutils", "diffutils", "findutils",
+  "hostname", "info",
+  "sudo", "shadow-utils", "passwd",
+  "util-linux", "util-linux-core",
+  "vim-minimal", "vim-common",
+  "nano",
+  "cronie", "cronie-anacron", "anacron",
+  "logrotate", "rsyslog",
+  "chrony", "ntpdate",
+  "irqbalance", "tuned",
+  "microcode_ctl",
+  "iputils", "iproute", "iptables", "iptables-services",
+  "nftables",
+  "iscsi-initiator-utils",
+  "lsscsi", "smartmontools", "hdparm", "ethtool",
+  "dosfstools", "e2fsprogs", "xfsprogs", "btrfs-progs",
+  "mdadm", "lvm2",
+  "parted", "gdisk", "fdisk",
+  "device-mapper",
+  "json-c",
+  "popt", "readline", "zlib", "expat",
+  "libxml2", "libxslt",
+  "openldap",
+  "nss", "nspr",
+  "gettext",
+  "p11-kit", "p11-kit-trust",
+  "cracklib", "cracklib-dicts",
+  "PyYAML",
+  "xz-libs", "lz4-libs",
+  "elfutils-libelf",
+  "audit-libs",
+  "freetype", "fontconfig",
+  "harfbuzz",
+  "graphite2",
+  "libcap", "libcap-ng",
+  "libffi", "libgomp", "libtirpc", "libnsl2",
+  "libpcap", "libpcap-devel",
+  "lz4", "snappy",
+  "ncurses", "ncurses-base", "ncurses-libs",
+  "pam", "pam-devel",
+  "rpm",
+  "tar", "unzip", "zip",
+  "wget", "curl",
+  "binutils", "elfutils",
+  "info",
+  "dbus", "dbus-libs", "dbus-tools",
+  "gpgme", "gnupg2",
+  "shadow",
+  "newt", "slang",
+  "libreport-filesystem",
+  "abrt", "abrt-cli",
+  "boost-system",
+  "ipset", "conntrack-tools",
+  "checkpolicy",
+  "pkgconf", "pkgconf-pkg-config",
+  "ca-certificates",
+  "linux-firmware",
+  "kbd", "kbd-misc",
+  "kernel", "kernel-core", "kernel-modules", "kernel-tools",
+  "grub2", "grub2-tools", "grub2-common",
+  "shim", "shim-x64",
+  "sgpio",
+  "passwd",
+  "perl-interpreter",
+  "openssl", "openssl-libs",
+  "rpm-libs", "rpm-build-libs",
+  "yum", "dnf", "dnf-data",
+  "rpm-plugin-systemd-inhibit",
+  "WALinuxAgent",
+]);
+
+function isSystemRpmPackage(name: string): boolean {
+  if (SYSTEM_RPM_EXACT.has(name)) return true;
+  for (const prefix of SYSTEM_RPM_PREFIXES) {
+    if (name.startsWith(prefix)) return true;
+  }
+  return false;
+}
 
 const SYSTEM_SNAPS = new Set([
   "bare", "core", "core18", "core20", "core22", "core24",
