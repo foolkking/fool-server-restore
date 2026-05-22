@@ -154,6 +154,10 @@ export interface TargetSoftware {
   version: string;
   source: string; // apt | apt-manual | rpm | snap | flatpak | npm | pip | gem | cargo | local-bin | opt | user-bin | nvm | pyenv | rbenv | asdf | sdkman | docker | runtime | system | container
   status: string; // installed | synced | unsynced | warning
+  /** "user" = matches curated whitelist (always shown); "uncertain" = passed system blacklist
+   *  but not in whitelist (hidden by default; UI offers a "show all" toggle).
+   *  Only set on apt source; other sources are inherently user-installed. */
+  trust?: "user" | "uncertain";
 }
 
 export interface SystemConfigItem {

@@ -45,6 +45,8 @@ export interface InventoryRow {
   value: string;
   command: string;
   source?: string;
+  /** Only set on apt source. "uncertain" rows are hidden by default in the software panel. */
+  trust?: "user" | "uncertain";
 }
 
 export function InventoryPanel({
@@ -68,6 +70,15 @@ export function InventoryPanel({
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [uninstallingId, setUninstallingId] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  // Hidden by default: apt rows marked "uncertain" (probably cloud-image bloat).
+  // User can flip "show all" to see everything.
+  const trustedRows = useMemo(() => {
+    if (showAll || panelKind !== "software") return rows;
+    return rows.filter((r) => r.trust !== "uncertain");
+  }, [rows, showAll, panelKind]);
+  const hiddenByTrust = rows.length - trustedRows.length;
 
   const sourceFilters = useMemo(() => {
     if (counts && Object.keys(counts).length > 0) {
@@ -83,7 +94,7 @@ export function InventoryPanel({
   const filterKeyToSource: Record<string, string> = { localBin: "local-bin", userBin: "user-bin" };
 
   const filteredRows = useMemo(() => {
-    let result = rows;
+    let result = trustedRows;
     if (activeFilter !== "all") {
       const matchSource = filterKeyToSource[activeFilter] ?? activeFilter;
       result = result.filter((r) => {
@@ -97,7 +108,7 @@ export function InventoryPanel({
       result = result.filter((r) => r.name.toLowerCase().includes(q) || r.value.toLowerCase().includes(q));
     }
     return result;
-  }, [rows, activeFilter, searchQuery]);
+  }, [trustedRows, activeFilter, searchQuery]);
 
   const MAX_DISPLAY = 200;
   const displayRows = filteredRows.slice(0, MAX_DISPLAY);
@@ -180,6 +191,16 @@ export function InventoryPanel({
           </div>
           <input className="inventory-search" type="text" placeholder={locale === "zh" ? "搜索软件名…" : "Search packages…"}
             value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          {panelKind === "software" && hiddenByTrust > 0 ? (
+            <label className="inventory-toggle" title={locale === "zh"
+              ? "默认只显示已知用户级软件（如 nginx、redis、docker 等）。开启后显示所有 apt-mark showmanual 包，包含云镜像预装的额外软件。"
+              : "By default we only show known server software (nginx, redis, docker, ...). Toggle on to see every apt-mark showmanual package including cloud-image preinstalls."}>
+              <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+              <span>{locale === "zh"
+                ? `显示全部（含 ${hiddenByTrust} 个云镜像预装）`
+                : `Show all (incl. ${hiddenByTrust} cloud-image)`}</span>
+            </label>
+          ) : null}
         </div>
       ) : null}
 

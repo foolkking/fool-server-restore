@@ -244,7 +244,7 @@ export function MachinePage({
   const [capturing, setCapturing] = useState(false);
   const [captureResult, setCaptureResult] = useState<CaptureResult | null>(null);
 
-  const softwareRows: Array<{ id: string; icon: LucideIcon; name: string; value: string; command: string; source?: string }> =
+  const softwareRows: Array<{ id: string; icon: LucideIcon; name: string; value: string; command: string; source?: string; trust?: "user" | "uncertain" }> =
     probeResult
       ? probeResult.software.map((item: TargetSoftware) => ({
           id: `software-${item.source}-${item.name}`,
@@ -252,6 +252,7 @@ export function MachinePage({
           name: item.name,
           value: item.version,
           source: item.source,
+          trust: item.trust,
           command: installCommands[item.name] ?? `apt-get install -y ${item.name}`
         }))
       : [];

@@ -15,6 +15,7 @@
  */
 
 import type { Client } from "ssh2";
+import { isKnownUserPackage } from "./known-packages.js";
 
 const COLLECT_SCRIPT = String.raw`
 echo "===SECTION:hostname==="
@@ -42,45 +43,20 @@ echo "===SECTION:os-release==="
 cat /etc/os-release 2>/dev/null | grep -E '^(PRETTY_NAME|ID|VERSION_ID)=' | head -3
 
 echo "===SECTION:apt==="
-# Strategy (in order of preference):
-#   1. /var/log/installer/initial-status.gz exists (official Ubuntu installer)
-#      → manual list MINUS that baseline = user installs
-#   2. /var/log/dpkg.log* parseable (most cloud images including Aliyun)
-#      → "user installs" = packages whose first install was >2 hours after earliest dpkg activity
-#        (cloud-init seeds the image in the first few minutes of boot; anything installed
-#         hours/days later is user-driven)
-#   3. apt-mark showmanual fallback (last resort; TS filter will drop known cloud bloat)
+# Collect ALL manually-marked apt packages. The TS-side trust filter will classify each
+# package as "user" (matches well-known whitelist) or "uncertain" (probably cloud bloat).
+# Cross-cloud baseline detection is unreliable (no /var/log/installer/initial-status.gz on
+# most cloud images, dpkg.log timestamps get reset by cloud-init upgrades), so we don't
+# try to be clever in shell — we just pass the full list to the TS layer.
 APT_TMP=$(mktemp -d 2>/dev/null || mktemp -d -t envforge.XXXXXX 2>/dev/null || echo /tmp/envforge.$$)
 mkdir -p "$APT_TMP" 2>/dev/null
 apt-mark showmanual 2>/dev/null | sort -u > "$APT_TMP/manual.txt"
 
+# If we DO have the official Ubuntu installer baseline, use it as a free pre-filter
 if [ -f /var/log/installer/initial-status.gz ]; then
   gzip -dc /var/log/installer/initial-status.gz 2>/dev/null | sed -n 's/^Package: //p' | sort -u > "$APT_TMP/base.txt"
   comm -23 "$APT_TMP/manual.txt" "$APT_TMP/base.txt" > "$APT_TMP/user.txt"
-elif ls /var/log/dpkg.log* >/dev/null 2>&1; then
-  # Parse dpkg.log* for install events. Use awk-only timestamp comparison
-  # (string-sortable ISO format YYYY-MM-DD HH:MM:SS) - no per-line date subprocess.
-  zcat -f /var/log/dpkg.log* 2>/dev/null \
-    | awk '/ install /{pkg=$4; sub(/:.*/, "", pkg); print $1" "$2"|"pkg}' \
-    | sort -u > "$APT_TMP/installs.txt" 2>/dev/null
-  if [ -s "$APT_TMP/installs.txt" ]; then
-    FIRST_TS=$(head -1 "$APT_TMP/installs.txt" | cut -d'|' -f1)
-    # Compute cutoff: 2 hours after FIRST_TS, in same string-sortable format.
-    CUTOFF_TS=$(date -d "$FIRST_TS + 2 hours" '+%Y-%m-%d %H:%M:%S' 2>/dev/null)
-    if [ -n "$CUTOFF_TS" ]; then
-      awk -F'|' -v cutoff="$CUTOFF_TS" '$1 > cutoff {print $2}' "$APT_TMP/installs.txt" \
-        | sort -u > "$APT_TMP/user.txt"
-      # Intersect with manual list to filter out auto-installed dependencies
-      comm -12 "$APT_TMP/manual.txt" "$APT_TMP/user.txt" > "$APT_TMP/final.txt"
-      mv "$APT_TMP/final.txt" "$APT_TMP/user.txt"
-    else
-      cp "$APT_TMP/manual.txt" "$APT_TMP/user.txt"
-    fi
-  else
-    cp "$APT_TMP/manual.txt" "$APT_TMP/user.txt"
-  fi
 else
-  # Last resort: use full manual list, TS filter cleans cloud bloat
   cp "$APT_TMP/manual.txt" "$APT_TMP/user.txt"
 fi
 
@@ -222,6 +198,14 @@ export interface SoftwareItem {
   version: string;
   source: string;
   status: string;
+  /**
+   * Filtering signal for the UI:
+   *  - "user"        : matched the curated user-package whitelist (default visible)
+   *  - "uncertain"   : passed the system blacklist but not in the whitelist (hidden by default;
+   *                    user can opt-in to see these via "show all" toggle)
+   * apt source only — other sources (npm/pip/snap/...) are always shown as user.
+   */
+  trust?: "user" | "uncertain";
 }
 
 export interface ConfigItem {
@@ -330,43 +314,46 @@ function parseFullOutput(raw: string, host: string, _latencyMs: number): FullSys
   // ── Software inventory ──
   const software: SoftwareItem[] = [];
 
-  // apt packages — already filtered by `comm -23` against initial-status.gz baseline
-  // TS-side isSystemAptPackage() acts as defense-in-depth (catches edge cases like
-  // packages installed via cloud-init or pre-baked images without initial-status.gz)
+  // apt packages — apply two-tier filter:
+  //   1. system blacklist (lib*, linux-*, gnome-*, cloud-init, ...) → skip entirely
+  //   2. known-user whitelist (nginx, redis, docker, ...) → trust=user (default visible)
+  //   3. otherwise → trust=uncertain (hidden by default in UI; cloud-image surplus)
   const aptPackages = parseKeyValueLines(sections.apt, "|");
   for (const { key, value } of aptPackages) {
     if (isSystemAptPackage(key)) continue;
+    const trust: "user" | "uncertain" = isKnownUserPackage(key) ? "user" : "uncertain";
     software.push({
       name: key,
       version: value,
       source: "apt",
-      status: "installed"
+      status: "installed",
+      trust
     });
   }
 
   // rpm packages
   const rpmPackages = parseKeyValueLines(sections.rpm, "|");
   for (const { key, value } of rpmPackages) {
-    software.push({ name: key, version: value, source: "rpm", status: "installed" });
+    software.push({ name: key, version: value, source: "rpm", status: "installed", trust: "user" });
   }
 
   // snap (filter out system snaps)
   const snapPackages = parseKeyValueLines(sections.snap, "|");
   for (const { key, value } of snapPackages) {
     if (isSystemSnap(key)) continue;
-    software.push({ name: key, version: value, source: "snap", status: "installed" });
+    software.push({ name: key, version: value, source: "snap", status: "installed", trust: "user" });
   }
 
   // flatpak
   const flatpakPackages = parseFlatpakLines(sections.flatpak);
   for (const { key, value } of flatpakPackages) {
-    software.push({ name: key, version: value, source: "flatpak", status: "installed" });
+    software.push({ name: key, version: value, source: "flatpak", status: "installed", trust: "user" });
   }
 
   // npm globals
   for (const name of parseLines(sections.npm)) {
     if (!name || name === "npm") continue;
-    software.push({ name, version: "global", source: "npm", status: "installed" });
+    software.push({ name, version: "global", source: "npm", status: "installed", trust: "user" });
   }
 
   // pip packages
@@ -376,7 +363,7 @@ function parseFullOutput(raw: string, host: string, _latencyMs: number): FullSys
   for (const line of pipLines) {
     const m = line.match(/^([^=]+)==(.+)$/);
     if (m) {
-      software.push({ name: m[1].trim(), version: m[2].trim(), source: "pip", status: "installed" });
+      software.push({ name: m[1].trim(), version: m[2].trim(), source: "pip", status: "installed", trust: "user" });
     }
   }
 
@@ -384,74 +371,74 @@ function parseFullOutput(raw: string, host: string, _latencyMs: number): FullSys
   for (const line of parseLines(sections.gem)) {
     const m = line.match(/^(\S+)\s+\((.+)\)$/);
     if (m) {
-      software.push({ name: m[1], version: m[2].split(",")[0].trim(), source: "gem", status: "installed" });
+      software.push({ name: m[1], version: m[2].split(",")[0].trim(), source: "gem", status: "installed", trust: "user" });
     }
   }
 
   // cargo
   const cargoBins = new Set([...parseLines(sections.cargo)]);
   for (const name of cargoBins) {
-    if (name) software.push({ name, version: "cargo", source: "cargo", status: "installed" });
+    if (name) software.push({ name, version: "cargo", source: "cargo", status: "installed", trust: "user" });
   }
 
   // /usr/local/bin
   for (const name of parseLines(sections["local-bin"])) {
-    if (name) software.push({ name, version: "binary", source: "local-bin", status: "installed" });
+    if (name) software.push({ name, version: "binary", source: "local-bin", status: "installed", trust: "user" });
   }
 
   // /usr/local/sbin
   for (const name of parseLines(sections["local-sbin"])) {
-    if (name) software.push({ name, version: "binary", source: "local-bin", status: "installed" });
+    if (name) software.push({ name, version: "binary", source: "local-bin", status: "installed", trust: "user" });
   }
 
   // /usr/local/<app>/ directories (script-installed apps like x-ui, go, etc.)
   for (const name of parseLines(sections["local-apps"])) {
-    if (name) software.push({ name, version: "app", source: "local-app", status: "installed" });
+    if (name) software.push({ name, version: "app", source: "local-app", status: "installed", trust: "user" });
   }
 
   // /opt
   for (const name of parseLines(sections.opt)) {
-    if (name) software.push({ name, version: "directory", source: "opt", status: "installed" });
+    if (name) software.push({ name, version: "directory", source: "opt", status: "installed", trust: "user" });
   }
 
   // /srv (server applications, web apps)
   for (const name of parseLines(sections.srv)) {
-    if (name) software.push({ name, version: "directory", source: "srv", status: "installed" });
+    if (name) software.push({ name, version: "directory", source: "srv", status: "installed", trust: "user" });
   }
 
   // ~/.local/bin
   for (const name of parseLines(sections["user-bin"])) {
-    if (name) software.push({ name, version: "binary", source: "user-bin", status: "installed" });
+    if (name) software.push({ name, version: "binary", source: "user-bin", status: "installed", trust: "user" });
   }
 
   // ~/go/bin (Go compiled binaries)
   for (const name of parseLines(sections["go-bin"])) {
-    if (name) software.push({ name, version: "go-binary", source: "go-bin", status: "installed" });
+    if (name) software.push({ name, version: "go-binary", source: "go-bin", status: "installed", trust: "user" });
   }
 
   // nvm versions
   for (const ver of parseLines(sections.nvm)) {
-    if (ver) software.push({ name: "node", version: ver.replace(/^v/, ""), source: "nvm", status: "installed" });
+    if (ver) software.push({ name: "node", version: ver.replace(/^v/, ""), source: "nvm", status: "installed", trust: "user" });
   }
 
   // pyenv versions
   for (const ver of parseLines(sections.pyenv)) {
-    if (ver) software.push({ name: "python", version: ver, source: "pyenv", status: "installed" });
+    if (ver) software.push({ name: "python", version: ver, source: "pyenv", status: "installed", trust: "user" });
   }
 
   // rbenv versions
   for (const ver of parseLines(sections.rbenv)) {
-    if (ver) software.push({ name: "ruby", version: ver, source: "rbenv", status: "installed" });
+    if (ver) software.push({ name: "ruby", version: ver, source: "rbenv", status: "installed", trust: "user" });
   }
 
   // asdf
   for (const tool of parseLines(sections.asdf)) {
-    if (tool) software.push({ name: tool, version: "asdf", source: "asdf", status: "installed" });
+    if (tool) software.push({ name: tool, version: "asdf", source: "asdf", status: "installed", trust: "user" });
   }
 
   // sdkman
   for (const candidate of parseLines(sections.sdkman)) {
-    if (candidate) software.push({ name: candidate, version: "sdkman", source: "sdkman", status: "installed" });
+    if (candidate) software.push({ name: candidate, version: "sdkman", source: "sdkman", status: "installed", trust: "user" });
   }
 
   // docker images
@@ -466,14 +453,14 @@ function parseFullOutput(raw: string, host: string, _latencyMs: number): FullSys
         status: "installed"
       });
     } else {
-      software.push({ name: image, version: "latest", source: "docker", status: "installed" });
+      software.push({ name: image, version: "latest", source: "docker", status: "installed", trust: "user" });
     }
   }
 
   // cron jobs (user-defined scheduled tasks, filter system ones)
   for (const line of parseLines(sections["cron-jobs"])) {
     if (line && !isSystemCron(line)) {
-      software.push({ name: line, version: "cron", source: "cron", status: "installed" });
+      software.push({ name: line, version: "cron", source: "cron", status: "installed", trust: "user" });
     }
   }
 
@@ -482,7 +469,7 @@ function parseFullOutput(raw: string, host: string, _latencyMs: number): FullSys
     if (timer) {
       const name = timer.replace(/\.timer$/, "");
       if (isSystemTimer(name)) continue;
-      software.push({ name, version: "timer", source: "systemd-timer", status: "installed" });
+      software.push({ name, version: "timer", source: "systemd-timer", status: "installed", trust: "user" });
     }
   }
 
@@ -514,7 +501,7 @@ function parseFullOutput(raw: string, host: string, _latencyMs: number): FullSys
     if (isSystemService(name)) continue;
     // Skip if already in software list from another source
     if (!software.find((s) => s.name === name)) {
-      software.push({ name, version: "service", source: "systemd", status: "installed" });
+      software.push({ name, version: "service", source: "systemd", status: "installed", trust: "user" });
     }
   }
 
