@@ -77,12 +77,22 @@ sudo nginx -T | grep envforge-default      # 确认我们的配置已生效
 #### 浏览器看到小写 "nginx" 的 404 Not Found 页面
 
 那是发行版自带的 default server 在拦截请求，不是我们配置的 server block 的输出。
-EnvForge 已经会在安装时自动备份并禁用 `sites-enabled/default`（Ubuntu）和
-`conf.d/default.conf`（RHEL），但如果你手动恢复了它们，会再次冲突。
+EnvForge 会在安装时自动备份并禁用三个常见位置的 default：
+
+1. `/etc/nginx/sites-enabled/default`（Ubuntu/Debian）
+2. `/etc/nginx/conf.d/default.conf`（RHEL/CentOS/Anolis/Rocky）
+3. `/etc/nginx/nginx.conf` 主文件里**内嵌的** `server { listen 80; ... }` 块（RHEL 系常见）
+
+第 3 处最容易被遗漏——RHEL 的 nginx 包习惯把 default server 直接写在主配置里。
+EnvForge 用 Python 脚本扫描 nginx.conf，找到含 `include /etc/nginx/default.d/*.conf`
+的 server 块整段注释掉（带 `# >>> envforge: nginx-conf-default-disabled >>>` 块标签），
+原文件备份为 `nginx.conf.envforge.bak`。
+
 确认：
 ```bash
 ls /etc/nginx/conf.d/default.conf*       # RHEL: 应只有 .envforge.bak
 ls /etc/nginx/sites-enabled/default*     # Ubuntu: 应为空或只有 .envforge.bak
+grep 'envforge: nginx-conf-default' /etc/nginx/nginx.conf  # 应能找到块标签
 sudo nginx -T | grep -E '^\s*(listen|server_name)' # 看 80 端口上有几个 server
 ```
 然后 `sudo systemctl reload nginx`。
