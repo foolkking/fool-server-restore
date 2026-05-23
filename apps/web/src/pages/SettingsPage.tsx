@@ -18,8 +18,9 @@ import {
 } from "../api";
 import type { Locale } from "../lib/types";
 import { CatalogAdminPanel } from "../components/CatalogAdminPanel";
+import { AccountPanel } from "../components/AccountPanel";
 
-type Tab = "schedules" | "webhooks" | "tokens" | "modules" | "drift" | "catalog";
+type Tab = "schedules" | "webhooks" | "tokens" | "modules" | "drift" | "catalog" | "account";
 
 export function SettingsPage({
   locale,
@@ -50,6 +51,9 @@ export function SettingsPage({
         </p>
       </header>
       <nav className="settings-tabs">
+        <button className={tab === "account" ? "active" : ""} onClick={() => setTab("account")} type="button">
+          👤 {locale === "zh" ? "账号安全" : "Account"}
+        </button>
         <button className={tab === "schedules" ? "active" : ""} onClick={() => setTab("schedules")} type="button">
           🕐 {locale === "zh" ? "定时任务" : "Schedules"}
         </button>
@@ -72,7 +76,9 @@ export function SettingsPage({
         )}
       </nav>
       <div className="settings-body">
-        {tab === "schedules" && (
+        {tab === "account" && (
+          <AccountPanel locale={locale} authToken={authToken} />
+        )}        {tab === "schedules" && (
           <SchedulesPanel locale={locale} authToken={authToken} connections={connections} playbooks={playbooks} catalog={catalog} />
         )}
         {tab === "drift" && (

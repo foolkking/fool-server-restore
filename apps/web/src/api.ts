@@ -115,11 +115,81 @@ export interface AuthUser {
   authenticated: true;
   role: "user" | "admin";
   defaultSshUser?: string;
+  // Extended profile fields (auth-and-ecosystem spec P1.11)
+  username?: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  timezone?: string;
+  locale?: string;
+  emailVerifiedAt?: string;
+  totpEnabled?: boolean;
+  deletedAt?: string;
 }
 
 export interface AuthResponse {
   token: string;
   user: AuthUser;
+}
+
+/** Result of POST /api/auth/login (auth-and-ecosystem spec P1.10). */
+export type LoginResponse =
+  | AuthResponse
+  | { needs2FA: true; intermediateToken: string; expiresAt: string; user: AuthUser }
+  | { needsEnrollment: true; intermediateToken: string; expiresAt: string; user: AuthUser };
+
+/** Result of POST /api/auth/register/start (P1.5 two-step registration). */
+export interface RegisterStartResponse {
+  pendingId: string;
+  message: string;
+  /** Surfaced only in dev mode. */
+  devCode?: string;
+}
+
+/** Identity entry (one row per linked OAuth provider, plus virtual local). */
+export interface IdentityEntry {
+  provider: "local" | "github" | "google";
+  providerEmail?: string;
+  providerLogin?: string;
+  providerAvatarUrl?: string;
+  providerDisplayName?: string;
+  createdAt: string;
+  lastUsedAt?: string;
+}
+
+/** Notification preferences (P1.11). */
+export interface NotificationPrefs {
+  userId: string;
+  emailMentions: boolean;
+  emailComments: boolean;
+  emailSuggestionStatus: boolean;
+  emailPublishStatus: boolean;
+  updatedAt: string;
+}
+
+export interface UserActivityCounts {
+  connections: number;
+  uploadedProfiles: number;
+  playbooks: number;
+  tasksExecuted: number;
+  identitiesLinked: number;
+  apiTokens: number;
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean;
+  enabledAt?: string;
+  recoveryCodesRemaining: number;
+  hasPendingEnrollment: boolean;
+}
+
+/** Full response from GET /api/me when authenticated. */
+export interface MeFullResponse {
+  user: AuthUser;
+  identities: IdentityEntry[];
+  twoFactor: TwoFactorStatus;
+  notificationPrefs: NotificationPrefs;
+  activity: UserActivityCounts;
 }
 
 export type ConnectionMethod = "ssh-password" | "ssh-key";
@@ -347,13 +417,49 @@ export async function registerAccount(input: { name: string; email: string; pass
   return readJsonOrThrow<AuthResponse>(response, "Registration failed");
 }
 
-export async function loginAccount(input: { email: string; password: string }): Promise<AuthResponse> {
+/** P1.5 step-1 — submit name/email/password, get pendingId + emailed code. */
+export async function startRegistration(input: { name: string; email: string; password: string }): Promise<RegisterStartResponse> {
+  const response = await fetch("/api/auth/register/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow<RegisterStartResponse>(response, "Registration failed");
+}
+
+/** P1.5 step-2 — submit pendingId + 6-digit code, completes account creation. */
+export async function verifyRegistration(input: { pendingId: string; code: string }): Promise<AuthResponse> {
+  const response = await fetch("/api/auth/register/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow<AuthResponse>(response, "Verification failed");
+}
+
+export async function loginAccount(input: { email: string; password: string }): Promise<LoginResponse> {
   const response = await fetch("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
   });
-  return readJsonOrThrow<AuthResponse>(response, "Login failed");
+  return readJsonOrThrow<LoginResponse>(response, "Login failed");
+}
+
+/** P1.10 — submit TOTP / recovery code to upgrade a 2fa-pending session. */
+export async function loginVerify2FA(input: { intermediateToken: string; code: string }): Promise<{
+  token: string;
+  expiresAt: string;
+  user: AuthUser;
+  usedRecoveryCode?: boolean;
+  recoveryCodesRemaining?: number;
+}> {
+  const response = await fetch("/api/auth/login/2fa", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow(response, "2FA verification failed");
 }
 
 export async function connectServer(input: {
@@ -399,6 +505,186 @@ export async function updateProfile(input: {
   });
   const body = await readJsonOrThrow<{ user: AuthUser }>(response, "Profile update failed");
   return body.user;
+}
+
+// ── auth-and-ecosystem spec P1.7–P1.12 client helpers ─────────────────────
+
+/** Provider availability — drives whether to render the GitHub button. */
+export async function fetchAuthProviders(): Promise<{ github: boolean; google: boolean }> {
+  const r = await fetch("/api/auth/providers");
+  return readJsonOrThrow(r, "Provider lookup failed");
+}
+
+/** Full account snapshot: user + identities + 2FA + notification prefs + activity. */
+export async function fetchMeFull(token: string): Promise<MeFullResponse> {
+  const r = await fetch("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+  return readJsonOrThrow<MeFullResponse>(r, "Failed to load account");
+}
+
+/** P1.11 — patch any subset of profile fields. */
+export async function patchProfile(token: string, input: Partial<{
+  displayName: string;
+  bio: string;
+  avatarUrl: string;
+  timezone: string;
+  locale: string;
+  username: string;
+  defaultSshUser: string;
+}>): Promise<AuthUser> {
+  const r = await fetch("/api/me", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const body = await readJsonOrThrow<{ user: AuthUser }>(r, "Profile update failed");
+  return body.user;
+}
+
+// ── Email change ──
+export async function requestEmailChange(token: string, newEmail: string): Promise<{ pendingId: string; message: string; devCode?: string }> {
+  const r = await fetch("/api/me/email-change/request", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ newEmail })
+  });
+  return readJsonOrThrow(r, "Email change request failed");
+}
+
+export async function confirmEmailChange(token: string, input: { pendingId: string; code: string }): Promise<{ email: string; emailVerifiedAt: string }> {
+  const r = await fetch("/api/me/email-change/confirm", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow(r, "Email change confirm failed");
+}
+
+// ── Password change / soft-delete ──
+export async function changePassword(token: string, input: {
+  oldPassword?: string;
+  newPassword: string;
+  currentTotpCode?: string;
+}): Promise<{ ok: true }> {
+  const r = await fetch("/api/me/password", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow(r, "Password change failed");
+}
+
+export async function deleteAccount(token: string, input: {
+  password?: string;
+  currentTotpCode?: string;
+}): Promise<{ ok: true; deletedAt: string }> {
+  const r = await fetch("/api/me", {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow(r, "Account deletion failed");
+}
+
+// ── Identities (link/unlink) ──
+export async function fetchIdentities(token: string): Promise<{ identities: IdentityEntry[] }> {
+  const r = await fetch("/api/me/identities", { headers: { Authorization: `Bearer ${token}` } });
+  return readJsonOrThrow(r, "Identity list failed");
+}
+
+export async function startGitHubLink(token: string, redirectTo?: string): Promise<{ authorizeUrl: string }> {
+  const r = await fetch("/api/me/identities/github/connect", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ redirectTo: redirectTo ?? "/account/identities" })
+  });
+  return readJsonOrThrow(r, "GitHub link failed");
+}
+
+export async function unlinkIdentity(token: string, provider: "github" | "google"): Promise<{ ok: true }> {
+  const r = await fetch(`/api/me/identities/${provider}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Unlink failed");
+}
+
+// ── 2FA / TOTP ──
+export async function fetchTwoFactorStatus(token: string): Promise<TwoFactorStatus> {
+  const r = await fetch("/api/me/2fa/status", { headers: { Authorization: `Bearer ${token}` } });
+  return readJsonOrThrow(r, "2FA status failed");
+}
+
+export async function startTwoFactorEnroll(token: string): Promise<{ secret: string; otpauthUri: string; qrDataUrl: string }> {
+  const r = await fetch("/api/me/2fa/enroll", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "2FA enroll failed");
+}
+
+export async function confirmTwoFactorEnroll(token: string, code: string): Promise<{
+  recoveryCodes: string[];
+  /** Set when the confirm came from an enrollment-required session (P1.10). */
+  sessionToken?: string;
+  sessionExpiresAt?: string;
+}> {
+  const r = await fetch("/api/me/2fa/confirm", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ code })
+  });
+  return readJsonOrThrow(r, "2FA confirm failed");
+}
+
+export async function disableTwoFactor(token: string, input: { password?: string; code?: string }): Promise<{ ok: true }> {
+  const r = await fetch("/api/me/2fa/disable", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow(r, "2FA disable failed");
+}
+
+export async function regenerateRecoveryCodes(token: string): Promise<{ recoveryCodes: string[] }> {
+  const r = await fetch("/api/me/2fa/regenerate-recovery", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Regenerate failed");
+}
+
+// ── Notification prefs ──
+export async function fetchNotificationPrefs(token: string): Promise<NotificationPrefs> {
+  const r = await fetch("/api/me/notification-prefs", { headers: { Authorization: `Bearer ${token}` } });
+  return readJsonOrThrow(r, "Notification prefs failed");
+}
+
+export async function updateNotificationPrefs(token: string, patch: Partial<Omit<NotificationPrefs, "userId" | "updatedAt">>): Promise<NotificationPrefs> {
+  const r = await fetch("/api/me/notification-prefs", {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+  return readJsonOrThrow(r, "Notification prefs failed");
+}
+
+// ── Password reset (anonymous endpoints) ──
+export async function requestPasswordReset(email: string): Promise<{ message: string; devResetUrl?: string }> {
+  const r = await fetch("/api/auth/password-reset/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email })
+  });
+  return readJsonOrThrow(r, "Password reset request failed");
+}
+
+export async function confirmPasswordReset(input: { token: string; newPassword: string }): Promise<{ email: string; sessionsRevoked: number }> {
+  const r = await fetch("/api/auth/password-reset/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow(r, "Password reset failed");
 }
 
 async function readJsonOrThrow<T>(response: Response, fallback: string): Promise<T> {

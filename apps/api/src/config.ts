@@ -15,6 +15,31 @@ export interface AppConfig {
   sessionTtlHours: number;
   /** Emails (lowercase) that should automatically receive admin role on registration */
   adminEmails: string[];
+  /** SMTP transport configuration. When `host` is empty, email sending is disabled
+   * (verification codes are logged to stdout — fine for local dev, NOT for production). */
+  smtp: {
+    host: string;
+    port: number;
+    user: string;
+    pass: string;
+    /** Default From: header. Falls back to "EnvForge <noreply@<publicBaseUrl-host>>" when empty. */
+    from: string;
+    /** Whether to use TLS. Auto-derived: port 465 → true, others → false (STARTTLS). */
+    secure: boolean;
+  };
+  /** Per-user email rate limit. Defaults to 30/h. */
+  emailRatePerUserPerHour: number;
+  /**
+   * GitHub OAuth configuration. When `clientId` is empty, the GitHub login
+   * button is hidden in the UI and the routes return 404 — i.e. OAuth is
+   * effectively disabled. This lets self-hosters skip OAuth entirely.
+   */
+  github: {
+    clientId: string;
+    clientSecret: string;
+    /** Must match the Authorization callback URL configured in the GitHub OAuth App. */
+    redirectUri: string;
+  };
 }
 
 export function getConfig(): AppConfig {
@@ -32,7 +57,22 @@ export function getConfig(): AppConfig {
     serveWeb: isEnabled(process.env.SERVE_WEB),
     webDistDir: resolveConfiguredPath(process.env.WEB_DIST_DIR, "apps/web/dist"),
     sessionTtlHours: toPositiveNumber(process.env.SESSION_TTL_HOURS, 24),
-    adminEmails: parseList(process.env.ENVFORGE_ADMIN_EMAILS)
+    adminEmails: parseList(process.env.ENVFORGE_ADMIN_EMAILS),
+    smtp: {
+      host: (process.env.SMTP_HOST ?? "").trim(),
+      port: toPort(process.env.SMTP_PORT, 587),
+      user: (process.env.SMTP_USER ?? "").trim(),
+      pass: process.env.SMTP_PASS ?? "",
+      from: (process.env.SMTP_FROM ?? "").trim(),
+      // Auto: port 465 implies implicit TLS; everything else uses STARTTLS.
+      secure: toPort(process.env.SMTP_PORT, 587) === 465
+    },
+    emailRatePerUserPerHour: toPositiveNumber(process.env.EMAIL_RATE_PER_USER_PER_HOUR, 30),
+    github: {
+      clientId: (process.env.GITHUB_CLIENT_ID ?? "").trim(),
+      clientSecret: (process.env.GITHUB_CLIENT_SECRET ?? "").trim(),
+      redirectUri: (process.env.GITHUB_REDIRECT_URI ?? "").trim()
+    }
   };
 }
 

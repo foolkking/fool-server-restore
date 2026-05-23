@@ -82,6 +82,7 @@ docker compose -f docker-compose.demo.yml up -d
 | [docs/DEPLOY.md](./docs/DEPLOY.md) | Docker 从零部署：依赖、HTTPS、systemd、备份、升级、排错 |
 | [docs/DEPLOY_SELF.md](./docs/DEPLOY_SELF.md) | 用现有 EnvForge 部署一台新的 EnvForge 服务器（多区域 / 蓝绿升级 / 给客户复制） |
 | [docs/CROSS_DISTRO_STRATEGY.md](./docs/CROSS_DISTRO_STRATEGY.md) | 跨发行版兼容策略：包名/服务名翻译、preflight、compatibility 声明 |
+| [docs/AUTH.md](./docs/AUTH.md) | 多 provider 登录、2FA、密码重置、个人资料、邮件配置、安全检查清单 |
 
 ## 技术栈
 

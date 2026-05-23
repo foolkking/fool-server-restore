@@ -6,6 +6,7 @@ dist/
 build/
 .next/
 .expo/
+.kiro/
 
 # Local runtime data
 .env

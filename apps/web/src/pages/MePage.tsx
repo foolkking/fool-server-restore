@@ -13,6 +13,12 @@ import {
   deleteProfile,
   extractCombo,
   fetchTaskHistory,
+  fetchAuthProviders,
+  loginAccount,
+  loginVerify2FA,
+  startRegistration,
+  verifyRegistration,
+  requestPasswordReset,
   type AuthUser,
   type CreateProfileInput,
   type CurrentUser,
@@ -184,8 +190,7 @@ export function MePage({
   authToken,
   strategies,
   userProfiles,
-  onLogin,
-  onRegister,
+  onAuthSuccess,
   onUpdateProfile,
   onLogout,
   onProfilesChange,
@@ -198,8 +203,13 @@ export function MePage({
   authToken: string;
   strategies: MigrationStrategy[];
   userProfiles: UserProfile[];
-  onLogin: (input: { email: string; password: string }) => Promise<void>;
-  onRegister: (input: { name: string; email: string; password: string }) => Promise<void>;
+  /**
+   * Auth-and-ecosystem spec P1.5/P1.10/P1.13: instead of receiving fully-baked
+   * onLogin / onRegister handlers, MePage now calls the API client directly
+   * (so it can render multi-step flows like 2FA verification + email-code
+   * registration) and only bubbles up the final session via this callback.
+   */
+  onAuthSuccess: (result: { token: string; user: AuthUser }) => void;
   onUpdateProfile: (input: { name: string; defaultSshUser: string }) => Promise<void>;
   onLogout: () => void;
   onProfilesChange: (profiles: UserProfile[]) => void;
@@ -208,6 +218,20 @@ export function MePage({
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authError, setAuthError] = useState("");
+  // P1.5 — two-step registration: after step-1 we keep pendingId + show code input.
+  const [pendingRegistration, setPendingRegistration] = useState<{ pendingId: string; devCode?: string } | null>(null);
+  const [verifyCode, setVerifyCode] = useState("");
+  // P1.10 — 2FA-pending session: after login, if backend says needs2FA, we capture
+  // the intermediate token and render a 6-digit / recovery-code input step.
+  const [pending2FA, setPending2FA] = useState<{ intermediateToken: string; user: AuthUser } | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  // P1.7 — provider availability (decides whether to render the GitHub button).
+  const [providers, setProviders] = useState<{ github: boolean; google: boolean } | null>(null);
+  // P1.12 — anonymous password-reset flow.
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotMessage, setForgotMessage] = useState("");
+  const [forgotDevUrl, setForgotDevUrl] = useState("");
   const [editingProfile, setEditingProfile] = useState(false);
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -246,13 +270,106 @@ export function MePage({
   const authenticated = Boolean(authUser);
   const displayName = authUser?.name ?? t.guest;
 
+  // Provider check on mount (so we know whether to show GitHub button).
+  useEffect(() => {
+    fetchAuthProviders().then(setProviders).catch(() => setProviders({ github: false, google: false }));
+  }, []);
+
   async function submitAuth(mode: "login" | "register") {
     setAuthError("");
     try {
-      if (mode === "login") await onLogin({ email: authForm.email, password: authForm.password });
-      else await onRegister({ name: authForm.name, email: authForm.email, password: authForm.password });
+      if (mode === "login") {
+        const result = await loginAccount({ email: authForm.email, password: authForm.password });
+        if ("needs2FA" in result && result.needs2FA) {
+          setPending2FA({ intermediateToken: result.intermediateToken, user: result.user });
+          return;
+        }
+        if ("needsEnrollment" in result && result.needsEnrollment) {
+          // Admin who hasn't set up 2FA yet — enrollment flow currently lives
+          // in the SettingsPage Account panel. We treat the intermediate token
+          // as a regular session so the SPA can call the 2FA enroll routes;
+          // the backend rejects business routes for it but allows
+          // /api/me/2fa/{status,enroll,confirm}. After confirm, the response
+          // includes a new full-access sessionToken that replaces this one.
+          onAuthSuccess({ token: result.intermediateToken, user: result.user });
+          // Hint: caller should redirect to security panel. For now we just
+          // surface a message; full UX comes when SettingsPage adds the
+          // Account panel (P1.13 next iteration).
+          setAuthError(locale === "zh"
+            ? "管理员账号需要先开启 2FA。请前往 设置 → Account 完成。"
+            : "Admin accounts must enable 2FA. Open Settings → Account to complete.");
+          return;
+        }
+        // Now must be the regular AuthResponse branch.
+        onAuthSuccess(result as { token: string; user: AuthUser });
+      } else {
+        // P1.5 two-step registration
+        const start = await startRegistration({
+          name: authForm.name,
+          email: authForm.email,
+          password: authForm.password
+        });
+        setPendingRegistration({ pendingId: start.pendingId, devCode: start.devCode });
+      }
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Authentication failed");
+    }
+  }
+
+  async function submitVerifyRegistration() {
+    if (!pendingRegistration) return;
+    setAuthError("");
+    try {
+      const result = await verifyRegistration({
+        pendingId: pendingRegistration.pendingId,
+        code: verifyCode.trim()
+      });
+      onAuthSuccess(result);
+      setPendingRegistration(null);
+      setVerifyCode("");
+      setAuthForm({ name: "", email: "", password: "" });
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Verification failed");
+    }
+  }
+
+  async function submit2FA() {
+    if (!pending2FA) return;
+    setAuthError("");
+    try {
+      const result = await loginVerify2FA({
+        intermediateToken: pending2FA.intermediateToken,
+        code: twoFactorCode.trim()
+      });
+      onAuthSuccess({ token: result.token, user: result.user });
+      setPending2FA(null);
+      setTwoFactorCode("");
+      if (result.usedRecoveryCode) {
+        // Best-effort, friendly post-login warning.
+        // eslint-disable-next-line no-alert
+        alert(locale === "zh"
+          ? `恢复码已使用。剩余 ${result.recoveryCodesRemaining ?? 0} 个，请在安全设置里重新生成。`
+          : `Recovery code used. ${result.recoveryCodesRemaining ?? 0} remaining — regenerate from security settings.`);
+      }
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "2FA verification failed");
+    }
+  }
+
+  async function startGitHubLogin() {
+    // Browser does the redirect — server's GET /api/auth/github replies 302.
+    window.location.href = "/api/auth/github";
+  }
+
+  async function submitForgotPassword() {
+    setForgotMessage("");
+    setForgotDevUrl("");
+    try {
+      const result = await requestPasswordReset(forgotEmail.trim());
+      setForgotMessage(result.message);
+      if (result.devResetUrl) setForgotDevUrl(result.devResetUrl);
+    } catch (error) {
+      setForgotMessage(error instanceof Error ? error.message : "Request failed");
     }
   }
 
@@ -365,20 +482,120 @@ export function MePage({
       {!authenticated ? (
         <section className="panel-large auth-panel">
           <div className="panel-heading">
-            <h2>{authMode === "login" ? t.login : t.register}</h2>
+            <h2>
+              {pending2FA
+                ? (locale === "zh" ? "两步验证" : "Two-factor verification")
+                : pendingRegistration
+                  ? (locale === "zh" ? "邮箱验证" : "Email verification")
+                  : showForgot
+                    ? (locale === "zh" ? "重置密码" : "Reset password")
+                    : authMode === "login" ? t.login : t.register}
+            </h2>
             <span>{locale === "zh" ? "本地账户" : "Local account"}</span>
           </div>
-          <div className="form-grid">
-            {authMode === "register" ? (
-              <input placeholder={locale === "zh" ? "昵称" : "Display name"} value={authForm.name} onChange={(e) => setAuthForm((p) => ({ ...p, name: e.target.value }))} />
-            ) : null}
-            <input placeholder={locale === "zh" ? "邮箱" : "Email"} value={authForm.email} onChange={(e) => setAuthForm((p) => ({ ...p, email: e.target.value }))} />
-            <input placeholder={locale === "zh" ? "密码（至少 8 位）" : "Password (at least 8 characters)"} type="password" value={authForm.password} onChange={(e) => setAuthForm((p) => ({ ...p, password: e.target.value }))} />
-            <button className="primary-action" type="button" onClick={() => void submitAuth(authMode)}>
-              {authMode === "login" ? <LogIn aria-hidden /> : <UserRound aria-hidden />}
-              {authMode === "login" ? t.login : t.register}
-            </button>
-          </div>
+
+          {/* P1.10 — 2FA-pending step: enter TOTP / recovery code */}
+          {pending2FA ? (
+            <div className="form-grid">
+              <p className="settings-help">
+                {locale === "zh"
+                  ? "请输入 6 位验证码，或一个 16 位恢复码（XXXXXXXX-XXXXXXXX）。"
+                  : "Enter a 6-digit code or a 16-character recovery code (XXXXXXXX-XXXXXXXX)."}
+              </p>
+              <input
+                placeholder={locale === "zh" ? "验证码" : "Verification code"}
+                value={twoFactorCode}
+                autoComplete="one-time-code"
+                onChange={(e) => setTwoFactorCode(e.target.value)}
+              />
+              <button className="primary-action" type="button" onClick={() => void submit2FA()}>
+                {locale === "zh" ? "验证并登录" : "Verify and sign in"}
+              </button>
+              <button className="ghost-action" type="button" onClick={() => { setPending2FA(null); setTwoFactorCode(""); setAuthError(""); }}>
+                {locale === "zh" ? "取消" : "Cancel"}
+              </button>
+            </div>
+          ) : pendingRegistration ? (
+            /* P1.5 — register step-2: enter emailed 6-digit code */
+            <div className="form-grid">
+              <p className="settings-help">
+                {locale === "zh"
+                  ? `已向 ${authForm.email} 发送验证码，10 分钟内有效。`
+                  : `A 6-digit code was sent to ${authForm.email}. It expires in 10 minutes.`}
+              </p>
+              {pendingRegistration.devCode ? (
+                <p className="settings-help" style={{ color: "#ca8a04" }}>
+                  {locale === "zh" ? "（开发模式）验证码：" : "(dev mode) code:"} <strong>{pendingRegistration.devCode}</strong>
+                </p>
+              ) : null}
+              <input
+                placeholder={locale === "zh" ? "6 位验证码" : "6-digit code"}
+                value={verifyCode}
+                inputMode="numeric"
+                maxLength={6}
+                autoComplete="one-time-code"
+                onChange={(e) => setVerifyCode(e.target.value)}
+              />
+              <button className="primary-action" type="button" onClick={() => void submitVerifyRegistration()}>
+                {locale === "zh" ? "完成注册" : "Complete registration"}
+              </button>
+              <button className="ghost-action" type="button" onClick={() => { setPendingRegistration(null); setVerifyCode(""); setAuthError(""); }}>
+                {locale === "zh" ? "返回" : "Back"}
+              </button>
+            </div>
+          ) : showForgot ? (
+            /* P1.12 — forgot password */
+            <div className="form-grid">
+              <p className="settings-help">
+                {locale === "zh"
+                  ? "输入注册邮箱，我们会发送重置链接（20 分钟内有效）。"
+                  : "Enter your account email; we'll send a reset link valid for 20 minutes."}
+              </p>
+              <input
+                placeholder={locale === "zh" ? "邮箱" : "Email"}
+                value={forgotEmail}
+                type="email"
+                onChange={(e) => setForgotEmail(e.target.value)}
+              />
+              <button className="primary-action" type="button" onClick={() => void submitForgotPassword()}>
+                {locale === "zh" ? "发送重置邮件" : "Send reset email"}
+              </button>
+              <button className="ghost-action" type="button" onClick={() => { setShowForgot(false); setForgotEmail(""); setForgotMessage(""); setForgotDevUrl(""); }}>
+                {locale === "zh" ? "返回登录" : "Back to login"}
+              </button>
+              {forgotMessage ? <p className="settings-help" style={{ color: "#16a34a" }}>{forgotMessage}</p> : null}
+              {forgotDevUrl ? (
+                <p className="settings-help" style={{ color: "#ca8a04", wordBreak: "break-all" }}>
+                  {locale === "zh" ? "（开发模式）重置链接：" : "(dev mode) reset URL:"}{" "}
+                  <a href={forgotDevUrl}>{forgotDevUrl}</a>
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="form-grid">
+              {authMode === "register" ? (
+                <input placeholder={locale === "zh" ? "昵称" : "Display name"} value={authForm.name} onChange={(e) => setAuthForm((p) => ({ ...p, name: e.target.value }))} />
+              ) : null}
+              <input placeholder={locale === "zh" ? "邮箱" : "Email"} value={authForm.email} onChange={(e) => setAuthForm((p) => ({ ...p, email: e.target.value }))} />
+              <input placeholder={locale === "zh" ? "密码（至少 8 位）" : "Password (at least 8 characters)"} type="password" value={authForm.password} onChange={(e) => setAuthForm((p) => ({ ...p, password: e.target.value }))} />
+              <button className="primary-action" type="button" onClick={() => void submitAuth(authMode)}>
+                {authMode === "login" ? <LogIn aria-hidden /> : <UserRound aria-hidden />}
+                {authMode === "login" ? t.login : t.register}
+              </button>
+              {/* P1.7 — GitHub OAuth button (only when configured) */}
+              {providers?.github ? (
+                <button className="secondary-action" type="button" onClick={() => void startGitHubLogin()}>
+                  {locale === "zh" ? "使用 GitHub 登录" : "Sign in with GitHub"}
+                </button>
+              ) : null}
+              {authMode === "login" ? (
+                <button className="ghost-action" type="button" onClick={() => { setShowForgot(true); setAuthError(""); }}>
+                  {locale === "zh" ? "忘记密码？" : "Forgot password?"}
+                </button>
+              ) : null}
+            </div>
+          )}
+
           {authError ? <p className="connection-error">{authError}</p> : null}
         </section>
       ) : null}

@@ -2,7 +2,45 @@ import type { FastifyInstance } from "fastify";
 import { collectSnapshotInputs } from "@fool/collectors";
 import { createSnapshotManifest, defaultPolicy, diffSnapshots } from "@fool/core";
 import { createRestorePlan } from "@fool/restorers";
-import { getUserByToken, loginUser, registerUser, toPublicUser, updateUserProfile } from "./auth.js";
+import { getUserByToken, loginUser, registerUser, startRegistration, verifyRegistration, toPublicUser, updateUserProfile } from "./auth.js";
+import {
+  getAuthorizeUrl as getGitHubAuthorizeUrl,
+  exchangeCodeForToken as exchangeGitHubCode,
+  fetchProfile as fetchGitHubProfile,
+  verifyState,
+  findOrCreateFromOAuth,
+  linkIdentityToUser,
+  listIdentities,
+  unlinkIdentity,
+  EmailConflictError,
+  IdentityAlreadyLinkedError,
+  LastLoginMethodError,
+  createSessionToken,
+  getSessionTtlMs,
+  TWOFA_PENDING_TTL_MS,
+  ENROLLMENT_REQUIRED_TTL_MS,
+  enrollTotp,
+  confirmTotp,
+  disableTotp,
+  regenerateTotpRecoveryCodes,
+  getTotpStatus,
+  TotpError,
+  login2FA,
+  Login2FAError,
+  resolveSession,
+  updateMyProfile,
+  requestEmailChange,
+  confirmEmailChange,
+  changePassword,
+  softDeleteUser,
+  getNotificationPrefs,
+  updateNotificationPrefs,
+  getUserActivity,
+  verifyTotp,
+  requestPasswordReset,
+  confirmPasswordReset,
+  PasswordResetError
+} from "./auth/index.js";
 import { listCurrentUser } from "./catalog.js";
 import { getConfig } from "./config.js";
 import { createConnection, reprobeConnection, listUserConnections } from "./connections.js";
@@ -234,17 +272,495 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.get("/api/me", async () => {
-    return listCurrentUser();
+  /**
+   * GET /api/me — full snapshot of the authenticated user's account.
+   *
+   * P1.11 replaces the legacy guest stub with a real authenticated lookup.
+   * Returns the public user projection + linked identities + 2FA status so
+   * the SPA can render the account page in one round-trip. Anonymous callers
+   * get the legacy `{ id: "guest" }` response so existing UI code that does
+   * not gate on `authenticated` still works.
+   */
+  app.get("/api/me", async (request) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) return listCurrentUser(); // legacy guest shape
+
+    const [identities, totpStatus, prefs, activity] = await Promise.all([
+      listIdentities(user.id),
+      getTotpStatus(user.id),
+      getNotificationPrefs(user.id),
+      getUserActivity(user.id)
+    ]);
+
+    // Project identities to public-safe shape (mirrors GET /api/me/identities).
+    const publicIdents = identities.map((i) => ({
+      provider: i.provider,
+      providerEmail: i.providerEmail,
+      providerLogin: i.providerData?.login,
+      providerAvatarUrl: i.providerData?.avatarUrl,
+      providerDisplayName: i.providerData?.displayName,
+      createdAt: i.createdAt,
+      lastUsedAt: i.lastUsedAt
+    }));
+    const hasLocal = !!user.passwordHash;
+    if (hasLocal && !publicIdents.some((i) => i.provider === "local")) {
+      publicIdents.unshift({
+        provider: "local",
+        providerEmail: user.email,
+        providerLogin: undefined,
+        providerAvatarUrl: undefined,
+        providerDisplayName: undefined,
+        createdAt: user.createdAt,
+        lastUsedAt: undefined
+      });
+    }
+
+    return {
+      user: toPublicUser(user),
+      identities: publicIdents,
+      twoFactor: totpStatus,
+      notificationPrefs: prefs,
+      activity
+    };
+  });
+
+  /**
+   * PATCH /api/me — update profile fields.
+   *
+   * Accepts any subset of: displayName / bio / avatarUrl / timezone /
+   * locale / username / defaultSshUser. Username uniqueness is enforced
+   * server-side. Email is changed via the dedicated /email-change flow.
+   */
+  app.patch("/api/me", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    try {
+      const updated = await updateMyProfile(user.id, request.body as Parameters<typeof updateMyProfile>[1]);
+      return { user: updated };
+    } catch (err) {
+      reply.code(400);
+      return { error: err instanceof Error ? err.message : "Profile update failed" };
+    }
+  });
+
+  /**
+   * POST /api/me/email-change/request — start the two-step email change.
+   *
+   * Body: { newEmail: "alice@new.example" }
+   * Sends a verification code to the NEW address. The OLD address gets a
+   * heads-up notification too (best-effort). Returns { pendingId } that the
+   * client echoes on the /confirm step.
+   */
+  app.post("/api/me/email-change/request", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as { newEmail?: string };
+    try {
+      const result = await requestEmailChange(user.id, body.newEmail ?? "");
+      return result;
+    } catch (err) {
+      reply.code(400);
+      return { error: err instanceof Error ? err.message : "Email change request failed." };
+    }
+  });
+
+  /**
+   * POST /api/me/email-change/confirm — finalize the change.
+   *
+   * Body: { pendingId, code }
+   * On success: user.email is updated, emailVerifiedAt set to now.
+   */
+  app.post("/api/me/email-change/confirm", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as { pendingId?: string; code?: string };
+    try {
+      const result = await confirmEmailChange({
+        userId: user.id,
+        pendingId: body.pendingId ?? "",
+        code: body.code ?? ""
+      });
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Confirm failed.";
+      reply.code(/expired/i.test(msg) ? 410 : 400);
+      return { error: msg };
+    }
+  });
+
+  /**
+   * POST /api/me/password — change the local password.
+   *
+   * For users WITH a local password: body must contain { oldPassword, newPassword }.
+   * For OAuth-only users setting their first password: body is
+   * { newPassword, currentTotpCode? } and we re-auth via TOTP if 2FA is on,
+   * otherwise refuse (the caller should add 2FA first or provide a recovery
+   * code via the password-reset flow in P1.12).
+   */
+  app.post("/api/me/password", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as {
+      oldPassword?: string;
+      newPassword?: string;
+      currentTotpCode?: string;
+    };
+    if (!body.newPassword) {
+      reply.code(400);
+      return { error: "newPassword is required." };
+    }
+    try {
+      if (user.passwordHash) {
+        // Standard change flow.
+        await changePassword({
+          userId: user.id,
+          oldPassword: body.oldPassword ?? "",
+          newPassword: body.newPassword
+        });
+      } else {
+        // Initial-password flow. Demand fresh TOTP if 2FA is enabled; for
+        // OAuth-only accounts WITHOUT 2FA we refuse (user should add 2FA
+        // first or use the upcoming password-reset flow in P1.12).
+        if (!user.totpEnabledAt) {
+          reply.code(400);
+          return {
+            error: "Set up 2FA first, then set your password using a current 2FA code."
+          };
+        }
+        const code = (body.currentTotpCode ?? "").trim();
+        if (!/^\d{6}$/.test(code)) {
+          reply.code(400);
+          return { error: "currentTotpCode (6 digits) is required to set initial password." };
+        }
+        const verified = await verifyTotp(user.id, code);
+        if (verified !== "ok") {
+          reply.code(401);
+          return { error: "Verification code is incorrect." };
+        }
+        await changePassword({
+          userId: user.id,
+          newPassword: body.newPassword,
+          isInitialSet: true
+        });
+      }
+      return { ok: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Password change failed.";
+      reply.code(/incorrect/i.test(msg) ? 401 : 400);
+      return { error: msg };
+    }
+  });
+
+  /**
+   * DELETE /api/me — soft-delete the authenticated user's account.
+   *
+   * Body: { password?: string; currentTotpCode?: string }
+   *
+   * Re-authentication required to prevent session-hijack-driven account
+   * destruction. Local-password accounts must supply the password; OAuth-only
+   * accounts must supply a current TOTP code (which means they must have
+   * already enrolled in 2FA — fair price for irreversible action).
+   *
+   * Side effects: revokes all sessions; user.deletedAt set; 2FA cleared.
+   * Their content (drafts, comments, etc.) is preserved.
+   */
+  app.delete("/api/me", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+
+    const body = (request.body ?? {}) as { password?: string; currentTotpCode?: string };
+
+    // Re-auth.
+    if (user.passwordHash && user.passwordSalt) {
+      if (!body.password) {
+        reply.code(400);
+        return { error: "Password is required to delete your account." };
+      }
+      const { verifyPassword } = await import("./auth/password.js");
+      const ok = await verifyPassword(body.password, user.passwordSalt, user.passwordHash);
+      if (!ok) {
+        reply.code(401);
+        return { error: "Password is incorrect." };
+      }
+    } else {
+      if (!user.totpEnabledAt) {
+        reply.code(400);
+        return { error: "Account deletion requires either a password or 2FA — neither is set." };
+      }
+      const code = (body.currentTotpCode ?? "").trim();
+      if (!/^\d{6}$/.test(code)) {
+        reply.code(400);
+        return { error: "currentTotpCode (6 digits) is required to delete this account." };
+      }
+      const verified = await verifyTotp(user.id, code);
+      if (verified !== "ok") {
+        reply.code(401);
+        return { error: "Verification code is incorrect." };
+      }
+    }
+
+    // Don't let the only admin delete themselves — system invariant.
+    const db = await readRuntimeDatabase();
+    if (user.role === "admin") {
+      const otherAdmins = db.users.filter(
+        (u) => u.id !== user.id && u.role === "admin" && !u.deletedAt
+      );
+      if (otherAdmins.length === 0) {
+        reply.code(409);
+        return { error: "Cannot delete the only remaining admin account." };
+      }
+    }
+
+    await softDeleteUser(user.id);
+    return { ok: true, deletedAt: new Date().toISOString() };
+  });
+
+  /**
+   * GET /api/me/notification-prefs — return current per-user preferences.
+   * If no row exists yet, returns sensible defaults.
+   */
+  app.get("/api/me/notification-prefs", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    return await getNotificationPrefs(user.id);
+  });
+
+  /**
+   * PUT /api/me/notification-prefs — replace prefs (any missing field
+   * keeps its prior value via merge inside updateNotificationPrefs).
+   */
+  app.put("/api/me/notification-prefs", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const body = (request.body ?? {}) as Partial<{
+      emailMentions: boolean;
+      emailComments: boolean;
+      emailSuggestionStatus: boolean;
+      emailPublishStatus: boolean;
+    }>;
+    // Coerce / pass through only the recognized fields.
+    const patch: Parameters<typeof updateNotificationPrefs>[1] = {};
+    if (typeof body.emailMentions === "boolean") patch.emailMentions = body.emailMentions;
+    if (typeof body.emailComments === "boolean") patch.emailComments = body.emailComments;
+    if (typeof body.emailSuggestionStatus === "boolean") patch.emailSuggestionStatus = body.emailSuggestionStatus;
+    if (typeof body.emailPublishStatus === "boolean") patch.emailPublishStatus = body.emailPublishStatus;
+    return await updateNotificationPrefs(user.id, patch);
+  });
+
+  /**
+   * GET /api/me/activity — counters for the user's settings dashboard
+   * (number of connections / playbooks / tasks / OAuth providers / etc.).
+   */
+  app.get("/api/me/activity", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    return await getUserActivity(user.id);
   });
 
   app.post("/api/auth/register", async (request, reply) => {
+    // Two-step flow (auth-and-ecosystem spec P1.5): this endpoint is now the
+    // step-1 "send verification code" call. The legacy `registerUser` helper
+    // is a compat shim that calls startRegistration internally and returns
+    // `{ pending: true, pendingId, message }` — old clients see a clearer
+    // error than a silent change in semantics.
     try {
-      return await registerUser(request.body as { name?: string; email?: string; password?: string });
+      const result = await registerUser(request.body as { name?: string; email?: string; password?: string });
+      return result;
     } catch (error) {
       reply.code(400);
       return { error: error instanceof Error ? error.message : "Registration failed" };
     }
+  });
+
+  app.post("/api/auth/register/start", async (request, reply) => {
+    try {
+      return await startRegistration(request.body as { name?: string; email?: string; password?: string });
+    } catch (error) {
+      reply.code(400);
+      return { error: error instanceof Error ? error.message : "Registration failed" };
+    }
+  });
+
+  app.post("/api/auth/register/verify", async (request, reply) => {
+    try {
+      return await verifyRegistration(request.body as { pendingId?: string; code?: string });
+    } catch (error) {
+      reply.code(400);
+      return { error: error instanceof Error ? error.message : "Verification failed" };
+    }
+  });
+
+  // ── GitHub OAuth (auth-and-ecosystem spec P1.7) ────────────────────────
+  // GET /api/auth/github → 302 to github.com/login/oauth/authorize
+  // GET /auth/github/callback → exchange code → create-or-find user → set session → 302 home
+  //
+  // The callback path matches the GitHub OAuth App Authorization callback URL
+  // configured in GitHub's developer settings (no `/api` prefix per the
+  // user's existing app config).
+  app.get("/api/auth/github", async (request, reply) => {
+    const cfg = getConfig();
+    if (!cfg.github.clientId || !cfg.github.redirectUri) {
+      reply.code(503);
+      return { error: "GitHub OAuth is not configured on this server." };
+    }
+    const url = getGitHubAuthorizeUrl({ purpose: "login" });
+    reply.redirect(url);
+  });
+
+  app.get("/auth/github/callback", async (request, reply) => {
+    const query = request.query as { code?: string; state?: string; error?: string };
+    const cfg = getConfig();
+
+    // GitHub may return user-aborted flows with ?error=access_denied (no code/state).
+    if (query.error || !query.code || !query.state) {
+      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=cancelled`);
+      return;
+    }
+
+    // 1. Verify the state token (CSRF + replay protection)
+    const stateResult = verifyState(query.state);
+    if (!stateResult.ok) {
+      // Don't leak which specific check failed — that's a CSRF oracle.
+      // The client gets a single generic error; server logs may have details.
+      request.log.warn({ reason: stateResult.reason }, "OAuth state verification failed");
+      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=invalid_state`);
+      return;
+    }
+    const { purpose, userId: linkUserId, redirectTo } = stateResult.payload;
+
+    // 2. Exchange code → access_token → fetch profile
+    let profile: Awaited<ReturnType<typeof fetchGitHubProfile>>;
+    try {
+      const accessToken = await exchangeGitHubCode(query.code);
+      profile = await fetchGitHubProfile(accessToken);
+    } catch (err) {
+      request.log.warn({ err: err instanceof Error ? err.message : err }, "GitHub OAuth exchange/fetch failed");
+      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=provider_error`);
+      return;
+    }
+
+    // 3. Branch: login flow vs link-existing-user flow
+    if (purpose === "link") {
+      if (!linkUserId) {
+        reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=invalid_state`);
+        return;
+      }
+      try {
+        await linkIdentityToUser(linkUserId, {
+          provider: "github",
+          providerUserId: profile.id,
+          email: profile.email,
+          profile: {
+            avatarUrl: profile.avatarUrl,
+            displayName: profile.displayName,
+            login: profile.login
+          }
+        });
+        reply.redirect(`${cfg.publicBaseUrl}${redirectTo ?? "/account/identities"}?oauth=linked`);
+        return;
+      } catch (err) {
+        if (err instanceof IdentityAlreadyLinkedError) {
+          reply.redirect(`${cfg.publicBaseUrl}/account/identities?oauth_error=already_linked`);
+          return;
+        }
+        request.log.error({ err: err instanceof Error ? err.message : err }, "OAuth link failed");
+        reply.redirect(`${cfg.publicBaseUrl}/account/identities?oauth_error=link_failed`);
+        return;
+      }
+    }
+
+    // Login flow
+    let result: { user: { id: string; email: string }; created: boolean };
+    try {
+      result = await findOrCreateFromOAuth({
+        provider: "github",
+        providerUserId: profile.id,
+        email: profile.email,
+        profile: {
+          avatarUrl: profile.avatarUrl,
+          displayName: profile.displayName,
+          login: profile.login
+        }
+      });
+    } catch (err) {
+      if (err instanceof EmailConflictError) {
+        // Per spec D-1.1: user must log in with their existing local account
+        // first, then link GitHub from settings. Surface this clearly.
+        const emailHint = encodeURIComponent(err.email);
+        reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=email_conflict&email=${emailHint}`);
+        return;
+      }
+      request.log.error({ err: err instanceof Error ? err.message : err }, "OAuth login failed");
+      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=login_failed`);
+      return;
+    }
+
+    // 4. Issue session — gate on 2FA / enrollment requirements (P1.10).
+    //    Find the user record (we already have userId) so we can inspect
+    //    role + totpEnabledAt.
+    const dbForSession = await readRuntimeDatabase();
+    const userRow = dbForSession.users.find((u) => u.id === result.user.id);
+    if (!userRow) {
+      request.log.error({ userId: result.user.id }, "OAuth: user vanished between create and session-issue");
+      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=login_failed`);
+      return;
+    }
+
+    const totpEnabled = !!userRow.totpEnabledAt;
+    const adminNeedsEnrollment = userRow.role === "admin" && !totpEnabled;
+
+    const now = new Date().toISOString();
+    const token = createSessionToken();
+
+    if (totpEnabled) {
+      // 2fa-pending intermediate session. SPA must hand the user the 2FA
+      // input page; intermediateToken is the only thing it can do anything with.
+      const expiresAt = new Date(Date.now() + TWOFA_PENDING_TTL_MS).toISOString();
+      await updateRuntimeDatabase((db) => {
+        db.sessions = db.sessions.filter((s) => new Date(s.expiresAt).getTime() > Date.now());
+        db.sessions.push({
+          token,
+          userId: userRow.id,
+          createdAt: now,
+          expiresAt,
+          twofaPending: true
+        });
+      });
+      const fragment = `#2fa=1&intermediateToken=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
+      reply.redirect(`${cfg.publicBaseUrl}/login/2fa${fragment}`);
+      return;
+    }
+
+    if (adminNeedsEnrollment) {
+      // Admin who hasn't set up 2FA yet — D-2.1 makes it mandatory.
+      const expiresAt = new Date(Date.now() + ENROLLMENT_REQUIRED_TTL_MS).toISOString();
+      await updateRuntimeDatabase((db) => {
+        db.sessions = db.sessions.filter((s) => new Date(s.expiresAt).getTime() > Date.now());
+        db.sessions.push({
+          token,
+          userId: userRow.id,
+          createdAt: now,
+          expiresAt,
+          enrollmentRequired: true
+        });
+      });
+      const fragment = `#enroll=1&token=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
+      reply.redirect(`${cfg.publicBaseUrl}/account/security/enroll${fragment}`);
+      return;
+    }
+
+    // Regular full-access session.
+    const expiresAt = new Date(Date.now() + getSessionTtlMs()).toISOString();
+    await updateRuntimeDatabase((db) => {
+      db.sessions = db.sessions.filter((s) => new Date(s.expiresAt).getTime() > Date.now());
+      db.sessions.push({ token, userId: result.user.id, createdAt: now, expiresAt });
+    });
+
+    // 5. Hand the session token to the browser via fragment so it lands in
+    // localStorage (the SPA reads `#token=...` on /oauth/return). Fragments
+    // never hit our server logs nor reverse-proxy access logs.
+    const fragment = `#token=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
+    reply.redirect(`${cfg.publicBaseUrl}${redirectTo ?? "/oauth/return"}${fragment}`);
   });
 
   app.post("/api/auth/login", async (request, reply) => {
@@ -256,6 +772,105 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  /**
+   * POST /api/auth/login/2fa — second-factor verification step.
+   *
+   * Body: { intermediateToken: string, code: string }
+   * The user gets `intermediateToken` from a previous /api/auth/login call
+   * that returned `needs2FA: true`. `code` is either a 6-digit TOTP code
+   * or a 16-char recovery code.
+   *
+   * Status mapping:
+   *   - 200 ok                    {token, expiresAt, user, [usedRecoveryCode, recoveryCodesRemaining]}
+   *   - 401 wrong-code / not-pending
+   *   - 410 session-expired       (intermediate session past its 5-min TTL)
+   *   - 401 session-not-found     (token unknown / never issued)
+   */
+  app.post("/api/auth/login/2fa", async (request, reply) => {
+    const body = (request.body ?? {}) as { intermediateToken?: string; code?: string };
+    try {
+      return await login2FA(body);
+    } catch (err) {
+      if (err instanceof Login2FAError) {
+        if (err.reason === "session-expired") {
+          reply.code(410);
+          return { error: "2FA session has expired. Please sign in again." };
+        }
+        if (err.reason === "session-not-found" || err.reason === "not-pending") {
+          reply.code(401);
+          return { error: "Invalid or unusable 2FA session." };
+        }
+        if (err.reason === "wrong-code") {
+          reply.code(401);
+          return { error: "Verification code is incorrect." };
+        }
+      }
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Login failed." };
+    }
+  });
+
+  /**
+   * POST /api/auth/password-reset/request — kick off forgot-password flow.
+   *
+   * Body: { email: string }
+   * Always returns 200 with the same generic message regardless of whether
+   * the email matches a real account (anti-enumeration). The actual reset
+   * email is only sent if the matched account has a local password.
+   */
+  app.post("/api/auth/password-reset/request", async (request) => {
+    const body = (request.body ?? {}) as { email?: string };
+    return await requestPasswordReset(body.email ?? "");
+  });
+
+  /**
+   * POST /api/auth/password-reset/confirm — finalize the reset.
+   *
+   * Body: { token: string, newPassword: string }
+   * On success: password is rewritten + ALL of the user's sessions are
+   * revoked (forced log-out everywhere). Returns 200 with `{ email,
+   * sessionsRevoked }`. Status mapping:
+   *   - 400 malformed-token / bad-signature / new password too short
+   *   - 404 not-found / user-not-found
+   *   - 410 expired
+   *   - 410 already-used
+   */
+  app.post("/api/auth/password-reset/confirm", async (request, reply) => {
+    const body = (request.body ?? {}) as { token?: string; newPassword?: string };
+    try {
+      return await confirmPasswordReset({
+        token: body.token ?? "",
+        newPassword: body.newPassword ?? ""
+      });
+    } catch (err) {
+      if (err instanceof PasswordResetError) {
+        switch (err.reason) {
+          case "malformed-token":
+          case "bad-signature":
+            reply.code(400);
+            return { error: "Reset link is invalid." };
+          case "expired":
+          case "already-used":
+            reply.code(410);
+            return {
+              error:
+                err.reason === "expired"
+                  ? "Reset link has expired. Please request a new one."
+                  : "Reset link has already been used. Please request a new one."
+            };
+          case "not-found":
+          case "user-not-found":
+            reply.code(404);
+            return { error: "Reset request not found." };
+        }
+      }
+      // normalizePassword throws plain Error for short pw
+      const msg = err instanceof Error ? err.message : "Reset failed.";
+      reply.code(/at least 8 characters/i.test(msg) ? 400 : 500);
+      return { error: msg };
+    }
+  });
+
   app.get("/api/auth/session", async (request, reply) => {
     const user = await getUserByToken(readBearerToken(request.headers.authorization));
     if (!user) {
@@ -264,6 +879,17 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return { user: toPublicUser(user) };
+  });
+
+  // Lists which OAuth providers are configured on this server. The login UI
+  // queries this to decide whether to render the GitHub / Google buttons.
+  // Public — no auth required.
+  app.get("/api/auth/providers", async () => {
+    const cfg = getConfig();
+    return {
+      github: Boolean(cfg.github.clientId && cfg.github.redirectUri),
+      google: false // P1.7 stub — wired in P4.1 (or later)
+    };
   });
 
   app.patch("/api/auth/profile", async (request, reply) => {
@@ -280,6 +906,277 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     } catch (error) {
       reply.code(400);
       return { error: error instanceof Error ? error.message : "Profile update failed" };
+    }
+  });
+
+  // ── Multi-provider identity management (auth-and-ecosystem spec P1.8) ──
+  // List, connect, and disconnect OAuth providers for the current user.
+
+  app.get("/api/me/identities", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+
+    const idents = await listIdentities(user.id);
+    // Project to a public-safe shape — strip internal id, keep what the UI needs
+    // to render the "Connected accounts" panel.
+    const publicIdents = idents.map((i) => ({
+      provider: i.provider,
+      providerEmail: i.providerEmail,
+      providerLogin: i.providerData?.login,
+      providerAvatarUrl: i.providerData?.avatarUrl,
+      providerDisplayName: i.providerData?.displayName,
+      createdAt: i.createdAt,
+      lastUsedAt: i.lastUsedAt
+    }));
+    // The user also has a "local" login method when passwordHash is set, even
+    // if no explicit `local` identity row was migrated. Surface this as a
+    // virtual entry so the UI can show "Local password ✓" alongside OAuth ones.
+    const hasLocal = !!user.passwordHash;
+    const hasLocalRow = publicIdents.some((i) => i.provider === "local");
+    if (hasLocal && !hasLocalRow) {
+      publicIdents.unshift({
+        provider: "local",
+        providerEmail: user.email,
+        providerLogin: undefined,
+        providerAvatarUrl: undefined,
+        providerDisplayName: undefined,
+        createdAt: user.createdAt,
+        lastUsedAt: undefined
+      });
+    }
+    return { identities: publicIdents };
+  });
+
+  app.post("/api/me/identities/github/connect", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+
+    const cfg = getConfig();
+    if (!cfg.github.clientId || !cfg.github.redirectUri) {
+      reply.code(503);
+      return { error: "GitHub OAuth is not configured on this server." };
+    }
+
+    // Build authorize URL with purpose=link + userId. The callback at
+    // GET /auth/github/callback (set up in P1.7) sees the link purpose
+    // and goes through the linkIdentityToUser path instead of creating
+    // a new account.
+    const body = (request.body ?? {}) as { redirectTo?: string };
+    const url = getGitHubAuthorizeUrl({
+      purpose: "link",
+      userId: user.id,
+      redirectTo: body.redirectTo
+    });
+    return { authorizeUrl: url };
+  });
+
+  app.delete("/api/me/identities/:provider", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+
+    const { provider } = request.params as { provider: string };
+    if (provider !== "github" && provider !== "google" && provider !== "local") {
+      reply.code(400);
+      return { error: "Unknown provider." };
+    }
+    // Don't let users unlink "local" via this endpoint — that's effectively
+    // "remove my password", which is a separate flow (POST /api/me/password
+    // with empty body in P1.11). The check is here for safety; the
+    // unlinkIdentity function would also reject it via LastLoginMethodError
+    // in most cases, but we want a clearer error message.
+    if (provider === "local") {
+      reply.code(400);
+      return { error: "Use the password settings to remove your local password." };
+    }
+
+    try {
+      await unlinkIdentity(user.id, provider);
+      return { ok: true };
+    } catch (err) {
+      if (err instanceof LastLoginMethodError) {
+        reply.code(409);
+        return { error: err.message };
+      }
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Disconnect failed." };
+    }
+  });
+
+  // ── Two-factor authentication (auth-and-ecosystem spec P1.9) ──
+  // TOTP enrollment + verification + recovery codes. The disable / login-time
+  // verify branches arrive in P1.10 (login flow with 2fa-pending session).
+
+  /**
+   * GET /api/me/2fa/status — inspect 2FA state for the current user.
+   * Returns enabled flag, enabledAt, recovery code count, pending-enrollment flag.
+   *
+   * Accepts enrollment-required sessions (P1.10) so admins forced through
+   * enrollment can read their own status from the enrollment UI.
+   */
+  app.get("/api/me/2fa/status", async (request, reply) => {
+    const resolved = await resolveSession(readBearerToken(request.headers.authorization), {
+      allowEnrollmentRequired: true
+    });
+    if (!resolved) { reply.code(401); return { error: "Login required." }; }
+    return await getTotpStatus(resolved.user.id);
+  });
+
+  /**
+   * POST /api/me/2fa/enroll — start 2FA enrollment.
+   * Returns secret + otpauth URI + QR data URL. NO change to user state until
+   * `confirm` succeeds. Replaces any prior pending enrollment for this user.
+   *
+   * Refusing to re-enroll while already enabled — user must disable first.
+   * (Prevents accidental lockout: switching authenticators should be a
+   * deliberate two-step flow.)
+   *
+   * Accepts enrollment-required sessions (P1.10): admin users forced through
+   * enrollment after first login must complete this from the locked-down
+   * intermediate session.
+   */
+  app.post("/api/me/2fa/enroll", async (request, reply) => {
+    const resolved = await resolveSession(readBearerToken(request.headers.authorization), {
+      allowEnrollmentRequired: true
+    });
+    if (!resolved) { reply.code(401); return { error: "Login required." }; }
+    const user = resolved.user;
+    if (user.totpEnabledAt) {
+      reply.code(409);
+      return { error: "Two-factor authentication is already enabled. Disable it first to re-enroll." };
+    }
+    try {
+      const result = await enrollTotp(user.id);
+      return result;
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Enrollment failed." };
+    }
+  });
+
+  /**
+   * POST /api/me/2fa/confirm — finalize enrollment.
+   * Body: { code: "123456" }
+   * On success: user.totpEnabledAt is set, secret encrypted, 8 recovery codes
+   * generated. Returns recovery codes — show ONCE in the UI.
+   *
+   * Accepts enrollment-required sessions (P1.10). On successful confirm the
+   * intermediate session is rotated to a regular full-access one, and the
+   * new token is included in the response so the SPA can swap immediately.
+   */
+  app.post("/api/me/2fa/confirm", async (request, reply) => {
+    const bearer = readBearerToken(request.headers.authorization);
+    const resolved = await resolveSession(bearer, { allowEnrollmentRequired: true });
+    if (!resolved) { reply.code(401); return { error: "Login required." }; }
+    const user = resolved.user;
+    const body = (request.body ?? {}) as { code?: string };
+    const code = (body.code ?? "").trim();
+    if (!/^\d{6}$/.test(code)) {
+      reply.code(400);
+      return { error: "Verification code must be 6 digits." };
+    }
+    try {
+      const result = await confirmTotp(user.id, code);
+      // If this confirm came from an enrollment-required session, rotate it
+      // into a regular session so the user immediately has full access. The
+      // SPA replaces its stored token from this response.
+      if (resolved.restriction === "enrollment-required" && bearer) {
+        const rotated = await (await import("./auth/session.js")).rotateSession(bearer);
+        if (rotated) {
+          return { ...result, sessionToken: rotated.token, sessionExpiresAt: rotated.expiresAt };
+        }
+      }
+      return result;
+    } catch (err) {
+      if (err instanceof TotpError) {
+        if (err.reason === "no-pending") {
+          reply.code(404);
+          return { error: "No pending enrollment found. Start enrollment first." };
+        }
+        if (err.reason === "expired") {
+          reply.code(410);
+          return { error: "Enrollment expired. Please start enrollment again." };
+        }
+        if (err.reason === "wrong-code") {
+          reply.code(400);
+          return { error: "Verification code is incorrect." };
+        }
+      }
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Confirmation failed." };
+    }
+  });
+
+  /**
+   * POST /api/me/2fa/disable — turn off 2FA.
+   * Body: { password: "..." }
+   * Requires fresh password verification (or — for OAuth-only accounts — a
+   * valid TOTP code) to prevent session-hijack-driven 2FA removal.
+   */
+  app.post("/api/me/2fa/disable", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    if (!user.totpEnabledAt) {
+      reply.code(409);
+      return { error: "Two-factor authentication is not enabled." };
+    }
+    const body = (request.body ?? {}) as { password?: string; code?: string };
+    // Re-auth: prefer password (the dominant case). For OAuth-only accounts
+    // without a password, fall back to a fresh TOTP code as proof of possession.
+    const hasPasswordRecheck = typeof body.password === "string" && body.password.length > 0;
+    const hasCodeRecheck = typeof body.code === "string" && /^\d{6}$/.test(body.code.trim());
+    if (!hasPasswordRecheck && !hasCodeRecheck) {
+      reply.code(400);
+      return { error: "Re-authentication required: provide your password or a current 2FA code." };
+    }
+    if (hasPasswordRecheck) {
+      if (!user.passwordHash || !user.passwordSalt) {
+        reply.code(400);
+        return { error: "This account has no local password; provide a current 2FA code instead." };
+      }
+      const { verifyPassword } = await import("./auth/password.js");
+      const ok = await verifyPassword(body.password!, user.passwordSalt, user.passwordHash);
+      if (!ok) {
+        reply.code(401);
+        return { error: "Password is incorrect." };
+      }
+    } else {
+      const { verifyTotp } = await import("./auth/index.js");
+      const result = await verifyTotp(user.id, body.code!.trim());
+      if (result !== "ok") {
+        reply.code(401);
+        return { error: "Verification code is incorrect." };
+      }
+    }
+    try {
+      await disableTotp(user.id);
+      return { ok: true };
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Disable failed." };
+    }
+  });
+
+  /**
+   * POST /api/me/2fa/regenerate-recovery — issue 8 fresh recovery codes,
+   * invalidating the prior set. Returns the new plaintexts ONCE.
+   */
+  app.post("/api/me/2fa/regenerate-recovery", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    if (!user.totpEnabledAt) {
+      reply.code(409);
+      return { error: "Two-factor authentication is not enabled." };
+    }
+    try {
+      const recoveryCodes = await regenerateTotpRecoveryCodes(user.id);
+      return { recoveryCodes };
+    } catch (err) {
+      if (err instanceof TotpError && err.reason === "not-enrolled") {
+        reply.code(409);
+        return { error: "Two-factor authentication is not enabled." };
+      }
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Regenerate failed." };
     }
   });
 

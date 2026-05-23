@@ -1,0 +1,27 @@
+Subject: 你的 EnvForge 邮箱地址即将变更 / EnvForge: your account email is being changed
+
+你好 {{ displayName }},
+
+我们刚刚收到了把 EnvForge 账号邮箱从 {{ oldEmail }} 改为 {{ newEmail }} 的请求。
+新邮箱已收到 6 位验证码；变更只有在那边输入验证码后才会生效。
+
+如果不是你本人发起的更改，请立即：
+  1. 登录 EnvForge 修改密码
+  2. 检查你的安全设置（{{ publicBaseUrl }}/account/security）
+  3. 如果无法登录，联系管理员
+
+—
+Hello {{ displayName }},
+
+We just received a request to change your EnvForge account email from
+{{ oldEmail }} to {{ newEmail }}.
+A 6-digit code was sent to the new address; the change only takes effect once
+that code is entered.
+
+If you did NOT initiate this change, please:
+  1. Sign in to EnvForge and change your password
+  2. Review your security settings ({{ publicBaseUrl }}/account/security)
+  3. If you can't sign in, contact your administrator
+
+—
+EnvForge · {{ publicBaseUrl }}
