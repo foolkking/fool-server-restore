@@ -25,4 +25,3 @@ Thumbs.db
 .vscode/
 
 # Generated package manager files can be committed once a manager is chosen.
-apps/api/src/engine/tests/
