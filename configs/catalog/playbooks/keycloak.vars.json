@@ -1,0 +1,56 @@
+{
+  "kc_domain": {
+    "type": "string",
+    "label": "访问域名",
+    "labelEn": "Hostname",
+    "default": "auth.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "auth.example.com",
+    "help": "Keycloak 对外公开的域名（不带协议端口）。Keycloak 25 会用此校验所有 OIDC redirect URI——**必须与反代 server_name 一致**，否则登录会被拒绝。",
+    "helpEn": "Public hostname (no protocol/port). Keycloak 25 validates all OIDC redirect URIs against this—**must match reverse proxy server_name** or login will fail."
+  },
+  "kc_admin_user": {
+    "type": "string",
+    "label": "Admin 用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "help": "master realm 的初始 admin 账号。仅首次启动时创建——之后改密码 / 加用户都在 Web UI。",
+    "helpEn": "Initial admin account for master realm. Only created on first start—change password / add users in Web UI later."
+  },
+  "kc_admin_password": {
+    "type": "password",
+    "label": "Admin 密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "master realm admin 密码。留空 = 自动生成 24 位（运行结束日志显示一次）。**记下来**——重置需要进容器跑 keycloak.sh。",
+    "helpEn": "master realm admin password. Empty = auto-generate 24-char. **Save it**—reset requires shell into container."
+  },
+  "kc_db_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "Keycloak 内部 PG 数据库密码。一般不需要直接用——Keycloak 自动连。",
+    "helpEn": "Internal PG database password. Usually not needed directly."
+  },
+  "kc_port": {
+    "type": "port",
+    "label": "本机监听端口",
+    "labelEn": "Local listen port",
+    "default": 8082,
+    "help": "Keycloak HTTP 端口（仅 127.0.0.1 绑定）。生产用反代到此端口 + HTTPS。直接公网暴露 8080 = 不安全（Keycloak 25 会强制要求 HTTPS）。",
+    "helpEn": "Keycloak HTTP port (127.0.0.1 only). Front with reverse proxy + HTTPS in production."
+  },
+  "kc_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/keycloak",
+    "help": "存 PG 数据 + docker-compose.yml。**频繁备份 postgres-data 子目录**——丢了 = 所有 realm / client / 用户重来。",
+    "helpEn": "Stores PG data + compose file. **Back up postgres-data frequently**—loss = all realms / clients / users gone."
+  }
+}

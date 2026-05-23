@@ -1,0 +1,104 @@
+# Playbook: NocoDB - Airtable 风格数据库 GUI
+#
+# NocoDB 把 MySQL / PG / SQLite 变成无代码 Airtable 界面——业务人员看数据、开发者管 schema。
+name: Install NocoDB (Docker)
+hosts: all
+
+vars:
+  nocodb_port: 8088
+  nocodb_jwt_secret: ""               # 留空 = 自动 64 位
+  nocodb_data_dir: /opt/nocodb
+
+tasks:
+  - name: Docker check
+    module: shell
+    args:
+      cmd: command -v docker && docker info >/dev/null 2>&1
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ nocodb_data_dir }}"
+      state: directory
+      mode: "0750"
+
+  - name: 生成 JWT secret
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ nocodb_jwt_secret }}" ]; then
+          openssl rand -hex 32 | tr -d '\n'
+        else
+          echo "{{ nocodb_jwt_secret }}"
+        fi
+    register: jwt_secret
+    no_log: true
+
+  - name: 写 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ nocodb_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          nocodb:
+            image: nocodb/nocodb:latest
+            container_name: nocodb
+            restart: unless-stopped
+            ports:
+              - "127.0.0.1:{{ nocodb_port }}:8080"
+            environment:
+              NC_AUTH_JWT_SECRET: "{{ jwt_secret.stdout }}"
+              NC_DISABLE_TELE: "true"
+              NC_DB_JSON: ""                # 默认 SQLite，外部 DB 见 md 模板 B
+            volumes:
+              - {{ nocodb_data_dir }}:/usr/app/data
+            healthcheck:
+              test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/health"]
+              interval: 30s
+              timeout: 5s
+              retries: 3
+
+  - name: 启动
+    module: shell
+    args:
+      cmd: |
+        cd {{ nocodb_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 60); do
+          if curl -fsS http://127.0.0.1:{{ nocodb_port }}/api/v1/health >/dev/null 2>&1; then
+            echo "OK"
+            exit 0
+          fi
+          sleep 2
+        done
+        docker logs --tail 50 nocodb
+        exit 1
+
+  - name: 显示登录信息
+    module: shell
+    args:
+      cmd: |
+        echo "==========================================="
+        echo "NocoDB 已就绪"
+        echo "==========================================="
+        echo "  URL: http://$(hostname -I | awk '{print $1}'):{{ nocodb_port }}"
+        echo ""
+        echo "首次访问 → /signup 创建第一个 Super Admin 账号"
+        echo "之后挂反代 + HTTPS"
+        echo "==========================================="
+
+verify:
+  - name: nocodb container running
+    cmd: "docker ps --filter name=nocodb --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "NocoDB 容器没起。docker logs nocodb"
+
+  - name: nocodb api healthy
+    cmd: "curl -fsS http://127.0.0.1:{{ nocodb_port }}/api/v1/health"
+    hint: "Health 失败。等 30s 重试。"

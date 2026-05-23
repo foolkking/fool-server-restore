@@ -1,0 +1,40 @@
+{
+  "meili_master_key": {
+    "type": "password",
+    "label": "Master Key",
+    "labelEn": "Master key",
+    "default": "",
+    "generate_length": 32,
+    "reveal_after_run": true,
+    "help": "Meilisearch 主密钥。所有 API 请求必须带 'Authorization: Bearer <key>'。留空 = 自动生成 32 位强 key。",
+    "helpEn": "Meilisearch master key. All API requests need 'Authorization: Bearer <key>'. Empty = auto-generate 32-char key."
+  },
+  "meili_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 7700,
+    "help": "Meilisearch HTTP API 端口。默认仅 127.0.0.1 绑定。",
+    "helpEn": "HTTP API port. Binds only to 127.0.0.1 by default."
+  },
+  "meili_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/var/lib/meilisearch",
+    "help": "索引数据存储位置。",
+    "helpEn": "Index data storage location."
+  },
+  "meili_env": {
+    "type": "choice",
+    "label": "运行模式",
+    "labelEn": "Environment",
+    "default": "production",
+    "options": [
+      { "value": "production", "label": "production（生产；强制 master key）" },
+      { "value": "development", "label": "development（开发；不强制 key）" }
+    ],
+    "help": "production 模式必须带 master key，并启用所有 production-only 优化。",
+    "helpEn": "production requires master key and enables prod-only optimizations."
+  }
+}

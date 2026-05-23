@@ -1,0 +1,55 @@
+{
+  "ms_mail_hostname": {
+    "type": "string",
+    "label": "邮件服务器 hostname",
+    "labelEn": "Mail server hostname",
+    "default": "mail.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "MX 记录指向的 FQDN。**必须有 A 记录 + 反向 DNS（PTR）匹配**——否则 Gmail 直接拒。",
+    "helpEn": "FQDN that MX record points to. **Must have matching A and PTR (reverse DNS)** or Gmail rejects."
+  },
+  "ms_mail_domain": {
+    "type": "string",
+    "label": "邮件域",
+    "labelEn": "Mail domain",
+    "default": "example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "邮箱地址 @ 后面的部分。",
+    "helpEn": "Domain after @ in email addresses."
+  },
+  "ms_webmail_hostname": {
+    "type": "string",
+    "label": "Webmail 域名",
+    "labelEn": "Webmail hostname",
+    "default": "webmail.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Roundcube 网页邮箱的域名（与 mail_hostname 不同 — 一个走 SMTP/IMAP，一个走 HTTPS）。",
+    "helpEn": "Roundcube webmail hostname (different from mail_hostname—one for SMTP/IMAP, one for HTTPS)."
+  },
+  "ms_postmaster_email": {
+    "type": "string",
+    "label": "Postmaster 邮箱",
+    "labelEn": "Postmaster email",
+    "default": "postmaster@example.com",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "DMARC report 收件人。RFC 要求每域必须有此别名。",
+    "helpEn": "DMARC reports recipient. RFC requires this alias per domain."
+  },
+  "ms_acme_email": {
+    "type": "string",
+    "label": "Let's Encrypt 注册邮箱",
+    "labelEn": "Let's Encrypt email",
+    "default": "admin@example.com",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Caddy 用此邮箱注册 LE 账号（接证书过期通知）。",
+    "helpEn": "Email Caddy uses to register with Let's Encrypt (gets cert expiry notifications)."
+  },
+  "ms_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/mail-stack",
+    "help": "存所有数据：邮件 + 配置 + 证书 + Roundcube SQLite。**每日备份**（特别是 mailserver-data 含所有邮件）。",
+    "helpEn": "All data: mail + config + certs + Roundcube SQLite. **Back up daily** (especially mailserver-data with all email)."
+  }
+}

@@ -1,0 +1,144 @@
+# Playbook: InfluxDB v2 时序数据库
+#
+# IoT / 监控指标 / 业务时序数据。Grafana 数据源，Telegraf agent 生态。
+name: Install InfluxDB v2
+hosts: all
+
+vars:
+  influx_admin_user: "admin"
+  influx_admin_password: ""             # 留空 = 自动 24 位
+  influx_org: "envforge"
+  influx_bucket: "default"
+  influx_retention: "720h"               # 30 天
+  influx_port: 8086
+
+tasks:
+  - name: 安装依赖
+    module: package
+    args:
+      name: ["curl", "ca-certificates", "gnupg"]
+      state: present
+
+  - name: 添加 InfluxData apt 仓库
+    module: shell
+    args:
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1 && [ ! -f /etc/apt/sources.list.d/influxdata.list ]; then
+          curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key \
+            | sudo gpg --dearmor -o /usr/share/keyrings/influxdata.gpg
+          echo "deb [signed-by=/usr/share/keyrings/influxdata.gpg] https://repos.influxdata.com/debian stable main" \
+            | sudo tee /etc/apt/sources.list.d/influxdata.list
+          sudo apt-get update -qq
+        fi
+      creates: /etc/apt/sources.list.d/influxdata.list
+
+  - name: 添加 InfluxData yum 仓库
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/influxdata.repo ]; then
+          cat > /tmp/influxdata.repo <<'EOF'
+        [influxdata]
+        name=InfluxData Repository - Stable
+        baseurl=https://repos.influxdata.com/stable/$basearch/main
+        enabled=1
+        gpgcheck=1
+        gpgkey=https://repos.influxdata.com/influxdata-archive_compat.key
+        EOF
+          sudo mv /tmp/influxdata.repo /etc/yum.repos.d/
+        fi
+      creates: /etc/yum.repos.d/influxdata.repo
+
+  - name: 安装 influxdb2 + influxdb2-cli
+    module: package
+    args:
+      name: ["influxdb2", "influxdb2-cli"]
+      state: present
+
+  - name: 配置监听 127.0.0.1
+    module: copy
+    args:
+      dest: /etc/influxdb/config.yml
+      mode: "0644"
+      content: |
+        bolt-path: /var/lib/influxdb/influxd.bolt
+        engine-path: /var/lib/influxdb/engine
+        http-bind-address: 127.0.0.1:{{ influx_port }}
+        log-level: info
+        reporting-disabled: true
+
+  - name: 启动服务
+    module: service
+    args:
+      name: influxdb
+      state: started
+      enabled: true
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:{{ influx_port }}/health 2>/dev/null | grep -q pass; then
+            exit 0
+          fi
+          sleep 2
+        done
+        sudo journalctl -u influxdb -n 30 --no-pager
+        exit 1
+
+  - name: 生成密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ influx_admin_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ influx_admin_password }}"
+        fi
+    register: admin_pass
+    no_log: true
+
+  - name: 初始化 setup（首次）
+    module: shell
+    args:
+      cmd: |
+        # 检查是否已 setup
+        if curl -fsS http://127.0.0.1:{{ influx_port }}/api/v2/setup 2>/dev/null | grep -q '"allowed":true'; then
+          influx setup --force \
+            --host http://127.0.0.1:{{ influx_port }} \
+            --username {{ influx_admin_user }} \
+            --password '{{ admin_pass.stdout }}' \
+            --org {{ influx_org }} \
+            --bucket {{ influx_bucket }} \
+            --retention {{ influx_retention }}
+        else
+          echo "InfluxDB 已 setup 过，跳过初始化"
+        fi
+
+  - name: 显示登录信息
+    module: shell
+    args:
+      cmd: |
+        echo "============================================="
+        echo "InfluxDB v2 已就绪"
+        echo "============================================="
+        echo "  URL:        http://$(hostname -I | awk '{print $1}'):{{ influx_port }}"
+        echo "  Admin:      {{ influx_admin_user }}"
+        echo "  Password:   {{ admin_pass.stdout }}"
+        echo "  Org:        {{ influx_org }}"
+        echo "  Bucket:     {{ influx_bucket }}"
+        echo "  Retention:  {{ influx_retention }}"
+        echo ""
+        echo "Token（API 用，influx setup 已建）："
+        echo "  influx auth list --user {{ influx_admin_user }}"
+        echo "============================================="
+
+verify:
+  - name: influxdb service running
+    cmd: "systemctl is-active --quiet influxdb"
+    hint: "InfluxDB 没启起来。journalctl -u influxdb -n 50"
+
+  - name: influxdb health
+    cmd: "curl -fsS http://127.0.0.1:{{ influx_port }}/health | grep -q pass"
+    hint: "Health 检查失败。看日志。"

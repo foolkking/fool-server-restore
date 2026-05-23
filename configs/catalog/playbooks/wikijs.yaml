@@ -1,0 +1,135 @@
+# Playbook: Wiki.js 知识库
+#
+# Wiki.js v2 是现代 Wiki 平台。Docker compose 部署：app + PostgreSQL backend。
+name: Install Wiki.js (Docker)
+hosts: all
+
+vars:
+  wiki_domain: "wiki.example.com"
+  wiki_port: 3500
+  wiki_pg_password: ""              # 留空 = 自动生成 24 位
+  wiki_data_dir: /opt/wikijs
+
+tasks:
+  - name: Docker 已装？
+    module: shell
+    args:
+      cmd: command -v docker && docker info >/dev/null 2>&1
+      executable: /bin/bash
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ wiki_port }} "; then
+          echo "WARN: Port {{ wiki_port }} already in use"
+        fi
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ item }}"
+      state: directory
+      mode: "0750"
+    loop:
+      - "{{ wiki_data_dir }}"
+      - "{{ wiki_data_dir }}/db-data"
+
+  - name: 生成 PG 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ wiki_pg_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ wiki_pg_password }}"
+        fi
+    register: pg_pass
+    no_log: true
+
+  - name: 写 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ wiki_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          db:
+            image: postgres:15-alpine
+            container_name: wikijs-db
+            environment:
+              POSTGRES_DB: wiki
+              POSTGRES_USER: wikijs
+              POSTGRES_PASSWORD: "{{ pg_pass.stdout }}"
+            restart: unless-stopped
+            volumes:
+              - {{ wiki_data_dir }}/db-data:/var/lib/postgresql/data
+            healthcheck:
+              test: ["CMD-SHELL", "pg_isready -U wikijs"]
+              interval: 5s
+              retries: 10
+
+          wiki:
+            image: requarks/wiki:2
+            container_name: wikijs
+            depends_on:
+              db:
+                condition: service_healthy
+            environment:
+              DB_TYPE: postgres
+              DB_HOST: db
+              DB_PORT: 5432
+              DB_USER: wikijs
+              DB_PASS: "{{ pg_pass.stdout }}"
+              DB_NAME: wiki
+            restart: unless-stopped
+            ports:
+              - "127.0.0.1:{{ wiki_port }}:3000"
+
+  - name: 启动
+    module: shell
+    args:
+      cmd: |
+        cd {{ wiki_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 60); do
+          if curl -fsS http://127.0.0.1:{{ wiki_port }}/healthz >/dev/null 2>&1; then
+            echo "OK"
+            exit 0
+          fi
+          sleep 2
+        done
+        docker logs --tail 50 wikijs
+        exit 1
+
+  - name: 显示初始化提示
+    module: shell
+    args:
+      cmd: |
+        echo "============================================="
+        echo "Wiki.js 已就绪（首次访问需创建管理员账号）"
+        echo "============================================="
+        echo "  URL: http://$(hostname -I | awk '{print $1}'):{{ wiki_port }}"
+        echo ""
+        echo "首次访问会进入安装向导："
+        echo "  1. 设管理员邮箱 + 密码"
+        echo "  2. Site URL 填: https://{{ wiki_domain }}/"
+        echo "  3. 点 Install"
+        echo ""
+        echo "之后挂反代 + HTTPS（参考 wikijs.md 模板）"
+        echo "============================================="
+
+verify:
+  - name: wiki container running
+    cmd: "docker ps --filter name=wikijs --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Wiki.js 容器没跑起来。docker logs wikijs 看错误。常见 PG 还没 ready。"
+
+  - name: wiki responds
+    cmd: "curl -fsS http://127.0.0.1:{{ wiki_port }}/healthz"
+    hint: "Wiki.js 健康检查失败。等 30 秒再试或看日志。"

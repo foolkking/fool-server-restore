@@ -1,0 +1,38 @@
+{
+  "monitoring_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/monitoring",
+    "help": "Prometheus / Grafana / Loki 全部数据存储位置（按 retention 配置可大）。",
+    "helpEn": "Storage location for all data (size depends on retention)."
+  },
+  "grafana_admin_password": {
+    "type": "password",
+    "label": "Grafana admin 密码",
+    "labelEn": "Grafana admin password",
+    "default": "",
+    "generate_length": 18,
+    "reveal_after_run": true,
+    "help": "Grafana admin 账号密码。留空 = 自动生成 18 位。",
+    "helpEn": "Grafana admin password. Empty = auto-generate 18 chars."
+  },
+  "monitoring_domain_grafana": {
+    "type": "string",
+    "label": "Grafana 域名",
+    "labelEn": "Grafana domain",
+    "default": "grafana.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Grafana 对外 URL 的域名（用于生成绝对链接 / OAuth 回调）。",
+    "helpEn": "Grafana public domain (for absolute links / OAuth callbacks)."
+  },
+  "prometheus_retention": {
+    "type": "string",
+    "label": "Prometheus 数据保留",
+    "labelEn": "Prometheus retention",
+    "default": "30d",
+    "validate": "^\\d+(s|m|h|d|w|y)$",
+    "help": "格式如 7d / 30d / 90d / 1y。每 1k 时间序列每天 ~1MB 磁盘。",
+    "helpEn": "Format: 7d / 30d / 90d / 1y. ~1MB/day per 1k time series."
+  }
+}

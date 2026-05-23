@@ -1,0 +1,56 @@
+{
+  "authentik_domain": {
+    "type": "string",
+    "label": "访问域名",
+    "labelEn": "Domain",
+    "default": "auth.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Authentik 对外 URL。所有 OIDC / SAML 客户端会重定向到此域名。生产必须 HTTPS。",
+    "helpEn": "Public URL hostname. All OIDC/SAML clients redirect here. HTTPS required for production."
+  },
+  "authentik_port": {
+    "type": "port",
+    "label": "本机监听端口",
+    "labelEn": "Local listen port",
+    "default": 9000,
+    "help": "Authentik HTTP 端口（仅 127.0.0.1）。生产用反代到 443。",
+    "helpEn": "HTTP port (binds 127.0.0.1 only). Front with reverse proxy."
+  },
+  "authentik_admin_email": {
+    "type": "string",
+    "label": "管理员邮箱（首次创建 admin 用）",
+    "labelEn": "Admin email",
+    "default": "admin@example.com",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "首次访问 /if/flow/initial-setup/ 时用此邮箱 + 自动生成的 bootstrap 密码登录创建 admin。",
+    "helpEn": "Used for first-time setup to create admin account."
+  },
+  "authentik_pg_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "Authentik 内嵌 PG 数据库密码 + 同时也是 admin 首次登录的 bootstrap 密码。留空 = 自动 24 位。",
+    "helpEn": "Internal PG password + admin bootstrap password. Empty = auto 24 chars."
+  },
+  "authentik_secret_key": {
+    "type": "password",
+    "label": "Secret Key（关键）",
+    "labelEn": "Secret key",
+    "default": "",
+    "generate_length": 60,
+    "reveal_after_run": true,
+    "help": "Authentik 加密 session token 等的主密钥。**丢失则所有用户会话失效，OAuth refresh token 无法解密**。务必离线备份。",
+    "helpEn": "Encrypts sessions / OAuth tokens. **LOSING THIS = ALL SESSIONS INVALIDATED.** Backup offline."
+  },
+  "authentik_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/authentik",
+    "help": "存 PG 数据 / Redis / 媒体文件 / 证书。占用大（PG 含用户 + 应用 + 流程定义）。",
+    "helpEn": "PG / Redis / media / certs storage."
+  }
+}

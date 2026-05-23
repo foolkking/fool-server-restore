@@ -1,0 +1,54 @@
+{
+  "fr_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/freshrss",
+    "help": "存 PG 数据 + extensions + 用户配置。备份此目录 = 备份所有订阅 + 已读状态。",
+    "helpEn": "Stores PG data + extensions + user config."
+  },
+  "fr_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 8085,
+    "help": "FreshRSS HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "FreshRSS HTTP port (127.0.0.1 only)."
+  },
+  "fr_admin_user": {
+    "type": "string",
+    "label": "Admin 用户名（首次 setup 时填）",
+    "labelEn": "Admin username (for first setup)",
+    "default": "admin",
+    "help": "FreshRSS 首次访问会进 setup wizard——届时输入此用户名。",
+    "helpEn": "FreshRSS shows setup wizard on first visit—enter this username then."
+  },
+  "fr_admin_password": {
+    "type": "password",
+    "label": "Admin 密码（首次 setup 时填）",
+    "labelEn": "Admin password (for first setup)",
+    "default": "",
+    "generate_length": 16,
+    "reveal_after_run": true,
+    "help": "Admin 密码。留空 = 自动生成 16 位（运行结束日志显示一次）—— 首次 setup 复制粘贴。",
+    "helpEn": "Admin password. Empty = auto-generate 16-char."
+  },
+  "fr_db_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 18,
+    "help": "FreshRSS 内部 PG 密码。**首次 setup 时也要输入**——从 docker-compose.yml 复制。",
+    "helpEn": "Internal PG password. Also entered during first setup wizard—copy from docker-compose.yml."
+  },
+  "fr_cron_min": {
+    "type": "string",
+    "label": "RSS 拉取间隔（cron 表达式）",
+    "labelEn": "RSS fetch interval (cron)",
+    "default": "*/15",
+    "validate": "^[0-9*/,-]+$",
+    "help": "cron 分钟字段。`*/15` = 每 15 分钟。`*/30` = 每 30 分钟。`0` = 整点。频繁拉取对源服务器不友好——15-30 分钟合适。",
+    "helpEn": "Cron minute field. `*/15` = every 15 min. `*/30` = every 30 min. Don't fetch too frequently."
+  }
+}

@@ -1,0 +1,323 @@
+# Playbook: SSO 单点登录中央认证
+#
+# Authelia + Traefik forward-auth + Redis session store。
+# 给所有自托管应用一个统一登录入口（含 WebAuthn / TOTP）。
+name: Install SSO stack (Authelia + Traefik + Redis)
+hosts: all
+
+vars:
+  ss_auth_domain: "auth.example.com"
+  ss_protected_domain: "example.com"
+  ss_admin_user: "admin"
+  ss_admin_password: ""              # 留空 = 自动生成 24 位
+  ss_jwt_secret: ""                  # 留空 = 自动生成
+  ss_session_secret: ""              # 留空 = 自动生成
+  ss_storage_secret: ""              # 留空 = 自动生成
+  ss_data_dir: /opt/sso-stack
+  ss_acme_email: "admin@example.com"
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检 80 / 443
+    module: shell
+    args:
+      cmd: |
+        for p in 80 443; do
+          if ss -tlnp 2>/dev/null | grep -q ":$p "; then
+            echo "ERROR: 端口 $p 已被占（SSO stack 必须接管 80 + 443）："
+            ss -tlnp | grep ":$p "
+            exit 1
+          fi
+        done
+
+        for svc in nginx apache2 httpd caddy; do
+          if systemctl is-active $svc >/dev/null 2>&1; then
+            echo "ERROR: 系统 $svc 在跑，停掉先："
+            echo "  sudo systemctl disable --now $svc"
+            exit 1
+          fi
+        done
+
+  - name: 创建目录
+    module: file
+    args:
+      path: "{{ ss_data_dir }}/{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - authelia/config
+      - authelia/data
+      - traefik/letsencrypt
+      - redis-data
+
+  - name: 生成 admin 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ ss_admin_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ ss_admin_password }}"
+        fi
+    register: ss_pass
+    no_log: true
+
+  - name: 计算 admin argon2 hash
+    module: shell
+    args:
+      cmd: |
+        docker run --rm authelia/authelia:latest \
+          authelia crypto hash generate argon2 --password "{{ ss_pass.stdout }}" 2>/dev/null \
+          | grep -oP 'Digest:\s*\K.*'
+    register: ss_pass_hash
+    no_log: true
+
+  - name: 生成 secrets
+    module: shell
+    args:
+      cmd: |
+        for v in "{{ ss_jwt_secret }}" "{{ ss_session_secret }}" "{{ ss_storage_secret }}"; do
+          if [ -z "$v" ]; then
+            openssl rand -hex 32
+          else
+            echo "$v"
+          fi
+        done
+    register: ss_secrets
+    no_log: true
+
+  - name: 写入 users_database.yml
+    module: copy
+    args:
+      dest: "{{ ss_data_dir }}/authelia/config/users_database.yml"
+      mode: "0640"
+      content: |
+        users:
+          {{ ss_admin_user }}:
+            disabled: false
+            displayname: "Administrator"
+            password: "{{ ss_pass_hash.stdout }}"
+            email: admin@{{ ss_protected_domain }}
+            groups:
+              - admins
+              - dev
+
+  - name: 写入 Authelia configuration.yml
+    module: copy
+    args:
+      dest: "{{ ss_data_dir }}/authelia/config/configuration.yml"
+      mode: "0640"
+      content: |
+        server:
+          address: 'tcp://0.0.0.0:9091'
+
+        log:
+          level: info
+          format: json
+
+        totp:
+          issuer: {{ ss_protected_domain }}
+          period: 30
+
+        webauthn:
+          disable: false
+          display_name: Authelia
+          user_verification: preferred
+
+        authentication_backend:
+          file:
+            path: /config/users_database.yml
+            password:
+              algorithm: argon2id
+
+        access_control:
+          default_policy: deny
+          rules:
+            - domain: '{{ ss_auth_domain }}'
+              policy: bypass
+            - domain: '*.{{ ss_protected_domain }}'
+              policy: two_factor
+
+        session:
+          name: authelia_session
+          inactivity: 5m
+          expiration: 1h
+          remember_me: 1M
+          cookies:
+            - domain: '{{ ss_protected_domain }}'
+              authelia_url: 'https://{{ ss_auth_domain }}'
+          redis:
+            host: redis
+            port: 6379
+          secret: "{{ ss_secrets.stdout_lines[1] }}"
+
+        regulation:
+          max_retries: 3
+          find_time: 2m
+          ban_time: 5m
+
+        storage:
+          encryption_key: "{{ ss_secrets.stdout_lines[2] }}"
+          local:
+            path: /data/db.sqlite3
+
+        notifier:
+          disable_startup_check: false
+          filesystem:
+            filename: /data/notification.txt
+
+        identity_validation:
+          reset_password:
+            jwt_secret: "{{ ss_secrets.stdout_lines[0] }}"
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ ss_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        networks:
+          sso:
+
+        services:
+          traefik:
+            image: traefik:v3
+            container_name: traefik
+            restart: unless-stopped
+            command:
+              - "--providers.docker=true"
+              - "--providers.docker.exposedbydefault=false"
+              - "--providers.docker.network=sso-stack_sso"
+              - "--entrypoints.web.address=:80"
+              - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+              - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+              - "--entrypoints.websecure.address=:443"
+              - "--certificatesresolvers.le.acme.email={{ ss_acme_email }}"
+              - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+              - "--certificatesresolvers.le.acme.tlschallenge=true"
+              - "--api.dashboard=false"
+              - "--log.level=INFO"
+            ports:
+              - "80:80"
+              - "443:443"
+            volumes:
+              - /var/run/docker.sock:/var/run/docker.sock:ro
+              - {{ ss_data_dir }}/traefik/letsencrypt:/letsencrypt
+            networks:
+              - sso
+
+          authelia:
+            image: authelia/authelia:latest
+            container_name: authelia
+            restart: unless-stopped
+            depends_on:
+              - redis
+            volumes:
+              - {{ ss_data_dir }}/authelia/config:/config:ro
+              - {{ ss_data_dir }}/authelia/data:/data
+            networks:
+              - sso
+            environment:
+              TZ: "UTC"
+            labels:
+              - "traefik.enable=true"
+              - "traefik.http.routers.authelia.rule=Host(`{{ ss_auth_domain }}`)"
+              - "traefik.http.routers.authelia.entrypoints=websecure"
+              - "traefik.http.routers.authelia.tls.certresolver=le"
+              - "traefik.http.services.authelia.loadbalancer.server.port=9091"
+              # 中间件供其他应用引用
+              - "traefik.http.middlewares.authelia-auth.forwardauth.address=http://authelia:9091/api/verify?rd=https%3A%2F%2F{{ ss_auth_domain }}%2F"
+              - "traefik.http.middlewares.authelia-auth.forwardauth.trustForwardHeader=true"
+              - "traefik.http.middlewares.authelia-auth.forwardauth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Name,Remote-Email"
+
+          redis:
+            image: redis:7-alpine
+            container_name: sso-redis
+            restart: unless-stopped
+            command: redis-server --save 60 1
+            volumes:
+              - {{ ss_data_dir }}/redis-data:/data
+            networks:
+              - sso
+
+  - name: 启动栈
+    module: shell
+    args:
+      cmd: |
+        cd {{ ss_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待 Authelia ready
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if docker exec authelia wget -qO- http://127.0.0.1:9091/api/health 2>/dev/null | grep -q OK; then
+            echo "OK: Authelia ready"
+            exit 0
+          fi
+          sleep 3
+        done
+        echo "ERROR: Authelia not ready"
+        docker logs --tail 50 authelia
+        exit 1
+
+  - name: 显示后续步骤
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "SSO Stack 已就绪"
+        echo "===================================================================="
+        echo "  认证入口:         https://{{ ss_auth_domain }}"
+        echo "  保护域:           *.{{ ss_protected_domain }}"
+        echo "  Admin 用户:        {{ ss_admin_user }}"
+        echo "  Admin 密码:        {{ ss_pass.stdout }}"
+        echo ""
+        echo "下一步:"
+        echo "  1. DNS:"
+        echo "     A      {{ ss_auth_domain }}              $(curl -s ifconfig.me)"
+        echo "     A      app1.{{ ss_protected_domain }}    $(curl -s ifconfig.me)"
+        echo "     ..."
+        echo ""
+        echo "  2. 给应用加 SSO 保护（Docker label 方式）："
+        echo "     在应用 docker-compose.yml 加："
+        echo "       networks: [sso]"
+        echo "       labels:"
+        echo "         - traefik.enable=true"
+        echo "         - traefik.http.routers.myapp.rule=Host(\`app1.{{ ss_protected_domain }}\`)"
+        echo "         - traefik.http.routers.myapp.entrypoints=websecure"
+        echo "         - traefik.http.routers.myapp.tls.certresolver=le"
+        echo "         - traefik.http.routers.myapp.middlewares=authelia-auth@docker"
+        echo "         - traefik.http.services.myapp.loadbalancer.server.port=80"
+        echo ""
+        echo "  3. 应用容器加入 sso 网络："
+        echo "     docker network connect sso-stack_sso <你的应用容器>"
+        echo ""
+        echo "  4. 首次访问保护应用 → 跳到 Authelia 登录 → 注册 TOTP / WebAuthn"
+        echo "===================================================================="
+
+verify:
+  - name: traefik running
+    cmd: "docker ps --filter name=traefik --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Traefik 没起。docker logs traefik"
+
+  - name: authelia running
+    cmd: "docker ps --filter name=authelia --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Authelia 没起。docker logs authelia | head -50"
+
+  - name: redis running
+    cmd: "docker ps --filter name=sso-redis --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Redis 没起。docker logs sso-redis"
+
+  - name: 80 / 443 listening
+    cmd: "ss -tlnp 2>/dev/null | grep -q ':80 ' && ss -tlnp 2>/dev/null | grep -q ':443 '"
+    hint: "80 / 443 没监听。Traefik 容器健康吗？docker logs traefik"

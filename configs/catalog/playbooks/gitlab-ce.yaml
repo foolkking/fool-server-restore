@@ -1,0 +1,179 @@
+# Playbook: GitLab Community Edition (Docker)
+#
+# GitLab CE = 完整 DevOps 平台（git + CI + container registry + issue + wiki）。
+# 重量级——最低 4 GB RAM，推荐 8 GB。资源紧张请用 gitea-server。
+name: Install GitLab CE (Docker)
+hosts: all
+
+vars:
+  gitlab_external_url: "https://gitlab.example.com"
+  gitlab_root_password: ""              # 留空 = 自动 24 位
+  gitlab_data_dir: /opt/gitlab
+  gitlab_http_port: 8080
+  gitlab_https_port: 8443
+  gitlab_ssh_port: 2222
+
+tasks:
+  - name: Docker check
+    module: shell
+    args:
+      cmd: command -v docker && docker info >/dev/null 2>&1
+
+  - name: 内存预检（GitLab 重量级）
+    module: shell
+    args:
+      cmd: |
+        TOTAL_MB=$(free -m | awk '/^Mem:/{print $2}')
+        if [ "$TOTAL_MB" -lt 3500 ]; then
+          echo "ERROR: 物理内存 ${TOTAL_MB}MB < GitLab 最低 4GB"
+          echo "  小项目用 gitea-server 替代（512MB 即可）"
+          exit 1
+        elif [ "$TOTAL_MB" -lt 7500 ]; then
+          echo "WARN: 物理内存 ${TOTAL_MB}MB < 推荐 8GB"
+          echo "  CI 可能卡顿"
+        fi
+
+  - name: 端口预检（22 / 80 / 443）
+    module: shell
+    args:
+      cmd: |
+        for PORT in {{ gitlab_ssh_port }} {{ gitlab_http_port }} {{ gitlab_https_port }}; do
+          if ss -tlnp 2>/dev/null | grep -q ":$PORT "; then
+            echo "WARN: Port $PORT already in use"
+          fi
+        done
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ item }}"
+      state: directory
+      mode: "0750"
+    loop:
+      - "{{ gitlab_data_dir }}"
+      - "{{ gitlab_data_dir }}/config"
+      - "{{ gitlab_data_dir }}/logs"
+      - "{{ gitlab_data_dir }}/data"
+
+  - name: 生成 root 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ gitlab_root_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ gitlab_root_password }}"
+        fi
+    register: root_pass
+    no_log: true
+
+  - name: 写 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ gitlab_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          gitlab:
+            image: gitlab/gitlab-ce:latest
+            container_name: gitlab
+            restart: unless-stopped
+            hostname: "{{ gitlab_external_url | regex_replace('^https?://', '') }}"
+            environment:
+              GITLAB_OMNIBUS_CONFIG: |
+                external_url '{{ gitlab_external_url }}'
+                gitlab_rails['initial_root_password'] = '{{ root_pass.stdout }}'
+                gitlab_rails['gitlab_shell_ssh_port'] = {{ gitlab_ssh_port }}
+                gitlab_rails['time_zone'] = 'Asia/Shanghai'
+
+                # 关闭遥测
+                gitlab_rails['usage_ping_enabled'] = false
+                gitlab_rails['version_check_enabled'] = false
+
+                # 禁公开注册
+                gitlab_rails['gitlab_signup_enabled'] = false
+
+                # 性能调优（4GB RAM 用）
+                postgresql['shared_buffers'] = "256MB"
+                postgresql['max_worker_processes'] = 4
+                puma['worker_processes'] = 2
+                sidekiq['concurrency'] = 10
+
+                # Prometheus（可选——禁用节省 RAM）
+                prometheus_monitoring['enable'] = false
+
+                # 关 Pages / Mattermost / Pages（节省 RAM）
+                gitlab_pages['enable'] = false
+                mattermost['enable'] = false
+                registry['enable'] = false
+            ports:
+              - "{{ gitlab_http_port }}:80"
+              - "{{ gitlab_https_port }}:443"
+              - "{{ gitlab_ssh_port }}:22"
+            volumes:
+              - {{ gitlab_data_dir }}/config:/etc/gitlab
+              - {{ gitlab_data_dir }}/logs:/var/log/gitlab
+              - {{ gitlab_data_dir }}/data:/var/opt/gitlab
+            shm_size: '256m'
+            healthcheck:
+              test: ["CMD", "/opt/gitlab/bin/gitlab-healthcheck", "--fail", "--max-time", "10"]
+              interval: 60s
+              timeout: 30s
+              retries: 5
+              start_period: 600s
+
+  - name: 启动 GitLab（首次启动 5-10 分钟）
+    module: shell
+    args:
+      cmd: |
+        cd {{ gitlab_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待 GitLab 健康（**首次 5-10 分钟**）
+    module: shell
+    args:
+      cmd: |
+        echo "等待 GitLab 启动（首次约 5-10 分钟，耐心等）..."
+        for i in $(seq 1 120); do
+          if curl -fsS http://127.0.0.1:{{ gitlab_http_port }}/-/health 2>/dev/null | grep -q ok; then
+            echo "OK ($((i*5))s)"
+            exit 0
+          fi
+          sleep 5
+        done
+        docker logs --tail 50 gitlab
+        echo "FAIL: GitLab 10 分钟内未就绪"
+        exit 1
+
+  - name: 显示登录信息
+    module: shell
+    args:
+      cmd: |
+        echo "==============================================="
+        echo "GitLab CE 已就绪"
+        echo "==============================================="
+        echo "  URL:     {{ gitlab_external_url }}"
+        echo "  HTTP:    http://$(hostname -I | awk '{print $1}'):{{ gitlab_http_port }}"
+        echo "  Root:    root"
+        echo "  Pass:    {{ root_pass.stdout }}"
+        echo "  SSH Git: ssh://git@host:{{ gitlab_ssh_port }}/group/repo.git"
+        echo ""
+        echo "登录后立刻："
+        echo "  1. 改 root 密码"
+        echo "  2. Settings → General → 关 Sign-up 自助注册"
+        echo "  3. 装 GitLab Runner（catalog gitlab-runner Playbook）"
+        echo "==============================================="
+
+verify:
+  - name: gitlab container running
+    cmd: "docker ps --filter name=gitlab --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: |
+      GitLab 容器没起：
+        1. 内存不够（最低 4GB） → free -h
+        2. docker logs gitlab
+        3. 端口冲突 → ss -tlnp | grep -E ':(80|443|22) '
+
+  - name: gitlab health check
+    cmd: "curl -fsS http://127.0.0.1:{{ gitlab_http_port }}/-/health"
+    hint: "Health 失败。GitLab 首次启动慢——再等 5 分钟。"

@@ -1,0 +1,228 @@
+# Playbook: Homepage 应用启动面板
+#
+# 自托管应用 dashboard——书签 + 服务卡片 + 实时 widgets。
+# 给装的一堆自托管服务一个统一入口页。
+name: Install Homepage app dashboard
+hosts: all
+
+vars:
+  hp_port: 3010
+  hp_data_dir: /opt/homepage
+  hp_page_title: "Homelab"
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ hp_port }} "; then
+          echo "WARN: Port {{ hp_port }} 占用："
+          ss -tlnp | grep ":{{ hp_port }} "
+        fi
+    failed_when: false
+
+  - name: 创建配置目录
+    module: file
+    args:
+      path: "{{ hp_data_dir }}/config"
+      state: directory
+      mode: "0755"
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ hp_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          homepage:
+            image: ghcr.io/gethomepage/homepage:latest
+            container_name: homepage
+            restart: unless-stopped
+            volumes:
+              - {{ hp_data_dir }}/config:/app/config
+              - /var/run/docker.sock:/var/run/docker.sock:ro     # 用于 Docker 自动发现
+            ports:
+              - "127.0.0.1:{{ hp_port }}:3000"
+            environment:
+              HOMEPAGE_ALLOWED_HOSTS: "*"                          # 允许任何 Host header（反代场景）
+            healthcheck:
+              test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:3000/"]
+              interval: 30s
+              timeout: 5s
+              retries: 3
+
+  - name: 备份旧配置（如存在）
+    module: shell
+    args:
+      cmd: |
+        if [ -d "{{ hp_data_dir }}/config" ] && [ -n "$(ls -A {{ hp_data_dir }}/config 2>/dev/null)" ]; then
+          if [ ! -f "{{ hp_data_dir }}/config/.envforge.bak.tar.gz" ]; then
+            tar -czf {{ hp_data_dir }}/config/.envforge.bak.tar.gz \
+              -C {{ hp_data_dir }}/config $(ls {{ hp_data_dir }}/config | grep -v envforge.bak) 2>/dev/null || true
+          fi
+        fi
+
+  - name: 写入示例 settings.yaml（仅首次）
+    module: shell
+    args:
+      cmd: |
+        if [ ! -f {{ hp_data_dir }}/config/settings.yaml ]; then
+          cat > {{ hp_data_dir }}/config/settings.yaml <<'EOF'
+        ---
+        title: {{ hp_page_title }}
+        theme: dark
+        color: slate
+        headerStyle: clean
+        layout:
+          - 监控:
+              style: row
+              columns: 3
+          - 工具:
+              style: row
+              columns: 4
+        EOF
+        fi
+
+  - name: 写入示例 services.yaml（仅首次）
+    module: shell
+    args:
+      cmd: |
+        if [ ! -f {{ hp_data_dir }}/config/services.yaml ]; then
+          cat > {{ hp_data_dir }}/config/services.yaml <<'EOF'
+        ---
+        - 监控:
+            - Uptime Kuma:
+                href: https://status.example.com
+                description: 服务存活监控
+                icon: uptime-kuma.svg
+        - 工具:
+            - Vaultwarden:
+                href: https://vault.example.com
+                description: 密码管理
+                icon: vaultwarden.svg
+            - Nextcloud:
+                href: https://cloud.example.com
+                description: 私有云盘
+                icon: nextcloud.svg
+        EOF
+        fi
+
+  - name: 写入示例 bookmarks.yaml（仅首次）
+    module: shell
+    args:
+      cmd: |
+        if [ ! -f {{ hp_data_dir }}/config/bookmarks.yaml ]; then
+          cat > {{ hp_data_dir }}/config/bookmarks.yaml <<'EOF'
+        ---
+        - 开发者:
+            - GitHub:
+                - abbr: GH
+                  href: https://github.com
+            - Stack Overflow:
+                - abbr: SO
+                  href: https://stackoverflow.com
+        EOF
+        fi
+
+  - name: 写入示例 widgets.yaml（仅首次）
+    module: shell
+    args:
+      cmd: |
+        if [ ! -f {{ hp_data_dir }}/config/widgets.yaml ]; then
+          cat > {{ hp_data_dir }}/config/widgets.yaml <<'EOF'
+        ---
+        - resources:
+            cpu: true
+            memory: true
+            disk: /
+            cputemp: false
+        - search:
+            provider: duckduckgo
+            target: _blank
+        - datetime:
+            text_size: xl
+            format:
+              dateStyle: long
+              timeStyle: short
+              hour12: false
+        EOF
+        fi
+
+  - name: 写入空 docker.yaml（启用 Docker 自动发现）
+    module: shell
+    args:
+      cmd: |
+        if [ ! -f {{ hp_data_dir }}/config/docker.yaml ]; then
+          cat > {{ hp_data_dir }}/config/docker.yaml <<'EOF'
+        ---
+        my-docker:
+          socket: /var/run/docker.sock
+        EOF
+        fi
+
+  - name: 启动 Homepage
+    module: shell
+    args:
+      cmd: |
+        cd {{ hp_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:{{ hp_port }}/ -o /dev/null 2>&1; then
+            echo "OK: Homepage ready"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: Homepage not ready"
+        docker logs --tail 50 homepage
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Homepage 已就绪"
+        echo "===================================================================="
+        echo "  本机 URL:      http://127.0.0.1:{{ hp_port }}"
+        echo "  公网 URL:      需配反代到 https://home.example.com（推荐）"
+        echo ""
+        echo "下一步:"
+        echo "  1. 浏览器打开 → 看到默认面板（监控 + 工具 + bookmarks + 系统资源）"
+        echo "  2. 编辑 {{ hp_data_dir }}/config/services.yaml 加你的服务"
+        echo "  3. 改 settings.yaml 调标题 / 主题 / 布局"
+        echo "  4. widgets.yaml 加更多 widget（天气 / 日历 / 监控数据 / 等）"
+        echo "  5. 文档：https://gethomepage.dev"
+        echo ""
+        echo "Docker 自动发现:"
+        echo "  在其他服务的 docker-compose.yml 加 labels（见 homepage.md 模板 D）"
+        echo "  → 该服务自动出现在 Homepage"
+        echo "===================================================================="
+
+verify:
+  - name: homepage container running
+    cmd: "docker ps --filter name=homepage --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Homepage 没起。docker logs homepage"
+
+  - name: web ui responds
+    cmd: "curl -fsS http://127.0.0.1:{{ hp_port }}/ -o /dev/null"
+    hint: "Web UI 不响应。docker logs --tail 50 homepage"
+
+  - name: config files exist
+    cmd: "test -f {{ hp_data_dir }}/config/services.yaml && test -f {{ hp_data_dir }}/config/settings.yaml"
+    hint: "配置文件未创建。检查 {{ hp_data_dir }}/config 目录权限。"

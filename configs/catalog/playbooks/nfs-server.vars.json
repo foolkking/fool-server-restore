@@ -1,0 +1,50 @@
+{
+  "nfs_export_path": {
+    "type": "string",
+    "label": "Export 目录",
+    "labelEn": "Export path",
+    "default": "/srv/nfs/share",
+    "validate": "^/[a-zA-Z0-9_/.-]+$",
+    "placeholder": "/srv/nfs/share",
+    "help": "NFS 共享给客户端的目录绝对路径。**目录如不存在会自动创建**。生产推荐 /srv/nfs/<用途>，避免根分区被填满。",
+    "helpEn": "Absolute path of the directory shared via NFS. Auto-created if missing. Recommend /srv/nfs/<purpose>."
+  },
+  "nfs_allowed_clients": {
+    "type": "string",
+    "label": "允许访问的客户端（CIDR / IP / 域）",
+    "labelEn": "Allowed clients (CIDR / IP / hostname)",
+    "default": "192.168.1.0/24",
+    "placeholder": "192.168.1.0/24 或 10.0.0.5",
+    "help": "可填 CIDR（192.168.1.0/24）、单 IP（10.0.0.5）、通配域（*.example.com）、或 *（任何——危险）。**绝不在公网用 ***——会被全网扫到。",
+    "helpEn": "CIDR (192.168.1.0/24), single IP (10.0.0.5), domain wildcard (*.example.com), or * (any—dangerous). **Never use * on public networks**."
+  },
+  "nfs_options": {
+    "type": "string",
+    "label": "Export 选项",
+    "labelEn": "Export options",
+    "default": "rw,sync,no_subtree_check,no_root_squash",
+    "help": "rw=读写 / ro=只读 / sync=同步写（安全慢）vs async（快但崩溃丢数据） / root_squash=远端 root 映射为 nobody（安全） / no_root_squash=保留 root（只在内网信任客户端用）。",
+    "helpEn": "rw=read-write / ro=read-only / sync vs async / root_squash (safe) vs no_root_squash. Use root_squash on untrusted clients."
+  },
+  "nfs_protocol_version": {
+    "type": "choice",
+    "label": "NFS 协议版本",
+    "labelEn": "NFS protocol version",
+    "default": "4",
+    "options": [
+      { "value": "4", "label": "v4（推荐——TCP only / 内置 ACL / 不需 portmap）" },
+      { "value": "3", "label": "v3（兼容老客户端）" },
+      { "value": "all", "label": "v3 + v4（最大兼容）" }
+    ],
+    "help": "v4 是现代默认（不需 mountd / statd / lockd 端口）。v3 仅在客户端是 < Ubuntu 14 / RHEL 6 时需要。",
+    "helpEn": "v4 is modern default (no mountd/statd/lockd ports needed). v3 only for very old clients."
+  },
+  "nfs_create_export_dir": {
+    "type": "boolean",
+    "label": "自动创建 export 目录",
+    "labelEn": "Auto-create export directory",
+    "default": true,
+    "help": "true = 自动 mkdir -p。false = 假设目录已由你手动创建（用于已有数据目录场景）。",
+    "helpEn": "true = auto mkdir -p. false = assume directory exists (use for pre-populated data dirs)."
+  }
+}

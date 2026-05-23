@@ -1,0 +1,47 @@
+{
+  "fb_root_dir": {
+    "type": "string",
+    "label": "管理的根目录",
+    "labelEn": "Root directory to manage",
+    "default": "/srv",
+    "validate": "^/[a-zA-Z0-9_/.-]*$",
+    "placeholder": "/srv 或 /mnt/data 或 /home",
+    "help": "FileBrowser 能看到的最顶层目录。例：/srv = 标准服务数据目录；/mnt/data = NAS 挂载点；/ = 整机所有文件（**不推荐**——所有用户能看系统配置）。",
+    "helpEn": "Top-level directory FileBrowser can access. Examples: /srv (standard service data); /mnt/data (NAS mount); / (whole filesystem, **not recommended**—exposes system configs)."
+  },
+  "fb_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 8088,
+    "help": "FileBrowser HTTP 端口（仅 127.0.0.1 绑定）。生产用反代 + HTTPS。",
+    "helpEn": "FileBrowser HTTP port (127.0.0.1 only). Front with reverse proxy + HTTPS."
+  },
+  "fb_admin_user": {
+    "type": "string",
+    "label": "Admin 用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "validate": "^[a-zA-Z0-9_-]{3,32}$",
+    "help": "管理员账号。默认 admin。注意：FileBrowser **默认密码就是 admin**——必须立即改（Playbook 已自动重置）。",
+    "helpEn": "Admin username. Default admin. NOTE: FileBrowser's default password is also 'admin'—must change immediately (Playbook auto-resets)."
+  },
+  "fb_admin_password": {
+    "type": "password",
+    "label": "Admin 密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 16,
+    "reveal_after_run": true,
+    "help": "Admin 密码。留空 = 自动生成 16 位（运行结束日志显示一次）。**首次部署必看日志记下**——丢了只能进容器命令重置。",
+    "helpEn": "Admin password. Empty = auto-generate 16-char (shown once in run log). **Note password from log on first deploy**—reset requires shell into container."
+  },
+  "fb_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/filebrowser",
+    "help": "存 SQLite 数据库（用户 / 偏好 / 共享链接）+ 配置文件。备份此目录 = 备份完整 FileBrowser 配置（不含管理的文件）。",
+    "helpEn": "Stores SQLite (users / prefs / shared links) + config. Back up = full FileBrowser config (not managed files)."
+  }
+}

@@ -1,0 +1,230 @@
+# Playbook: K3s 轻量 Kubernetes
+#
+# Rancher 出品的单二进制 K8s——500MB RAM 起步，去掉 etcd（用 SQLite）+ in-tree 云驱动。
+# 适合边缘 / 单机 / homelab。
+name: Install K3s lightweight Kubernetes
+hosts: all
+
+vars:
+  k3s_cluster_init_mode: "single"        # single / server / agent
+  k3s_token: ""                          # cluster join token（多节点时填）
+  k3s_server_url: ""                     # agent 模式时连的 server URL（如 https://10.0.0.1:6443）
+  k3s_disable_components: "traefik"      # 默认禁 traefik（与 nginx 冲突）；多个用逗号
+  k3s_cluster_cidr: "10.42.0.0/16"
+  k3s_service_cidr: "10.43.0.0/16"
+  k3s_data_dir: /var/lib/rancher/k3s
+
+tasks:
+  - name: 检查内核版本（K3s 要求 ≥ 4.15）
+    module: shell
+    args:
+      cmd: |
+        KVER=$(uname -r | cut -d. -f1-2)
+        REQUIRED="4.15"
+        if [ "$(printf '%s\n' "$REQUIRED" "$KVER" | sort -V | head -n1)" != "$REQUIRED" ]; then
+          echo "ERROR: 内核 $KVER < 4.15，K3s 不支持" >&2
+          exit 1
+        fi
+        echo "OK: kernel $KVER"
+
+  - name: 检查 cgroup v2（推荐）
+    module: shell
+    args:
+      cmd: |
+        if mount | grep -q "cgroup2 on /sys/fs/cgroup"; then
+          echo "OK: cgroup v2 启用"
+        else
+          echo "WARN: cgroup v1 — K3s 仍能跑，但 v2 推荐（性能 + 隔离更好）"
+          echo "启用 v2: 加 systemd.unified_cgroup_hierarchy=1 到 /etc/default/grub 后重启"
+        fi
+    failed_when: false
+
+  - name: 检查端口冲突（6443 必占）
+    module: shell
+    args:
+      cmd: |
+        for p in 6443 10250 8472; do
+          if ss -tlnp 2>/dev/null | grep -q ":$p "; then
+            echo "WARN: 端口 $p 占用："
+            ss -tlnp | grep ":$p "
+          fi
+        done
+
+        # K3s 与 Docker 共存有冲突——警告
+        if systemctl is-active docker >/dev/null 2>&1; then
+          echo "INFO: Docker 在跑，K3s 默认用 containerd（不冲突，但不互通容器）"
+          echo "      若要 K3s 用 Docker，跑 K3s 时加 --docker"
+        fi
+    failed_when: false
+
+  - name: 启用 IP forward
+    module: shell
+    args:
+      cmd: |
+        if ! sysctl net.ipv4.ip_forward | grep -q 1; then
+          sudo bash -c 'echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-k3s.conf'
+          sudo bash -c 'echo "net.bridge.bridge-nf-call-iptables = 1" >> /etc/sysctl.d/99-k3s.conf'
+          sudo modprobe br_netfilter
+          sudo sysctl --system
+        fi
+
+  - name: 关闭 SELinux（如启用）— K3s 推荐
+    module: shell
+    args:
+      cmd: |
+        if command -v getenforce >/dev/null 2>&1; then
+          STATE=$(getenforce)
+          if [ "$STATE" = "Enforcing" ]; then
+            echo "WARN: SELinux 在 Enforcing 模式"
+            echo "K3s 1.27+ 已支持 SELinux，但有性能损耗"
+            echo "保持启用 → 安装时会自动加 --selinux flag"
+            echo "完全关闭：sudo setenforce 0 + 改 /etc/selinux/config 为 permissive"
+          fi
+        fi
+    when: family == "rhel-family"
+    failed_when: false
+
+  - name: 安装 K3s（single 或 server 模式）
+    module: shell
+    args:
+      cmd: |
+        DISABLE_FLAGS=""
+        if [ -n "{{ k3s_disable_components }}" ]; then
+          for c in $(echo {{ k3s_disable_components }} | tr ',' ' '); do
+            DISABLE_FLAGS="$DISABLE_FLAGS --disable=$c"
+          done
+        fi
+
+        TOKEN_FLAG=""
+        if [ -n "{{ k3s_token }}" ]; then
+          TOKEN_FLAG="--token={{ k3s_token }}"
+        fi
+
+        SELINUX_FLAG=""
+        if [ "$(getenforce 2>/dev/null)" = "Enforcing" ]; then
+          SELINUX_FLAG="--selinux"
+        fi
+
+        curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server $DISABLE_FLAGS \
+          $TOKEN_FLAG \
+          --cluster-cidr={{ k3s_cluster_cidr }} \
+          --service-cidr={{ k3s_service_cidr }} \
+          --write-kubeconfig-mode=644 \
+          $SELINUX_FLAG" sh -
+    when: k3s_cluster_init_mode in ["single", "server"]
+
+  - name: 安装 K3s（agent 模式）
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ k3s_server_url }}" ] || [ -z "{{ k3s_token }}" ]; then
+          echo "ERROR: agent 模式必须填 k3s_server_url + k3s_token" >&2
+          exit 1
+        fi
+
+        curl -sfL https://get.k3s.io | \
+          K3S_URL={{ k3s_server_url }} \
+          K3S_TOKEN={{ k3s_token }} \
+          sh -
+    when: k3s_cluster_init_mode == "agent"
+
+  - name: 等待 K3s 就绪（仅 server / single）
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 60); do
+          if sudo kubectl get nodes 2>/dev/null | grep -q ' Ready '; then
+            echo "OK: K3s ready"
+            sudo kubectl get nodes
+            exit 0
+          fi
+          sleep 3
+        done
+        echo "ERROR: K3s not ready in 180s"
+        sudo journalctl -u k3s -n 50
+        exit 1
+    when: k3s_cluster_init_mode in ["single", "server"]
+
+  - name: 配置 kubeconfig（让普通用户用 kubectl）
+    module: shell
+    args:
+      cmd: |
+        # 系统 kubeconfig
+        if [ -f /etc/rancher/k3s/k3s.yaml ]; then
+          # 复制到用户家目录
+          USER_HOME=$(getent passwd "$(logname 2>/dev/null || echo $SUDO_USER)" | cut -d: -f6 || echo "$HOME")
+          if [ -n "$USER_HOME" ] && [ -d "$USER_HOME" ]; then
+            mkdir -p "$USER_HOME/.kube"
+            sudo cp /etc/rancher/k3s/k3s.yaml "$USER_HOME/.kube/config"
+            sudo chown -R $(logname 2>/dev/null || echo $SUDO_USER): "$USER_HOME/.kube" 2>/dev/null || true
+            chmod 600 "$USER_HOME/.kube/config"
+          fi
+          # 让 kubectl 命令直接能用
+          if ! command -v kubectl >/dev/null 2>&1; then
+            sudo ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl
+          fi
+        fi
+    when: k3s_cluster_init_mode in ["single", "server"]
+
+  - name: 拿 cluster token（作 server 给其他 agent join 用）
+    module: shell
+    args:
+      cmd: "sudo cat /var/lib/rancher/k3s/server/node-token 2>/dev/null || echo '<not server>'"
+    register: k3s_node_token
+    when: k3s_cluster_init_mode in ["single", "server"]
+
+  - name: 显示集群信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "K3s 已就绪"
+        echo "===================================================================="
+
+        if [ "{{ k3s_cluster_init_mode }}" != "agent" ]; then
+          echo "  Mode:                 {{ k3s_cluster_init_mode }} (server)"
+          echo "  API Server:           https://$(hostname -I | awk '{print $1}'):6443"
+          echo "  Cluster Token:        {{ k3s_node_token.stdout }}"
+          echo "  Cluster CIDR:         {{ k3s_cluster_cidr }}"
+          echo "  Service CIDR:         {{ k3s_service_cidr }}"
+          echo "  Disabled components:  {{ k3s_disable_components }}"
+          echo ""
+          echo "  Kubeconfig:"
+          echo "    System:             /etc/rancher/k3s/k3s.yaml"
+          echo "    User:               ~/.kube/config"
+          echo ""
+          sudo kubectl get nodes
+          echo ""
+          echo "下一步:"
+          echo "  1. kubectl get pods -A          # 看所有 pod 状态"
+          echo "  2. 加节点（在另一台机器跑此 Playbook）："
+          echo "     mode = agent"
+          echo "     k3s_server_url = https://$(hostname -I | awk '{print $1}'):6443"
+          echo "     k3s_token = {{ k3s_node_token.stdout }}"
+          echo "  3. 部署应用：kubectl apply -f deployment.yaml"
+          echo "  4. 进阶：装 Helm / 装 ArgoCD / 装 cert-manager（详见 k3s.md）"
+        else
+          echo "  Mode:        agent"
+          echo "  Server URL:  {{ k3s_server_url }}"
+        fi
+        echo "===================================================================="
+
+verify:
+  - name: k3s service running
+    cmd: "systemctl is-active k3s 2>/dev/null || systemctl is-active k3s-agent"
+    hint: |
+      K3s 没运行：
+        sudo systemctl status k3s
+        sudo journalctl -u k3s -n 50
+
+  - name: kubectl works (server mode)
+    cmd: "test '{{ k3s_cluster_init_mode }}' = 'agent' || sudo kubectl get nodes"
+    hint: |
+      kubectl 失败：
+        - kubeconfig 路径：/etc/rancher/k3s/k3s.yaml
+        - 用 sudo kubectl
+        - 或 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+  - name: api server port 6443
+    cmd: "ss -tlnp 2>/dev/null | grep -q ':6443 '"
+    hint: "API server 端口 6443 没监听。仅 server / single 模式有此端口。"

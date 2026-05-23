@@ -1,0 +1,115 @@
+# Playbook: Audiobookshelf 有声书 + 播客服务器
+name: Install Audiobookshelf
+hosts: all
+
+vars:
+  ab_audiobooks_dir: /srv/audiobooks
+  ab_podcasts_dir: /srv/podcasts
+  ab_data_dir: /opt/audiobookshelf
+  ab_port: 13378
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ ab_port }} "; then
+          echo "WARN: Port {{ ab_port }} 占用："
+          ss -tlnp | grep ":{{ ab_port }} "
+        fi
+    failed_when: false
+
+  - name: 创建目录
+    module: file
+    args:
+      path: "{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - "{{ ab_data_dir }}"
+      - "{{ ab_data_dir }}/config"
+      - "{{ ab_data_dir }}/metadata"
+      - "{{ ab_audiobooks_dir }}"
+      - "{{ ab_podcasts_dir }}"
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ ab_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          audiobookshelf:
+            image: ghcr.io/advplyr/audiobookshelf:latest
+            container_name: audiobookshelf
+            restart: unless-stopped
+            ports:
+              - "127.0.0.1:{{ ab_port }}:80"
+            volumes:
+              - {{ ab_audiobooks_dir }}:/audiobooks
+              - {{ ab_podcasts_dir }}:/podcasts
+              - {{ ab_data_dir }}/config:/config
+              - {{ ab_data_dir }}/metadata:/metadata
+            environment:
+              TZ: "Asia/Shanghai"
+
+  - name: 启动
+    module: shell
+    args:
+      cmd: |
+        cd {{ ab_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:{{ ab_port }}/ -o /dev/null 2>&1; then
+            echo "OK: Audiobookshelf ready"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: Audiobookshelf not ready"
+        docker logs --tail 30 audiobookshelf
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Audiobookshelf 已就绪"
+        echo "===================================================================="
+        echo "  本机 URL:     http://127.0.0.1:{{ ab_port }}"
+        echo "  有声书目录:    {{ ab_audiobooks_dir }} → /audiobooks"
+        echo "  播客目录:      {{ ab_podcasts_dir }} → /podcasts"
+        echo ""
+        echo "下一步:"
+        echo "  1. 浏览器打开 → 创建首个 admin 账号（首次访问就是注册页）"
+        echo "  2. Settings → Libraries → New Library → 类型选 Audiobooks 或 Podcasts"
+        echo "     → Library Path 选 /audiobooks 或 /podcasts"
+        echo "  3. 把有声书文件放到 {{ ab_audiobooks_dir }}（mp3 / m4b / m4a / 等）"
+        echo "  4. iOS / Android: 应用商店搜 'Audiobookshelf' 装官方 App"
+        echo "     URL 填你的 Audiobookshelf 域名 + 账号登录"
+        echo "  5. 反代到 https://books.example.com（nginx + LE）"
+        echo "===================================================================="
+
+verify:
+  - name: container running
+    cmd: "docker ps --filter name=audiobookshelf --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Audiobookshelf 没起。docker logs audiobookshelf"
+
+  - name: web ui responds
+    cmd: "curl -fsS http://127.0.0.1:{{ ab_port }}/ -o /dev/null"
+    hint: "Web UI 不响应。docker logs audiobookshelf"

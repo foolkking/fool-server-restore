@@ -1,0 +1,54 @@
+{
+  "fj_domain": {
+    "type": "string",
+    "label": "访问域名",
+    "labelEn": "Domain",
+    "default": "git.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "git.example.com",
+    "help": "Forgejo 公开域名。**改了之后所有 webhook URL 失效**——慎重。",
+    "helpEn": "Forgejo public domain. **Changing breaks all webhook URLs**—be careful."
+  },
+  "fj_admin_email": {
+    "type": "string",
+    "label": "Admin 邮箱（首次安装时填）",
+    "labelEn": "Admin email (for first install)",
+    "default": "admin@example.com",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "仅作为 Web 安装向导的预填值。安装后改密码 / 加用户都在 Web UI。",
+    "helpEn": "Used as pre-fill for install wizard only. Manage users in Web UI after."
+  },
+  "fj_db_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 24,
+    "help": "Forgejo 内部 PG 密码。",
+    "helpEn": "Internal PG password."
+  },
+  "fj_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/forgejo",
+    "help": "**重要**——所有 git 仓库 + LFS + uploads + Action artifacts 全在这里。**每日备份**——丢了 = 所有代码 + issue + PR 全没。",
+    "helpEn": "**Critical**—all git repos + LFS + uploads + Action artifacts. **Back up daily**—loss = all code + issues + PRs gone."
+  },
+  "fj_http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 3000,
+    "help": "Web UI 端口（仅 127.0.0.1 绑定）。生产用反代。",
+    "helpEn": "Web UI port (127.0.0.1 only). Front with reverse proxy."
+  },
+  "fj_ssh_port": {
+    "type": "port",
+    "label": "SSH 端口",
+    "labelEn": "SSH port",
+    "default": 222,
+    "help": "Git SSH clone 端口（**必须公网**——客户端 git clone 用）。**与系统 SSH 22 不能冲突**——默认 222。系统 SSH 是 22 时这个改成 2222 / 222 / 等。改了的话 git clone URL 也变。",
+    "helpEn": "Git SSH clone port (**must be publicly accessible**). **Don't conflict with system SSH 22**—default 222. Change clone URLs accordingly."
+  }
+}

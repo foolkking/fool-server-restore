@@ -1,0 +1,147 @@
+# Playbook: Tailscale Mesh VPN
+#
+# 基于 WireGuard 的零配置 mesh VPN——设备间自动 P2P 握手。
+# 不需要公网 IP / NAT 穿透 / 端口转发。
+name: Install Tailscale mesh VPN
+hosts: all
+
+vars:
+  ts_auth_key: ""                       # Pre-auth key (从 https://login.tailscale.com/admin/settings/keys 生成)
+  ts_hostname: ""                        # 本机在 tailnet 中的名字（留空 = 用系统 hostname）
+  ts_advertise_routes: ""                # 子网路由（如 "192.168.1.0/24"，留空 = 不做 subnet router）
+  ts_accept_dns: true                    # 接受 tailnet 的 MagicDNS
+  ts_shields_up: false                   # 关闭所有入站连接（最严模式）
+  ts_ssh_enabled: false                  # 启用 Tailscale SSH（替代 OpenSSH）
+
+tasks:
+  - name: 配置 Tailscale 仓库（Debian 系）
+    module: shell
+    args:
+      cmd: |
+        set -e
+        if [ ! -f /etc/apt/sources.list.d/tailscale.list ]; then
+          # Detect distro
+          DISTRO=$(. /etc/os-release && echo "$ID")
+          CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+          curl -fsSL https://pkgs.tailscale.com/stable/$DISTRO/$CODENAME.noarmor.gpg \
+            | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+          curl -fsSL https://pkgs.tailscale.com/stable/$DISTRO/$CODENAME.tailscale-keyring.list \
+            | sudo tee /etc/apt/sources.list.d/tailscale.list >/dev/null
+          sudo apt-get update
+        fi
+    when: family == "debian-family"
+
+  - name: 配置 Tailscale 仓库（RHEL 系）
+    module: shell
+    args:
+      cmd: |
+        set -e
+        if [ ! -f /etc/yum.repos.d/tailscale.repo ]; then
+          DISTRO=$(. /etc/os-release && echo "$ID")
+          # Anolis / Alma / Rocky 都用 rhel 9 仓库
+          if [ "$DISTRO" = "anolis" ] || [ "$DISTRO" = "almalinux" ] || [ "$DISTRO" = "rocky" ]; then
+            DISTRO=rhel
+          fi
+          VERSION=$(. /etc/os-release && echo "$VERSION_ID" | cut -d. -f1)
+          sudo dnf config-manager --add-repo https://pkgs.tailscale.com/stable/$DISTRO/$VERSION/tailscale.repo
+        fi
+    when: family == "rhel-family"
+
+  - name: 安装 tailscale
+    module: package
+    args:
+      name: tailscale
+
+  - name: 启用 IP forward（subnet router 必需）
+    module: shell
+    args:
+      cmd: |
+        if [ -n "{{ ts_advertise_routes }}" ]; then
+          sudo bash -c 'echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-tailscale.conf'
+          sudo bash -c 'echo "net.ipv6.conf.all.forwarding = 1" >> /etc/sysctl.d/99-tailscale.conf'
+          sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
+        fi
+
+  - name: 启动 tailscaled 服务
+    module: service
+    args:
+      name: tailscaled
+      state: started
+      enabled: true
+
+  - name: 检查是否已登录
+    module: shell
+    args:
+      cmd: "tailscale status >/dev/null 2>&1 && echo logged_in || echo logged_out"
+    register: ts_status
+    failed_when: false
+
+  - name: 用 auth key 登录（若未登录）
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ ts_auth_key }}" ]; then
+          echo ""
+          echo "===================================================================="
+          echo "未提供 ts_auth_key —— 需要手动登录"
+          echo "===================================================================="
+          echo "在此机器上跑:"
+          echo "  sudo tailscale up --hostname={{ ts_hostname or '$(hostname)' }} \\"
+          echo "    {{ '--advertise-routes=' + ts_advertise_routes if ts_advertise_routes else '' }} \\"
+          echo "    {{ '--accept-dns=' + ('true' if ts_accept_dns else 'false') }} \\"
+          echo "    {{ '--shields-up' if ts_shields_up else '' }} \\"
+          echo "    {{ '--ssh' if ts_ssh_enabled else '' }}"
+          echo ""
+          echo "按提示访问 https://login.tailscale.com/a/XXXX 浏览器登录"
+          echo "===================================================================="
+          exit 0
+        fi
+
+        sudo tailscale up \
+          --auth-key="{{ ts_auth_key }}" \
+          {{ ('--hostname=' + ts_hostname) if ts_hostname else '' }} \
+          {{ ('--advertise-routes=' + ts_advertise_routes) if ts_advertise_routes else '' }} \
+          --accept-dns={{ 'true' if ts_accept_dns else 'false' }} \
+          {{ '--shields-up' if ts_shields_up else '' }} \
+          {{ '--ssh' if ts_ssh_enabled else '' }}
+    when: ts_status.stdout == "logged_out"
+
+  - name: 显示 tailnet 信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Tailscale 已就绪"
+        echo "===================================================================="
+        if tailscale status >/dev/null 2>&1; then
+          tailscale status
+          echo ""
+          echo "本机 Tailnet IP:"
+          tailscale ip -4
+          echo ""
+          if [ -n "{{ ts_advertise_routes }}" ]; then
+            echo "Subnet router 已声明 {{ ts_advertise_routes }}"
+            echo "**重要**：在 https://login.tailscale.com/admin/machines 此机器条目"
+            echo "          点 ⋯ → Edit route settings → 启用待审批的路由"
+          fi
+          if [ "{{ ts_ssh_enabled }}" = "True" ] || [ "{{ ts_ssh_enabled }}" = "true" ]; then
+            echo "Tailscale SSH 已启用 — 在另一台 tailnet 节点跑:"
+            echo "  ssh $(whoami)@$(hostname)"
+            echo "（不需 SSH 密钥 / 端口 / 公网 IP）"
+          fi
+        else
+          echo "未登录 — 见上方提示手动 sudo tailscale up"
+        fi
+        echo "===================================================================="
+
+verify:
+  - name: tailscaled service running
+    cmd: "systemctl is-active tailscaled"
+    hint: |
+      tailscaled 没运行：
+        sudo systemctl status tailscaled
+        sudo journalctl -u tailscaled -n 50
+
+  - name: tailscale binary works
+    cmd: "tailscale version"
+    hint: "tailscale 二进制不可用。重装：sudo apt install --reinstall tailscale"

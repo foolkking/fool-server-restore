@@ -1,0 +1,66 @@
+{
+  "sm_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/selfhost-media",
+    "help": "存三个组件的配置 + 元数据缓存（不含媒体文件）。",
+    "helpEn": "Stores config + metadata for 3 components (not media files)."
+  },
+  "sm_movies_dir": {
+    "type": "string",
+    "label": "电影目录",
+    "labelEn": "Movies directory",
+    "default": "/srv/media/movies",
+    "help": "电影文件目录（Jellyfin 挂载，只读）。",
+    "helpEn": "Movies directory (Jellyfin mounts read-only)."
+  },
+  "sm_tvshows_dir": {
+    "type": "string",
+    "label": "剧集目录",
+    "labelEn": "TV shows directory",
+    "default": "/srv/media/tvshows",
+    "help": "剧集文件目录（Jellyfin 挂载，只读）。",
+    "helpEn": "TV shows directory (Jellyfin mounts read-only)."
+  },
+  "sm_music_dir": {
+    "type": "string",
+    "label": "音乐目录",
+    "labelEn": "Music directory",
+    "default": "/srv/media/music",
+    "help": "音乐文件目录（Navidrome 挂载，只读）。",
+    "helpEn": "Music directory (Navidrome mounts read-only)."
+  },
+  "sm_audiobooks_dir": {
+    "type": "string",
+    "label": "有声书目录",
+    "labelEn": "Audiobooks directory",
+    "default": "/srv/media/audiobooks",
+    "help": "有声书文件目录（Audiobookshelf 挂载）。",
+    "helpEn": "Audiobooks directory."
+  },
+  "sm_jf_port": {
+    "type": "port",
+    "label": "Jellyfin 端口",
+    "labelEn": "Jellyfin port",
+    "default": 8096,
+    "help": "Jellyfin HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Jellyfin HTTP port (127.0.0.1 only)."
+  },
+  "sm_nd_port": {
+    "type": "port",
+    "label": "Navidrome 端口",
+    "labelEn": "Navidrome port",
+    "default": 4533,
+    "help": "Navidrome HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Navidrome HTTP port (127.0.0.1 only)."
+  },
+  "sm_ab_port": {
+    "type": "port",
+    "label": "Audiobookshelf 端口",
+    "labelEn": "Audiobookshelf port",
+    "default": 13378,
+    "help": "Audiobookshelf HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Audiobookshelf HTTP port (127.0.0.1 only)."
+  }
+}

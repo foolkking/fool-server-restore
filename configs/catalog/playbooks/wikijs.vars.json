@@ -1,0 +1,37 @@
+{
+  "wiki_domain": {
+    "type": "string",
+    "label": "访问域名",
+    "labelEn": "Domain",
+    "default": "wiki.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Wiki.js 对外 URL 的域名（不带协议端口）。生产推荐反代 + HTTPS。",
+    "helpEn": "Public URL hostname. Production: front with reverse proxy + HTTPS."
+  },
+  "wiki_port": {
+    "type": "port",
+    "label": "本机监听端口",
+    "labelEn": "Local listen port",
+    "default": 3500,
+    "help": "Wiki.js 容器映射到本机的端口（仅 127.0.0.1）。生产用反代到此端口。",
+    "helpEn": "Port mapped to localhost. Front with reverse proxy in production."
+  },
+  "wiki_pg_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": false,
+    "help": "Wiki.js 内嵌 PG 数据库密码。留空 = 自动生成 24 位。仅容器间通信，正常情况无需手动用。",
+    "helpEn": "Internal PG password. Empty = auto-generate. Used only between containers."
+  },
+  "wiki_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/wikijs",
+    "help": "Wiki.js 数据存储位置（含 PG 数据 + 压缩备份）。",
+    "helpEn": "Storage location for Wiki.js data + PG database."
+  }
+}

@@ -1,0 +1,136 @@
+# Playbook: n8n 工作流自动化
+#
+# n8n 是开源 Zapier 替代品。Docker 部署。生产推荐 PG backend，本 Playbook 用 SQLite（简单）。
+name: Install n8n (Docker)
+hosts: all
+
+vars:
+  n8n_domain: "n8n.example.com"
+  n8n_port: 5678
+  n8n_admin_user: "admin"
+  n8n_admin_password: ""             # 留空 = 自动 24 位
+  n8n_encryption_key: ""              # 留空 = 自动 32 位
+  n8n_data_dir: /opt/n8n
+  n8n_timezone: "Asia/Shanghai"
+
+tasks:
+  - name: Docker check
+    module: shell
+    args:
+      cmd: command -v docker && docker info >/dev/null 2>&1
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ n8n_data_dir }}"
+      state: directory
+      mode: "0750"
+      owner: "1000"
+      group: "1000"
+
+  - name: 生成密码 + encryption key
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ n8n_admin_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ n8n_admin_password }}"
+        fi
+    register: admin_pass
+    no_log: true
+
+  - name: 生成 encryption key
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ n8n_encryption_key }}" ]; then
+          openssl rand -base64 24 | tr -d '\n'
+        else
+          echo "{{ n8n_encryption_key }}"
+        fi
+    register: enc_key
+    no_log: true
+
+  - name: 写 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ n8n_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          n8n:
+            image: n8nio/n8n:latest
+            container_name: n8n
+            restart: unless-stopped
+            ports:
+              - "127.0.0.1:{{ n8n_port }}:5678"
+            environment:
+              N8N_HOST: "{{ n8n_domain }}"
+              N8N_PORT: 5678
+              N8N_PROTOCOL: https
+              WEBHOOK_URL: "https://{{ n8n_domain }}/"
+              N8N_BASIC_AUTH_ACTIVE: "true"
+              N8N_BASIC_AUTH_USER: "{{ n8n_admin_user }}"
+              N8N_BASIC_AUTH_PASSWORD: "{{ admin_pass.stdout }}"
+              N8N_ENCRYPTION_KEY: "{{ enc_key.stdout }}"
+              N8N_DIAGNOSTICS_ENABLED: "false"
+              N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+              N8N_TEMPLATES_ENABLED: "true"
+              GENERIC_TIMEZONE: "{{ n8n_timezone }}"
+              TZ: "{{ n8n_timezone }}"
+              NODE_ENV: production
+            volumes:
+              - {{ n8n_data_dir }}:/home/node/.n8n
+            healthcheck:
+              test: ["CMD", "wget", "--spider", "http://127.0.0.1:5678/healthz"]
+              interval: 30s
+              timeout: 5s
+              retries: 3
+
+  - name: 启动
+    module: shell
+    args:
+      cmd: |
+        cd {{ n8n_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 60); do
+          if curl -fsS http://127.0.0.1:{{ n8n_port }}/healthz >/dev/null 2>&1; then
+            echo "OK"
+            exit 0
+          fi
+          sleep 2
+        done
+        docker logs --tail 50 n8n
+        exit 1
+
+  - name: 显示登录信息
+    module: shell
+    args:
+      cmd: |
+        echo "============================================"
+        echo "n8n 已就绪"
+        echo "============================================"
+        echo "  URL:      http://$(hostname -I | awk '{print $1}'):{{ n8n_port }}"
+        echo "  User:     {{ n8n_admin_user }}"
+        echo "  Password: {{ admin_pass.stdout }}"
+        echo ""
+        echo "⚠️ 重要：encryption key 一旦丢失，所有 stored credentials 都解密不出来"
+        echo "  Encryption Key: {{ enc_key.stdout }}"
+        echo "  请离线保存到密码管理器！"
+        echo "============================================"
+
+verify:
+  - name: n8n container running
+    cmd: "docker ps --filter name=n8n --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "n8n 容器没启起来。docker logs n8n 看错误"
+
+  - name: n8n responds
+    cmd: "curl -fsS http://127.0.0.1:{{ n8n_port }}/healthz"
+    hint: "n8n 健康检查失败。等 30s 重试。"

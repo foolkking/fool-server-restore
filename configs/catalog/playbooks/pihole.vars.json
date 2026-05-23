@@ -1,0 +1,52 @@
+{
+  "pihole_admin_password": {
+    "type": "password",
+    "label": "Web Admin 密码",
+    "labelEn": "Web admin password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "Pi-hole Web 面板登录密码。留空 = 自动生成 24 位强密码（运行结束日志显示一次）。",
+    "helpEn": "Pi-hole web admin password. Leave empty to auto-generate 24-char strong password."
+  },
+  "pihole_dns_upstream": {
+    "type": "string",
+    "label": "上游 DNS（分号分隔）",
+    "labelEn": "Upstream DNS (semicolon-separated)",
+    "default": "1.1.1.1;1.0.0.1",
+    "help": "Pi-hole 把过滤后的查询转发到此。常用：1.1.1.1（Cloudflare）/ 8.8.8.8（Google）/ 9.9.9.9（Quad9）/ 223.5.5.5（阿里）/ 114.114.114.114（114DNS）。",
+    "helpEn": "DNS forwarders. Common: 1.1.1.1 / 8.8.8.8 / 9.9.9.9."
+  },
+  "pihole_web_port": {
+    "type": "port",
+    "label": "Web Admin 端口",
+    "labelEn": "Web admin port",
+    "default": 8081,
+    "help": "Pi-hole Web 面板端口。默认 8081（避免与 nginx / Apache 80 冲突）。",
+    "helpEn": "Pi-hole web admin port. Default 8081 (avoid conflict with nginx/Apache 80)."
+  },
+  "pihole_dns_port": {
+    "type": "port",
+    "label": "DNS 端口",
+    "labelEn": "DNS port",
+    "default": 53,
+    "help": "DNS 标准端口 53。仅当 53 被占且无法腾出时改非标（设备 DNS 配置同步改）。",
+    "helpEn": "Standard DNS port 53. Only change if 53 is occupied (clients must use same port)."
+  },
+  "pihole_timezone": {
+    "type": "string",
+    "label": "时区",
+    "labelEn": "Timezone",
+    "default": "Asia/Shanghai",
+    "help": "影响日志时间戳。常用：Asia/Shanghai / America/New_York / Europe/London / UTC。",
+    "helpEn": "Affects log timestamps. Common: Asia/Shanghai / America/New_York / UTC."
+  },
+  "pihole_dnssec": {
+    "type": "boolean",
+    "label": "启用 DNSSEC",
+    "labelEn": "Enable DNSSEC",
+    "default": true,
+    "help": "DNSSEC 验证响应签名，防 DNS 投毒。强烈建议开。",
+    "helpEn": "DNSSEC validates response signatures, preventing DNS poisoning. Strongly recommended."
+  }
+}

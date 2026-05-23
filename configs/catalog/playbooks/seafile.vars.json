@@ -1,0 +1,55 @@
+{
+  "sf_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/seafile",
+    "help": "存所有文件 + MariaDB + 配置。**最重要**——含全部用户文件。每日备份。",
+    "helpEn": "Stores all files + MariaDB + config. **Critical**—back up daily."
+  },
+  "sf_hostname": {
+    "type": "string",
+    "label": "访问域名",
+    "labelEn": "Hostname",
+    "default": "files.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Seafile 公开域名（不带协议）。**改了之后客户端要重新连**——慎重。",
+    "helpEn": "Seafile public hostname. **Changing requires clients to reconnect**."
+  },
+  "sf_admin_email": {
+    "type": "string",
+    "label": "Admin 邮箱",
+    "labelEn": "Admin email",
+    "default": "admin@example.com",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Seafile 用邮箱作账号 ID。仅首次启动时设置。",
+    "helpEn": "Seafile uses email as account ID. Only set on first start."
+  },
+  "sf_admin_password": {
+    "type": "password",
+    "label": "Admin 密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 16,
+    "reveal_after_run": true,
+    "help": "Admin 密码。仅首次启动时设置——之后改用 Web UI。留空 = 自动生成 16 位。",
+    "helpEn": "Admin password. Only set on first start. Empty = auto-generate 16-char."
+  },
+  "sf_db_password": {
+    "type": "password",
+    "label": "MariaDB 密码",
+    "labelEn": "MariaDB password",
+    "default": "",
+    "generate_length": 18,
+    "help": "Seafile 内部 MariaDB root 密码。",
+    "helpEn": "Internal MariaDB root password."
+  },
+  "sf_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 8082,
+    "help": "Seafile HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Seafile HTTP port (127.0.0.1 only)."
+  }
+}

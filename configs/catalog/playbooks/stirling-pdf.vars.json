@@ -1,0 +1,26 @@
+{
+  "sp_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/stirling-pdf",
+    "help": "存配置 + 日志 + Tesseract OCR 语言包 + 自定义模板。",
+    "helpEn": "Stores config + logs + Tesseract OCR languages + custom templates."
+  },
+  "sp_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 8089,
+    "help": "Stirling PDF HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Stirling PDF HTTP port (127.0.0.1 only)."
+  },
+  "sp_single_user": {
+    "type": "boolean",
+    "label": "单用户模式（无登录）",
+    "labelEn": "Single-user mode (no login)",
+    "default": false,
+    "help": "true = 无登录直接用（**仅内网部署 + IP 白名单**）。false（推荐）= 多用户登录模式（默认 admin/stirling，**首次登录必改**）。",
+    "helpEn": "true = no login required (**internal LAN only**). false (recommended) = multi-user with login (default admin/stirling—**must change**)."
+  }
+}

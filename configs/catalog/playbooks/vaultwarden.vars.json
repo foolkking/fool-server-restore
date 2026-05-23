@@ -1,0 +1,105 @@
+{
+  "vw_domain": {
+    "type": "string",
+    "label": "访问域名",
+    "labelEn": "Domain",
+    "default": "vault.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "vault.example.com",
+    "help": "Vaultwarden 对外 URL 的域名（不带协议和端口）。Vaultwarden 会用此生成密码重置邮件链接、TOTP issuer 等。生产部署强烈推荐挂反代 + HTTPS。",
+    "helpEn": "Public URL hostname (no protocol or port). Used for password reset links, TOTP issuer, etc. Production: front with reverse proxy + HTTPS."
+  },
+  "vw_admin_token": {
+    "type": "password",
+    "label": "Admin Token（管理面板密码）",
+    "labelEn": "Admin Token",
+    "default": "",
+    "generate_length": 64,
+    "reveal_after_run": true,
+    "help": "访问 /admin 管理面板的 token。留空则自动生成 64 位强 token（运行结束日志显示一次）。Vaultwarden 没有 admin 用户名/密码概念——只用这一个 token。",
+    "helpEn": "Token to access /admin panel. Leave empty to auto-generate 64-char strong token (shown once in run log). No admin username, just this token."
+  },
+  "vw_port": {
+    "type": "port",
+    "label": "本机监听端口",
+    "labelEn": "Local listen port",
+    "default": 8086,
+    "help": "Vaultwarden 容器映射到本机的端口（仅 127.0.0.1 绑定）。生产用反代到此端口。",
+    "helpEn": "Port mapped to localhost (binds only to 127.0.0.1). Front with reverse proxy in production."
+  },
+  "vw_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/vaultwarden/data",
+    "help": "存数据库（SQLite）+ attachments + RSA keypair。**频繁备份此目录**——丢了等于丢全部密码。",
+    "helpEn": "Stores SQLite DB + attachments + RSA keypair. **Back up frequently**—loss = loss of all passwords."
+  },
+  "vw_signups_allowed": {
+    "type": "boolean",
+    "label": "允许公开注册",
+    "labelEn": "Allow public signups",
+    "default": false,
+    "help": "false（默认）= 仅 admin 邀请用户。true = 任何能访问的人都能注册。**公网部署强烈建议 false**——避免被陌生人占用",
+    "helpEn": "false (default) = admin invite only. true = anyone can sign up. **Strongly recommend false on public-facing deployments**."
+  },
+  "vw_smtp_host": {
+    "type": "string",
+    "label": "SMTP host（邮件，可选）",
+    "labelEn": "SMTP host",
+    "default": "",
+    "placeholder": "smtp.gmail.com",
+    "help": "用于邀请邮件 / 密码重置 / 紧急联系等。留空 = 不配置 SMTP（部分功能不可用）。",
+    "helpEn": "For invitation emails / password reset / emergency contact. Empty = SMTP disabled (some features unavailable)."
+  },
+  "vw_smtp_port": {
+    "type": "port",
+    "label": "SMTP 端口",
+    "labelEn": "SMTP port",
+    "default": 587,
+    "help": "STARTTLS 587 / SSL 465 / 明文 25。",
+    "helpEn": "STARTTLS 587 / SSL 465 / plaintext 25.",
+    "show_when": "vw_smtp_host != ''"
+  },
+  "vw_smtp_security": {
+    "type": "choice",
+    "label": "SMTP 加密方式",
+    "labelEn": "SMTP security",
+    "default": "starttls",
+    "options": [
+      { "value": "starttls", "label": "STARTTLS（推荐 587 端口）" },
+      { "value": "force_tls", "label": "Force TLS（465 端口）" },
+      { "value": "off", "label": "Off（明文，仅内网）" }
+    ],
+    "help": "STARTTLS 是最常用——Gmail / Outlook / SendGrid / Mailgun 等都支持。",
+    "helpEn": "STARTTLS most common (Gmail/Outlook/SendGrid/Mailgun).",
+    "show_when": "vw_smtp_host != ''"
+  },
+  "vw_smtp_from": {
+    "type": "string",
+    "label": "SMTP From 地址",
+    "labelEn": "SMTP from address",
+    "default": "",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "vaultwarden@example.com",
+    "help": "邮件 From 字段。必须与 SMTP 账号一致或被允许 send-as。",
+    "helpEn": "Email From field. Must match SMTP account or be allowed as send-as.",
+    "show_when": "vw_smtp_host != ''"
+  },
+  "vw_smtp_username": {
+    "type": "string",
+    "label": "SMTP 用户名",
+    "labelEn": "SMTP username",
+    "default": "",
+    "show_when": "vw_smtp_host != ''"
+  },
+  "vw_smtp_password": {
+    "type": "password",
+    "label": "SMTP 密码",
+    "labelEn": "SMTP password",
+    "default": "",
+    "help": "Gmail 必须用 app password（开 2FA 后 myaccount.google.com/apppasswords 拿）。",
+    "helpEn": "Gmail requires app password (myaccount.google.com/apppasswords).",
+    "show_when": "vw_smtp_host != ''"
+  }
+}

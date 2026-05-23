@@ -1,0 +1,43 @@
+{
+  "pkm_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/selfhost-pkm",
+    "help": "存三个组件 + 各自 PG。**核心数据**——所有笔记 / 订阅 / 书签都在这里，每日备份。",
+    "helpEn": "Stores 3 components + their PGs. **Core data**—back up daily."
+  },
+  "pkm_wiki_port": {
+    "type": "port",
+    "label": "Wiki.js 端口",
+    "labelEn": "Wiki.js port",
+    "default": 3000,
+    "help": "Wiki.js HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Wiki.js HTTP port (127.0.0.1 only)."
+  },
+  "pkm_rss_port": {
+    "type": "port",
+    "label": "FreshRSS 端口",
+    "labelEn": "FreshRSS port",
+    "default": 8085,
+    "help": "FreshRSS HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "FreshRSS HTTP port (127.0.0.1 only)."
+  },
+  "pkm_lw_port": {
+    "type": "port",
+    "label": "Linkwarden 端口",
+    "labelEn": "Linkwarden port",
+    "default": 3020,
+    "help": "Linkwarden HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Linkwarden HTTP port (127.0.0.1 only)."
+  },
+  "pkm_db_password": {
+    "type": "password",
+    "label": "PostgreSQL 共用密码",
+    "labelEn": "Shared PostgreSQL password",
+    "default": "",
+    "generate_length": 24,
+    "help": "三个 PG 容器共用同样的密码（不同库）。简化运维。",
+    "helpEn": "Shared password for 3 PG containers (different databases)."
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "imm_domain": {
+    "type": "string",
+    "label": "访问域名",
+    "labelEn": "Domain",
+    "default": "photos.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "photos.example.com",
+    "help": "Immich 公开域名。生产建议 HTTPS（Immich App 也支持纯 HTTP 但**自动备份功能受限**）。",
+    "helpEn": "Immich public domain. HTTPS recommended (App supports HTTP but auto-backup limited)."
+  },
+  "imm_db_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 24,
+    "help": "Immich 内部 PG 密码。",
+    "helpEn": "Internal PG password."
+  },
+  "imm_jwt_secret": {
+    "type": "password",
+    "label": "JWT secret",
+    "labelEn": "JWT secret",
+    "default": "",
+    "generate_length": 64,
+    "help": "JWT 签名密钥（用于 API 鉴权）。改了 = 所有 session 失效（用户重新登录）。",
+    "helpEn": "JWT signing key. Changing logs out all users."
+  },
+  "imm_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/immich",
+    "help": "存 docker-compose / .env / PG 数据 / ML 模型缓存。",
+    "helpEn": "Stores compose / .env / PG data / ML model cache."
+  },
+  "imm_upload_location": {
+    "type": "string",
+    "label": "照片库目录",
+    "labelEn": "Photo library location",
+    "default": "/opt/immich/library",
+    "help": "**最重要**——所有上传的照片 + 视频原文件都存这里。**建议挂大盘 / NAS**（一个家庭 5 年照片很容易 1-2 TB）。**每日备份此目录**——丢了 = 所有照片没了。",
+    "helpEn": "**MOST IMPORTANT**—all photo/video originals here. Recommend large disk / NAS mount (1-2 TB easy for 5y family photos). **Back up daily**—loss = all photos gone."
+  },
+  "imm_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 2283,
+    "help": "Immich web + API 端口（仅 127.0.0.1）。",
+    "helpEn": "Immich web + API port (127.0.0.1 only)."
+  },
+  "imm_disable_ml": {
+    "type": "boolean",
+    "label": "禁用 ML（机器学习）服务",
+    "labelEn": "Disable ML service",
+    "default": false,
+    "help": "false（推荐）= 启用人脸识别 + 物体分类 + CLIP 智能搜索。**ML 容器吃 1-2 GB RAM**——< 4 GB 内存机器建议关。关闭后照片仍能查看 + 元数据搜索，仅失去 AI 功能。",
+    "helpEn": "false (recommended) = enable face recognition + object detection + CLIP smart search. **ML container uses 1-2 GB RAM**—disable on < 4 GB machines. Photos still viewable, just no AI features."
+  }
+}

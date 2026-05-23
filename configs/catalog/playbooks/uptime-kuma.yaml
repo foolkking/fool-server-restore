@@ -1,0 +1,118 @@
+# Playbook: Uptime Kuma 监控
+#
+# 自托管 Uptime Robot 替代——HTTP/TCP/Ping/DNS/容器健康检测
+# + 通知（Discord/Slack/Telegram/邮件/Webhook）+ 公开状态页。
+name: Install Uptime Kuma uptime monitor
+hosts: all
+
+vars:
+  uk_port: 3001
+  uk_data_dir: /opt/uptime-kuma
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ uk_port }} "; then
+          echo "WARN: Port {{ uk_port }} 占用："
+          ss -tlnp | grep ":{{ uk_port }} "
+        fi
+    failed_when: false
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ uk_data_dir }}"
+      state: directory
+      mode: "0755"
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ uk_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          uptime-kuma:
+            image: louislam/uptime-kuma:1
+            container_name: uptime-kuma
+            restart: unless-stopped
+            volumes:
+              - {{ uk_data_dir }}/data:/app/data
+              # 可选：挂 docker socket 用于"Docker container" 监控类型
+              - /var/run/docker.sock:/var/run/docker.sock:ro
+            ports:
+              - "127.0.0.1:{{ uk_port }}:3001"
+            healthcheck:
+              test: ["CMD", "node", "extra/healthcheck.js"]
+              interval: 60s
+              timeout: 30s
+              retries: 5
+              start_period: 60s
+
+  - name: 启动 Uptime Kuma
+    module: shell
+    args:
+      cmd: |
+        cd {{ uk_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待 Uptime Kuma ready
+    module: shell
+    args:
+      cmd: |
+        echo "等待 Uptime Kuma 启动..."
+        for i in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:{{ uk_port }}/ -o /dev/null 2>&1; then
+            echo "OK: Uptime Kuma ready"
+            exit 0
+          fi
+          sleep 3
+        done
+        echo "ERROR: Uptime Kuma not ready"
+        docker logs --tail 50 uptime-kuma
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Uptime Kuma 已就绪"
+        echo "===================================================================="
+        echo "  本机 URL:     http://127.0.0.1:{{ uk_port }}"
+        echo "  公网 URL:     需配反代到 https://status.example.com（推荐）"
+        echo ""
+        echo "下一步:"
+        echo "  1. 浏览器打开 http://server-ip:{{ uk_port }}/setup"
+        echo "  2. 创建首个 admin 账号（首次访问就是注册页）"
+        echo "  3. + Add New Monitor → 监控第一个目标"
+        echo "  4. Settings → Notifications → 配 Discord/Slack/Telegram/Email"
+        echo "  5. （可选）Status Pages → New → 创建公开状态页"
+        echo "  6. 反代到 status.example.com（nginx + LE）"
+        echo "===================================================================="
+
+verify:
+  - name: uptime-kuma container running
+    cmd: "docker ps --filter name=uptime-kuma --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: |
+      Uptime Kuma 没起：
+        docker logs uptime-kuma | tail -50
+
+  - name: web ui responds
+    cmd: "curl -fsS http://127.0.0.1:{{ uk_port }}/ -o /dev/null"
+    hint: "Web UI 不响应。docker logs uptime-kuma"
+
+  - name: data directory exists
+    cmd: "test -d {{ uk_data_dir }}/data"
+    hint: "数据目录 {{ uk_data_dir }}/data 不存在 — 容器首次启动应自动创建。docker logs 看错误。"

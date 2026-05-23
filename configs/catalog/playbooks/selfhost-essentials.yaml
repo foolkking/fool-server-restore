@@ -1,0 +1,227 @@
+# Playbook: 自托管必备四件套
+# Traefik（反代+自动 HTTPS）+ Vaultwarden（密码）+ Pi-hole（广告屏蔽）+ Home Assistant（智能家居）
+# 适合家庭 NAS / 小团队 NAS 一键开荒
+name: Install Self-host essentials stack
+hosts: all
+
+vars:
+  selfhost_acme_email: "admin@example.com"
+  selfhost_data_dir: /opt/selfhost
+  selfhost_vaultwarden_domain: "vault.example.com"
+  selfhost_pihole_password: ""
+  selfhost_ha_timezone: "Asia/Shanghai"
+
+tasks:
+  - name: Docker check
+    module: shell
+    args:
+      cmd: command -v docker && docker info >/dev/null 2>&1
+
+  - name: 内存预检
+    module: shell
+    args:
+      cmd: |
+        TOTAL_MB=$(free -m | awk '/^Mem:/{print $2}')
+        if [ "$TOTAL_MB" -lt 1500 ]; then
+          echo "WARN: 物理内存 ${TOTAL_MB}MB < 推荐 2GB（4 个容器叠加）"
+        fi
+
+  - name: 关闭 systemd-resolved（让 Pi-hole 占 53）
+    module: shell
+    args:
+      cmd: |
+        if systemctl is-active --quiet systemd-resolved; then
+          sudo systemctl disable --now systemd-resolved
+          if [ -L /etc/resolv.conf ]; then
+            sudo unlink /etc/resolv.conf
+            echo 'nameserver 1.1.1.1' | sudo tee /etc/resolv.conf
+            echo 'nameserver 8.8.8.8' | sudo tee -a /etc/resolv.conf
+          fi
+        fi
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ item }}"
+      state: directory
+      mode: "0750"
+    loop:
+      - "{{ selfhost_data_dir }}"
+      - "{{ selfhost_data_dir }}/traefik/letsencrypt"
+      - "{{ selfhost_data_dir }}/vaultwarden"
+      - "{{ selfhost_data_dir }}/pihole/etc-pihole"
+      - "{{ selfhost_data_dir }}/pihole/etc-dnsmasq"
+      - "{{ selfhost_data_dir }}/home-assistant"
+
+  - name: acme.json 权限（Traefik 必须 600）
+    module: shell
+    args:
+      cmd: |
+        touch {{ selfhost_data_dir }}/traefik/letsencrypt/acme.json
+        chmod 600 {{ selfhost_data_dir }}/traefik/letsencrypt/acme.json
+
+  - name: 生成 vaultwarden admin token
+    module: shell
+    args:
+      cmd: openssl rand -base64 48 | tr -d '\n'
+    register: vw_token
+    no_log: true
+
+  - name: 生成 pihole 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ selfhost_pihole_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ selfhost_pihole_password }}"
+        fi
+    register: ph_pass
+    no_log: true
+
+  - name: 写主 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ selfhost_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          traefik:
+            image: traefik:v3
+            container_name: traefik
+            restart: unless-stopped
+            command:
+              - --providers.docker=true
+              - --providers.docker.exposedbydefault=false
+              - --entrypoints.web.address=:80
+              - --entrypoints.websecure.address=:443
+              - --entrypoints.web.http.redirections.entrypoint.to=websecure
+              - --entrypoints.web.http.redirections.entrypoint.scheme=https
+              - --certificatesresolvers.letsencrypt.acme.email={{ selfhost_acme_email }}
+              - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+              - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+              - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+              - --global.sendanonymoususage=false
+              - --global.checknewversion=false
+            ports:
+              - "80:80"
+              - "443:443"
+            volumes:
+              - /var/run/docker.sock:/var/run/docker.sock:ro
+              - {{ selfhost_data_dir }}/traefik/letsencrypt:/letsencrypt
+
+          vaultwarden:
+            image: vaultwarden/server:latest
+            container_name: vaultwarden
+            restart: unless-stopped
+            environment:
+              DOMAIN: "https://{{ selfhost_vaultwarden_domain }}"
+              ADMIN_TOKEN: "{{ vw_token.stdout }}"
+              SIGNUPS_ALLOWED: "false"
+              WEBSOCKET_ENABLED: "true"
+            volumes:
+              - {{ selfhost_data_dir }}/vaultwarden:/data
+            labels:
+              - traefik.enable=true
+              - traefik.http.routers.vaultwarden.rule=Host(`{{ selfhost_vaultwarden_domain }}`)
+              - traefik.http.routers.vaultwarden.entrypoints=websecure
+              - traefik.http.routers.vaultwarden.tls.certresolver=letsencrypt
+              - traefik.http.services.vaultwarden.loadbalancer.server.port=80
+
+          pihole:
+            image: pihole/pihole:latest
+            container_name: pihole
+            restart: unless-stopped
+            ports:
+              - "53:53/tcp"
+              - "53:53/udp"
+            environment:
+              TZ: "{{ selfhost_ha_timezone }}"
+              WEBPASSWORD: "{{ ph_pass.stdout }}"
+              DNS1: "1.1.1.1"
+              DNS2: "1.0.0.1"
+              DNSSEC: "true"
+              FTLCONF_LOCAL_IPV4: 0.0.0.0
+            volumes:
+              - {{ selfhost_data_dir }}/pihole/etc-pihole:/etc/pihole
+              - {{ selfhost_data_dir }}/pihole/etc-dnsmasq:/etc/dnsmasq.d
+            cap_add:
+              - NET_ADMIN
+            labels:
+              - traefik.enable=true
+              - traefik.http.routers.pihole.rule=Host(`pihole.localhost`) || PathPrefix(`/admin`)
+              - traefik.http.routers.pihole.entrypoints=websecure
+              - traefik.http.routers.pihole.tls.certresolver=letsencrypt
+              - traefik.http.services.pihole.loadbalancer.server.port=80
+
+          homeassistant:
+            container_name: homeassistant
+            image: ghcr.io/home-assistant/home-assistant:stable
+            restart: unless-stopped
+            privileged: true
+            network_mode: host                            # HA 用 host network 自动发现 IoT
+            environment:
+              TZ: "{{ selfhost_ha_timezone }}"
+            volumes:
+              - {{ selfhost_data_dir }}/home-assistant:/config
+              - /run/dbus:/run/dbus:ro
+
+  - name: 启动栈
+    module: shell
+    args:
+      cmd: |
+        cd {{ selfhost_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for SVC in traefik vaultwarden pihole homeassistant; do
+          for i in $(seq 1 60); do
+            if docker ps --filter name=$SVC --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up; then
+              echo "OK: $SVC"
+              break
+            fi
+            sleep 2
+          done
+        done
+
+  - name: 显示登录信息
+    module: shell
+    args:
+      cmd: |
+        echo "============================================="
+        echo "Self-host Essentials 已就绪"
+        echo "============================================="
+        echo "  Vaultwarden:       https://{{ selfhost_vaultwarden_domain }}/"
+        echo "    Admin Token:     {{ vw_token.stdout }}"
+        echo ""
+        echo "  Pi-hole:           http://$(hostname -I | awk '{print $1}')/admin"
+        echo "    Password:        {{ ph_pass.stdout }}"
+        echo ""
+        echo "  Home Assistant:    http://$(hostname -I | awk '{print $1}'):8123/"
+        echo "    （首次访问创建账号）"
+        echo ""
+        echo "下一步："
+        echo "  1. DNS 解析 vault.example.com → 本机公网 IP"
+        echo "  2. 路由器 DHCP DNS 改为本机 IP（让全网走 Pi-hole）"
+        echo "============================================="
+
+verify:
+  - name: traefik running
+    cmd: "docker ps --filter name=traefik --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Traefik 没起。docker logs traefik"
+
+  - name: vaultwarden alive
+    cmd: "curl -fsS http://127.0.0.1:80/alive --resolve {{ selfhost_vaultwarden_domain }}:80:127.0.0.1 -H 'Host: {{ selfhost_vaultwarden_domain }}' || curl -fsS https://127.0.0.1/alive -k --resolve {{ selfhost_vaultwarden_domain }}:443:127.0.0.1 -H 'Host: {{ selfhost_vaultwarden_domain }}'"
+    hint: "Vaultwarden 不响应。docker logs vaultwarden"
+
+  - name: pihole running
+    cmd: "docker ps --filter name=pihole --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Pi-hole 没起。docker logs pihole"
+
+  - name: home-assistant running
+    cmd: "docker ps --filter name=homeassistant --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "HA 没起。docker logs homeassistant"

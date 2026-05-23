@@ -1,0 +1,45 @@
+{
+  "agh_admin_user": {
+    "type": "string",
+    "label": "Admin 用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "validate": "^[a-zA-Z0-9_-]{3,32}$",
+    "help": "Web UI 登录用户名。3-32 位字母数字下划线。",
+    "helpEn": "Web UI login username. 3-32 alphanumeric/underscore/dash."
+  },
+  "agh_admin_password": {
+    "type": "password",
+    "label": "Admin 密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "Web UI 登录密码。留空 = 自动生成 24 位强密码（运行结束日志显示一次）。AdGuard 会用 bcrypt 存储。",
+    "helpEn": "Web UI password. Empty = auto-generate 24-char strong password (shown once in run log). Stored as bcrypt."
+  },
+  "agh_web_port": {
+    "type": "port",
+    "label": "Web UI 端口",
+    "labelEn": "Web UI port",
+    "default": 8080,
+    "help": "Web 管理面板端口。默认 8080。改成 80 可省去端口号但会与 nginx / caddy 冲突。",
+    "helpEn": "Web admin panel port. Default 8080. Set to 80 to skip port suffix but conflicts with nginx/caddy."
+  },
+  "agh_dns_port": {
+    "type": "port",
+    "label": "DNS 端口",
+    "labelEn": "DNS port",
+    "default": 53,
+    "help": "DNS 服务端口。**必须是 53**——否则客户端要带端口号（多数路由器不支持）。**冲突预警**：systemd-resolved 默认占 127.0.0.53:53，需先关闭：sudo systemctl disable --now systemd-resolved",
+    "helpEn": "DNS service port. **Must be 53**—otherwise clients need port suffix (most routers don't support). **Conflict warning**: systemd-resolved occupies 127.0.0.53:53 by default, disable first."
+  },
+  "agh_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/adguard-home",
+    "help": "存配置 + 查询日志 + 统计数据 + 屏蔽列表缓存。备份此目录 = 备份完整 AdGuard 配置。",
+    "helpEn": "Stores config + query log + stats + filter cache. Back up this dir = full AdGuard config backup."
+  }
+}

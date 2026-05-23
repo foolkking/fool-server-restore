@@ -1,0 +1,163 @@
+# Playbook: Mealie 食谱管理器
+name: Install Mealie recipe manager
+hosts: all
+
+vars:
+  ml_data_dir: /opt/mealie
+  ml_port: 9000
+  ml_admin_email: "admin@example.com"
+  ml_admin_password: ""
+  ml_db_password: ""
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ ml_port }} "; then
+          echo "WARN: Port {{ ml_port }} 占用："
+          ss -tlnp | grep ":{{ ml_port }} "
+        fi
+    failed_when: false
+
+  - name: 创建目录
+    module: file
+    args:
+      path: "{{ ml_data_dir }}/{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - data
+      - postgres-data
+
+  - name: 生成密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ ml_admin_password }}" ]; then
+          openssl rand -base64 12 | tr -d '\n='
+        else
+          echo "{{ ml_admin_password }}"
+        fi
+    register: ml_pass
+    no_log: true
+
+  - name: 生成 DB 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ ml_db_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n='
+        else
+          echo "{{ ml_db_password }}"
+        fi
+    register: ml_db_pass
+    no_log: true
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ ml_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          mealie-db:
+            image: postgres:16-alpine
+            container_name: mealie-db
+            restart: unless-stopped
+            environment:
+              POSTGRES_USER: mealie
+              POSTGRES_PASSWORD: "{{ ml_db_pass.stdout }}"
+              POSTGRES_DB: mealie
+            volumes:
+              - {{ ml_data_dir }}/postgres-data:/var/lib/postgresql/data
+            healthcheck:
+              test: ["CMD", "pg_isready", "-U", "mealie"]
+
+          mealie:
+            image: ghcr.io/mealie-recipes/mealie:latest
+            container_name: mealie
+            restart: unless-stopped
+            depends_on:
+              mealie-db:
+                condition: service_healthy
+            ports:
+              - "127.0.0.1:{{ ml_port }}:9000"
+            volumes:
+              - {{ ml_data_dir }}/data:/app/data
+            environment:
+              ALLOW_SIGNUP: "false"
+              MAX_WORKERS: 1
+              WEB_CONCURRENCY: 1
+              BASE_URL: ""
+              TZ: "Asia/Shanghai"
+              DB_ENGINE: postgres
+              POSTGRES_USER: mealie
+              POSTGRES_PASSWORD: "{{ ml_db_pass.stdout }}"
+              POSTGRES_SERVER: mealie-db
+              POSTGRES_PORT: 5432
+              POSTGRES_DB: mealie
+              DEFAULT_EMAIL: "{{ ml_admin_email }}"
+              DEFAULT_PASSWORD: "{{ ml_pass.stdout }}"
+
+  - name: 启动
+    module: shell
+    args:
+      cmd: |
+        cd {{ ml_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:{{ ml_port }}/ -o /dev/null 2>&1; then
+            echo "OK: Mealie ready"
+            exit 0
+          fi
+          sleep 3
+        done
+        echo "ERROR: Mealie not ready"
+        docker logs --tail 30 mealie
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Mealie 已就绪"
+        echo "===================================================================="
+        echo "  本机 URL:      http://127.0.0.1:{{ ml_port }}"
+        echo "  Admin 邮箱:    {{ ml_admin_email }}"
+        echo "  Admin 密码:    {{ ml_pass.stdout }}"
+        echo ""
+        echo "下一步:"
+        echo "  1. 反代到 https://recipes.example.com（nginx + LE）"
+        echo "  2. 浏览器打开 → 登录 → 改密码（强烈建议）"
+        echo "  3. + Recipe → URL 一键导入（支持 1000+ 烹饪网站）"
+        echo "  4. iOS/Android: 应用商店搜 'Mealie' 装客户端"
+        echo "===================================================================="
+
+verify:
+  - name: container running
+    cmd: "docker ps --filter name=mealie --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Mealie 没起。docker logs mealie"
+
+  - name: db running
+    cmd: "docker ps --filter name=mealie-db --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "PG 没起。docker logs mealie-db"
+
+  - name: web ui responds
+    cmd: "curl -fsS http://127.0.0.1:{{ ml_port }}/ -o /dev/null"
+    hint: "Web UI 不响应。docker logs mealie"

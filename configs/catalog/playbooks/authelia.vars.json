@@ -1,0 +1,84 @@
+{
+  "ah_domain": {
+    "type": "string",
+    "label": "Authelia 域名",
+    "labelEn": "Authelia hostname",
+    "default": "auth.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "auth.example.com",
+    "help": "Authelia 自身的访问域名（不带协议）。**必须是受保护根域的子域**（如保护 example.com → Authelia 用 auth.example.com，因为 cookie 共享要求同一根域）。",
+    "helpEn": "Authelia's own hostname. **Must be a subdomain of the protected root domain** (e.g., protect example.com → Authelia at auth.example.com, since cookies require same root)."
+  },
+  "ah_default_protected_domain": {
+    "type": "string",
+    "label": "受保护的根域",
+    "labelEn": "Protected root domain",
+    "default": "example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "example.com",
+    "help": "要给所有 *.example.com 子域加 SSO。**Authelia 自己的域必须也是这个根域的子域**（cookie 共享）。",
+    "helpEn": "Root domain to apply SSO to all *.example.com subdomains. **Authelia's own domain must also be a subdomain of this root** (cookie sharing)."
+  },
+  "ah_admin_user": {
+    "type": "string",
+    "label": "Admin 用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "validate": "^[a-zA-Z0-9_-]{3,32}$",
+    "help": "首个管理员用户名。用文件后端时用户都在 users_database.yml——加用户编辑此文件 + 重启容器。",
+    "helpEn": "First admin username. With file backend, users go in users_database.yml—add via edit + restart."
+  },
+  "ah_admin_password": {
+    "type": "password",
+    "label": "Admin 密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "Admin 密码。留空 = 自动生成 24 位（运行结束日志显示一次）。Authelia 用 argon2id 哈希存储。",
+    "helpEn": "Admin password. Empty = auto-generate 24-char. Stored as argon2id hash."
+  },
+  "ah_jwt_secret": {
+    "type": "password",
+    "label": "JWT secret",
+    "labelEn": "JWT secret",
+    "default": "",
+    "generate_length": 64,
+    "help": "用于密码重置链接的 JWT 签名。留空 = 自动生成 64 位 hex。**重要**：改了之后已发的重置链接全失效。",
+    "helpEn": "JWT signing secret for password reset links. Empty = auto-generate 64-char hex. **Changing invalidates all pending reset links.**"
+  },
+  "ah_session_secret": {
+    "type": "password",
+    "label": "Session secret",
+    "labelEn": "Session secret",
+    "default": "",
+    "generate_length": 64,
+    "help": "Session cookie 加密密钥。留空 = 自动生成。改了 = 所有用户被强制重登。",
+    "helpEn": "Session cookie encryption key. Empty = auto-generate. Changing logs out all users."
+  },
+  "ah_storage_secret": {
+    "type": "password",
+    "label": "Storage encryption key",
+    "labelEn": "Storage encryption key",
+    "default": "",
+    "generate_length": 64,
+    "help": "SQLite 中加密 TOTP secret / WebAuthn key 的密钥。**改了 = 所有用户的 TOTP / WebAuthn 失效，需重设**。",
+    "helpEn": "Encrypts TOTP secrets / WebAuthn keys in SQLite. **Changing invalidates all users' TOTP / WebAuthn—they must re-enroll**."
+  },
+  "ah_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 9091,
+    "help": "Authelia HTTP 端口（仅 127.0.0.1）。生产用反代。",
+    "helpEn": "Authelia HTTP port (127.0.0.1 only). Front with reverse proxy."
+  },
+  "ah_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/authelia",
+    "help": "存配置 + SQLite + 通知文件。备份 data/db.sqlite3 = 备份所有 TOTP / WebAuthn / regulation 状态。",
+    "helpEn": "Stores config + SQLite + notifications. Back up data/db.sqlite3 for all TOTP / WebAuthn / regulation state."
+  }
+}

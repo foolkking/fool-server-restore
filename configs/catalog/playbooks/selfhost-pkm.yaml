@@ -1,0 +1,223 @@
+# Playbook: 自托管个人知识库
+#
+# Wiki.js（写作）+ FreshRSS（信息源）+ Linkwarden（书签 + 归档）= 完整 PKM 栈
+name: Install self-hosted PKM stack
+hosts: all
+
+vars:
+  pkm_data_dir: /opt/selfhost-pkm
+  pkm_wiki_port: 3000
+  pkm_rss_port: 8085
+  pkm_lw_port: 3020
+  pkm_db_password: ""
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        for p in {{ pkm_wiki_port }} {{ pkm_rss_port }} {{ pkm_lw_port }}; do
+          if ss -tlnp 2>/dev/null | grep -q ":$p "; then
+            echo "WARN: 端口 $p 占用："
+            ss -tlnp | grep ":$p "
+          fi
+        done
+    failed_when: false
+
+  - name: 创建目录
+    module: file
+    args:
+      path: "{{ pkm_data_dir }}/{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - wiki/postgres-data
+      - rss/data
+      - rss/postgres-data
+      - lw/data
+      - lw/postgres-data
+
+  - name: 生成共用 DB 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ pkm_db_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n='
+        else
+          echo "{{ pkm_db_password }}"
+        fi
+    register: pkm_db_pass
+    no_log: true
+
+  - name: 生成 Linkwarden NextAuth secret
+    module: shell
+    args:
+      cmd: "openssl rand -hex 32"
+    register: pkm_lw_secret
+    no_log: true
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ pkm_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          # Wiki.js
+          wiki-db:
+            image: postgres:16-alpine
+            container_name: pkm-wiki-db
+            restart: unless-stopped
+            environment:
+              POSTGRES_USER: wikijs
+              POSTGRES_PASSWORD: "{{ pkm_db_pass.stdout }}"
+              POSTGRES_DB: wikijs
+            volumes:
+              - {{ pkm_data_dir }}/wiki/postgres-data:/var/lib/postgresql/data
+            healthcheck:
+              test: ["CMD", "pg_isready", "-U", "wikijs"]
+
+          wiki:
+            image: requarks/wiki:2
+            container_name: pkm-wiki
+            restart: unless-stopped
+            depends_on:
+              wiki-db:
+                condition: service_healthy
+            ports:
+              - "127.0.0.1:{{ pkm_wiki_port }}:3000"
+            environment:
+              DB_TYPE: postgres
+              DB_HOST: wiki-db
+              DB_PORT: 5432
+              DB_USER: wikijs
+              DB_PASS: "{{ pkm_db_pass.stdout }}"
+              DB_NAME: wikijs
+
+          # FreshRSS
+          rss-db:
+            image: postgres:16-alpine
+            container_name: pkm-rss-db
+            restart: unless-stopped
+            environment:
+              POSTGRES_USER: freshrss
+              POSTGRES_PASSWORD: "{{ pkm_db_pass.stdout }}"
+              POSTGRES_DB: freshrss
+            volumes:
+              - {{ pkm_data_dir }}/rss/postgres-data:/var/lib/postgresql/data
+            healthcheck:
+              test: ["CMD", "pg_isready", "-U", "freshrss"]
+
+          rss:
+            image: freshrss/freshrss:latest
+            container_name: pkm-rss
+            restart: unless-stopped
+            depends_on:
+              rss-db:
+                condition: service_healthy
+            ports:
+              - "127.0.0.1:{{ pkm_rss_port }}:80"
+            volumes:
+              - {{ pkm_data_dir }}/rss/data:/var/www/FreshRSS/data
+            environment:
+              CRON_MIN: "*/15"
+              TZ: "Asia/Shanghai"
+
+          # Linkwarden
+          lw-db:
+            image: postgres:16-alpine
+            container_name: pkm-lw-db
+            restart: unless-stopped
+            environment:
+              POSTGRES_USER: linkwarden
+              POSTGRES_PASSWORD: "{{ pkm_db_pass.stdout }}"
+              POSTGRES_DB: linkwarden
+            volumes:
+              - {{ pkm_data_dir }}/lw/postgres-data:/var/lib/postgresql/data
+            healthcheck:
+              test: ["CMD", "pg_isready", "-U", "linkwarden"]
+
+          lw:
+            image: ghcr.io/linkwarden/linkwarden:latest
+            container_name: pkm-lw
+            restart: unless-stopped
+            depends_on:
+              lw-db:
+                condition: service_healthy
+            ports:
+              - "127.0.0.1:{{ pkm_lw_port }}:3000"
+            volumes:
+              - {{ pkm_data_dir }}/lw/data:/data/data
+            environment:
+              DATABASE_URL: "postgresql://linkwarden:{{ pkm_db_pass.stdout }}@lw-db:5432/linkwarden"
+              NEXTAUTH_SECRET: "{{ pkm_lw_secret.stdout }}"
+              NEXTAUTH_URL: "http://localhost:{{ pkm_lw_port }}/api/v1/auth"
+
+  - name: 启动栈
+    module: shell
+    args:
+      cmd: |
+        cd {{ pkm_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待 Wiki.js ready
+    module: shell
+    args:
+      cmd: |
+        echo "等待栈启动（首次较慢）..."
+        for i in $(seq 1 60); do
+          if curl -fsS http://127.0.0.1:{{ pkm_wiki_port }}/ -o /dev/null 2>&1; then
+            echo "OK: Wiki.js ready"
+            exit 0
+          fi
+          sleep 3
+        done
+        echo "ERROR: Wiki.js not ready"
+        docker logs --tail 30 pkm-wiki
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "自托管个人知识库 PKM 已就绪"
+        echo "===================================================================="
+        echo "  Wiki.js（笔记）:       http://127.0.0.1:{{ pkm_wiki_port }}"
+        echo "  FreshRSS（订阅）:      http://127.0.0.1:{{ pkm_rss_port }}"
+        echo "  Linkwarden（书签）:    http://127.0.0.1:{{ pkm_lw_port }}"
+        echo ""
+        echo "下一步:"
+        echo "  1. 反代 3 个域名（wiki / rss / links）到对应端口（nginx + LE）"
+        echo "  2. 各自首次 setup："
+        echo "     - Wiki.js: 浏览器 → setup wizard → 创建 admin"
+        echo "     - FreshRSS: setup → DB host = rss-db, password = <见 docker-compose.yml>"
+        echo "     - Linkwarden: 浏览器 → 注册首个用户（自动 admin）"
+        echo "  3. 用法:"
+        echo "     - FreshRSS 拉信息源（RSS / Atom）"
+        echo "     - 看到好文 → Linkwarden 一键收藏 + 永久归档"
+        echo "     - 整理 / 总结写到 Wiki.js"
+        echo "     = 完整信息消费 → 沉淀闭环"
+        echo "===================================================================="
+
+verify:
+  - name: wiki running
+    cmd: "docker ps --filter name=pkm-wiki --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Wiki.js 没起。docker logs pkm-wiki"
+
+  - name: rss running
+    cmd: "docker ps --filter name=pkm-rss --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "FreshRSS 没起。docker logs pkm-rss"
+
+  - name: linkwarden running
+    cmd: "docker ps --filter name=pkm-lw --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Linkwarden 没起。docker logs pkm-lw"

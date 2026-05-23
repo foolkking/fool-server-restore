@@ -16,10 +16,10 @@
 | 项目 | 最低 | 推荐 | 备注 |
 |---|---|---|---|
 | CPU | 1 vCPU | 2 vCPU | EnvForge 本身轻量；并发跑 Playbook 时多核更稳 |
-| 内存 | 512 MB | 1 GB+ | Node 进程 + sandbox demo 容器会吃约 300-500MB |
-| 磁盘 | 2 GB | 5 GB+ | 镜像 ~400MB；任务日志 / 快照随使用增长 |
+| 内存 | 512 MB | 1 GB+ | Node 进程 + 任务并发会吃约 300-500 MB |
+| 磁盘 | 2 GB | 5 GB+ | 镜像 ~500 MB；任务日志 / 快照随使用增长 |
 | 操作系统 | Linux x86_64 / arm64 | 同左 | 已在 Ubuntu / Debian / RHEL / Anolis 验证 |
-| 网络 | 出站 443 (拉镜像 + npm) | 同左 | 入站 5173 给浏览器；公网部署建议挂 nginx + HTTPS |
+| 网络 | 出站 443（拉镜像 + npm） | 同左 | 入站 5173 给浏览器；公网部署建议挂 nginx + HTTPS |
 | Docker | 24.0+ | 25.0+ | 必须支持 `docker compose` 子命令（v2，**不是** `docker-compose`） |
 
 > ⚠️ **不支持 Windows / macOS 作为部署主机**——开发可以，但生产部署 SSH 行为有差异。本文假设 Linux。
@@ -94,17 +94,24 @@ docker run --rm hello-world   # 跑一个最小镜像测试
 EnvForge 用 AES-256-GCM 加密用户保存的 SSH 密码 / 密钥。**Master key 一旦丢失，所有加密的凭据都解不开**——同样，**部署后切勿换 key**，会让所有现有用户的连接失效。
 
 ```bash
-# 在服务器上跑（需要 node，临时用 docker 跑也行）：
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# 任选其一：
 
-# 没装 node？用 docker：
+# A. 用 openssl（任何 Linux 都装了）
+openssl rand -base64 32
+
+# B. 临时用 docker 跑 node（如果你还没装 node）
 docker run --rm node:20-alpine node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
-# 或者纯 shell：
-openssl rand -base64 32
+# C. 已装 node
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-输出形如：`m9tHHk0xZ+vN2fK8jL3pQ4...`（44 字符的 base64 字符串）。**立刻复制保存到密码管理器**，下面要用。
+输出形如：`m9tHHk0xZ+vN2fK8jL3pQ4...`（44 字符的 base64 字符串）。
+
+⚠️ **立刻做两件事**：
+
+1. **复制保存到密码管理器**（1Password / Bitwarden / Vaultwarden / 等）—— 离线备份
+2. **写到下一步的 `.env` 文件里**—— 容器启动需要
 
 ---
 
@@ -147,20 +154,24 @@ cp .env.example .env
 nano .env       # 或 vim / vi
 ```
 
-最少要改的 **1 项** —— 把第三步生成的 master key 填进去。在 `.env` 末尾追加（或修改现有行）：
+**最少要改的 1 项** —— 把第三步生成的 master key 填进去。`.env` 里改这行：
 
 ```ini
 # 必填：32 字节随机 key 的 base64 形式
 ENVFORGE_MASTER_KEY=你刚才生成的 base64 字符串
+```
 
-# 可选：把你的邮箱设为 admin（注册后自动有 admin 角色，能管理 catalog）
+**强烈建议同时设的 2 项**：
+
+```ini
+# 把你的邮箱设为 admin（注册后自动有 admin 角色，能管理 catalog）
 ENVFORGE_ADMIN_EMAILS=your-email@example.com
 
-# 公网部署时改成你的真实 URL（影响生成的链接 / GitHub OAuth 回调）
+# 公网部署改成你的真实 URL（影响 OAuth callback / 生成的链接）
 PUBLIC_BASE_URL=https://envforge.example.com
-
-# 其它项（SMTP、GitHub OAuth）按需启用，没填的话功能降级但不影响主流程
 ```
+
+其它项（SMTP、GitHub OAuth）按需启用，没填的话功能降级但不影响主流程。
 
 保存退出。
 
@@ -169,7 +180,9 @@ PUBLIC_BASE_URL=https://envforge.example.com
 
 ### 4.4 检查端口是否冲突
 
-EnvForge 默认监听 5173（同 Vite 的开发端口）。如果服务器上这个端口已被占用：
+EnvForge 默认监听 5173。`docker-compose.yml` 默认绑定到 `127.0.0.1:5173`（仅本机可访问，需要反代）。
+
+如果服务器上这个端口已被占用：
 
 ```bash
 sudo ss -tlnp | grep ':5173 '
@@ -180,10 +193,12 @@ sudo ss -tlnp | grep ':5173 '
 
 ```yaml
 ports:
-  - "8080:5173"     # 宿主机 8080 → 容器内 5173
+  - "127.0.0.1:8080:5173"     # 宿主机 8080（仅本机）→ 容器内 5173
 ```
 
-后续访问改用 `http://server-ip:8080`。
+后续反代到 `127.0.0.1:8080`。
+
+> 想直接公网暴露（**仅测试 / 内网可信场景**）：改成 `"5173:5173"`（不加 `127.0.0.1:` 前缀）。生产强烈不建议——见第六节。
 
 ---
 
@@ -205,22 +220,24 @@ docker compose logs -f envforge
 # Ctrl+C 退出 logs，容器继续跑
 ```
 
-启动成功的标志（在日志里看到）：
+启动成功的标志（日志里看到）：
+
 ```
-[envforge] EnvForge API listening on http://0.0.0.0:5173
-[envforge] Database: /app/data/runtime-db.json
-[envforge] Catalog: 72 items loaded
+[envforge] API listening on http://0.0.0.0:5173
+[envforge] Serving Web UI from apps/web/dist
+[envforge] catalog: 115 items loaded
 ```
 
-打开浏览器访问 `http://server-ip:5173/`，应该看到 EnvForge 登录页。
+打开浏览器访问 `http://server-ip:5173/`（如果改成 `127.0.0.1:5173:5173`，需要先配反代——见第六节）。
 
 第一次访问 → 点 "Register" → 用 4.3 里 `ENVFORGE_ADMIN_EMAILS` 填的邮箱注册，登录后会自动有 admin 角色。
 
 ### 5.2 模式 B：Demo 沙盒（含一台目标 VM）
 
 适合"先试试再决定"的玩家。会同时启动：
+
 - `envforge-demo` — 主服务，端口 5173
-- `envforge-sandbox-vm` — 一台 Ubuntu 22.04 容器，开 sshd 在端口 2222，预置 `demo / demo` 账号
+- `envforge-sandbox-vm` — 一台 Ubuntu 22.04 容器，开 sshd 在端口 2222（宿主机外）/ 22（容器网络内），预置 `demo / demo` 账号
 
 ```bash
 # 必须导出 master key（demo compose 文件强制要求）
@@ -235,6 +252,7 @@ docker compose -f docker-compose.demo.yml logs -f sandbox-vm
 ```
 
 打开 `http://server-ip:5173/`，注册后到 VM Manager 添加连接：
+
 - Host: `sandbox-vm`（Docker 内部 DNS）
 - Port: `22`（容器内 sshd 端口；从宿主机外部连用 2222，但 EnvForge 在 docker 网络内）
 - User: `demo`
@@ -243,6 +261,7 @@ docker compose -f docker-compose.demo.yml logs -f sandbox-vm
 测试连接 → 跑任意 Playbook 都不会污染你的真实机器，玩坏了 `down -v` 重建即可。
 
 > 不想要 demo 后切回模式 A：
+>
 > ```bash
 > docker compose -f docker-compose.demo.yml down -v   # -v 删 volumes（demo 数据）
 > docker compose up -d                                # 启正式服务
@@ -252,7 +271,7 @@ docker compose -f docker-compose.demo.yml logs -f sandbox-vm
 
 ```bash
 # 服务自检
-curl http://localhost:5173/api/health
+curl http://127.0.0.1:5173/api/health
 # 应返回 {"status":"ok","uptime":...,"version":"0.1.0"}
 
 # 容器状态
@@ -262,13 +281,18 @@ docker compose ps
 # 容器健康检查（Dockerfile 里定义的 HEALTHCHECK）
 docker inspect envforge --format '{{.State.Health.Status}}'
 # 第一次启动 15 秒后应该是 'healthy'
+
+# 看 catalog 项数（应是 115）
+curl -s http://127.0.0.1:5173/api/catalog | python3 -c 'import json, sys; d = json.load(sys.stdin); print(f"items: {len(d[\"items\"])}")'
 ```
 
 ---
 
 ## 六、生产环境加固
 
-模式 A 跑起来后，公网部署还需要加上 HTTPS + 反代。**不要把 5173 端口直接挂公网**——HTTP 明文 + 弱 brute-force 防护。
+模式 A 跑起来后，公网部署还需要加上 HTTPS + 反代。**绝不要把 5173 端口直接挂公网**——HTTP 明文 + 弱 brute-force 防护。
+
+> 💡 **想偷懒？** 如果你不想手写 nginx + certbot 配置，可以用 EnvForge 自己来配——见 [DEPLOY_SELF.md](./DEPLOY_SELF.md)，6 次 UI 点击替代本节 100 行手工配置。
 
 ### 6.1 nginx 反向代理 + Let's Encrypt（推荐）
 
@@ -337,11 +361,10 @@ sudo certbot --nginx -d envforge.example.com
 sudo systemctl status certbot.timer
 ```
 
-最后**关闭直接暴露的 5173**——只让 nginx 访问：
-
-编辑 `/opt/envforge/docker-compose.yml`，把 ports 段改成绑 127.0.0.1：
+如果你之前改了 docker-compose.yml 的 ports 暴露成 `0.0.0.0:5173`（即没加 `127.0.0.1:` 前缀），**现在需要改回**：
 
 ```yaml
+# docker-compose.yml
 ports:
   - "127.0.0.1:5173:5173"     # 仅本机可访问，外网必须走 nginx
 ```
@@ -350,7 +373,8 @@ ports:
 docker compose up -d            # 重建容器应用新端口绑定
 ```
 
-同时关防火墙的 5173 端口：
+防火墙：
+
 ```bash
 # Ubuntu
 sudo ufw allow 80,443/tcp
@@ -409,9 +433,10 @@ EnvForge 全部状态都在 docker volume `envforge_data` 里：
 docker volume inspect envforge_data
 
 # 备份脚本
+mkdir -p /opt/envforge/backups
 docker run --rm \
   -v envforge_data:/data:ro \
-  -v $(pwd)/backups:/backup \
+  -v /opt/envforge/backups:/backup \
   alpine \
   tar czf /backup/envforge-$(date +%F-%H%M%S).tar.gz -C /data .
 
@@ -420,9 +445,16 @@ sudo cp /opt/envforge/.env /opt/envforge/backups/.env.$(date +%F)
 ```
 
 建议：
+
 - 至少**每天一次**备份 `envforge_data`
-- 把 `.env`（含 master key）**离线**保存（U盘 / 密码管理器）
+- 把 `.env`（含 master key）**离线**保存（U 盘 / 密码管理器）
 - 备份文件**加密**后再上传到云存储（rclone crypt / borg / age）
+
+cron 自动备份示例（每天凌晨 3 点）：
+
+```bash
+echo '0 3 * * * cd /opt/envforge && docker run --rm -v envforge_data:/d:ro -v /opt/envforge/backups:/b alpine tar czf /b/envforge-$(date +\%F).tar.gz -C /d . && find /opt/envforge/backups -name "envforge-*.tar.gz" -mtime +30 -delete' | sudo crontab -
+```
 
 ### 7.2 恢复到新机器
 
@@ -437,7 +469,7 @@ docker volume create envforge_data
 # 3. 把备份解到 volume 里
 docker run --rm \
   -v envforge_data:/data \
-  -v $(pwd)/backups:/backup:ro \
+  -v /path/to/backup-dir:/backup:ro \
   alpine \
   tar xzf /backup/envforge-2024-01-15-120000.tar.gz -C /data
 
@@ -471,12 +503,15 @@ docker compose logs -f envforge
 `docker compose up -d` 是幂等的——已存在的 volume 不会被动，只重建容器进程。任务历史 / 用户 / 凭据都保留。
 
 升级失败回滚：
+
 ```bash
 git checkout v0.1.0
 docker compose build
 docker compose up -d
 # 把 7.1 备份的 envforge_data tar 解压恢复
 ```
+
+> 💡 **catalog 改动后**：仓库新增 / 修改了 catalog 项（`apps/api/src/catalog.ts` 或 `configs/catalog/` 里的文件），**必须重 build 镜像**（`docker compose build`）—— 直接 `up -d` 不会重 build，前端看不到新增项。
 
 ---
 
@@ -516,27 +551,52 @@ docker compose logs envforge
 ```
 
 最常见原因：
+
 - **`ENVFORGE_MASTER_KEY required`** — `.env` 没设或没被读到。检查：
+
   ```bash
-  cat /opt/envforge/.env | grep MASTER_KEY        # 应该有这行
+  cat /opt/envforge/.env | grep MASTER_KEY        # 应该有这行且非空
   docker compose config | grep MASTER_KEY          # docker compose 应该能解析到
   ```
+
+  > 注意：`docker-compose.yml` 用 `${ENVFORGE_MASTER_KEY:?...}` 强制要求此变量，没设时 compose 直接拒启。
+
 - **`Port 5173 already in use`** — 宿主机的 5173 被占。改 compose ports（见 4.4）。
 - **`EACCES: permission denied, open '/app/data/...'`** — volume 权限问题。重建：
+
   ```bash
   docker compose down
   docker volume rm envforge_data
   docker compose up -d                   # 重新创建 volume，权限会自动修
   ```
 
+### 前端配置市场显示的 catalog 数量与代码不一致
+
+新增 catalog 项后必须**重 build 镜像**，不是只 `up -d`：
+
+```bash
+docker compose build
+docker compose up -d
+docker compose restart envforge   # 强制重启确认拿到新 dist
+```
+
+校验：
+
+```bash
+curl -s http://127.0.0.1:5173/api/catalog | grep -o '"id":"[^"]*"' | wc -l
+# 应等于当前 catalog.ts 里的项数
+```
+
 ### 连不上目标 VM（"connection refused / timeout"）
 
 - 目标 VM 的 sshd 起没？`ssh user@target-vm`（在 EnvForge 容器外测试）
 - 防火墙开 22 没？
 - 用密钥的话，密钥在 EnvForge 容器里读得到没？默认 compose 把宿主机 `~/.ssh` 只读挂进去（`/home/envforge/.ssh:ro`），适合 root 跑 docker 的场景。如果用普通用户跑 docker：
+
   ```yaml
-  volumes:
-    - /home/your-user/.ssh:/home/envforge/.ssh:ro
+  # 在 .env 设
+  SSH_KEY_DIR=/home/your-user/.ssh
+  # docker-compose.yml 的 ${SSH_KEY_DIR:-~/.ssh} 会读取此值
   ```
 
 ### Web UI 打开是白屏
@@ -548,6 +608,7 @@ docker compose logs envforge
 ### 任务卡住 / 日志断流
 
 EnvForge 用 SSE 推任务进度。如果挂在反代后面：
+
 - nginx 必须 `proxy_buffering off` 和 `proxy_cache off`（见 6.1）
 - Cloudflare 等 CDN 默认会缓冲 SSE，前面这层要设 "Proxy → DNS only" 或专门的 EventSource 兼容配置
 
@@ -557,18 +618,19 @@ EnvForge 用 SSE 推任务进度。如果挂在反代后面：
 
 ### 镜像 build 慢 / npm install 卡住
 
-国内服务器到 `registry.npmjs.org` 慢。改用国内镜像：
+国内服务器到 `registry.npmjs.org` 慢。本仓库 `Dockerfile` 已支持 `NPM_REGISTRY` build arg：
 
-`Dockerfile` 在 `RUN npm ci` 之前加：
-```dockerfile
-RUN npm config set registry https://registry.npmmirror.com
-```
-
-或者构建时传参：
 ```bash
 docker compose build --build-arg NPM_REGISTRY=https://registry.npmmirror.com
+docker compose up -d
 ```
-（需要 Dockerfile 里支持 ARG，本仓库当前 Dockerfile 没显式定义，可以自己加一行 `ARG NPM_REGISTRY=https://registry.npmjs.org` 然后 `RUN npm config set registry $NPM_REGISTRY`）
+
+或在镜像构建时**临时**用代理：
+
+```bash
+docker compose build --build-arg HTTP_PROXY=http://your-proxy:port \
+                     --build-arg HTTPS_PROXY=http://your-proxy:port
+```
 
 ### 怎么进容器排查
 
@@ -580,18 +642,26 @@ docker compose exec envforge sh
 ls -la /app/data/
 cat /app/data/runtime-db.json | head
 
+# 看 catalog 已编译的版本
+ls /app/apps/api/dist/catalog.js
+grep -c 'kind: "software"' /app/apps/api/dist/catalog.js
+
 # 退出
 exit
 ```
+
+### `tini` 没用上 / Ctrl-C 不优雅退出
+
+`Dockerfile` 已用 `tini` 作 PID 1。如果你自己 fork 改了 ENTRYPOINT，确保保留 `["/sbin/tini", "--"]`，否则 SIGTERM 不会传给 node 进程。
 
 ---
 
 ## 十一、参考链接
 
 - [README.md](../README.md) — 项目总览
-- [docs/DEPLOY_SELF.md](./DEPLOY_SELF.md) — 用 EnvForge 自管：用 5 次 UI 点击替代本文第六节 80 行手工配置
+- [docs/DEPLOY_SELF.md](./DEPLOY_SELF.md) — 用 EnvForge 自管：用 6 次 UI 点击替代本文第六节 100 行手工配置
 - [docs/PRODUCT.md](./PRODUCT.md) — 产品定位 / 信息架构 / 隐私模型
-- [docs/ARCHITECTURE.md](./ARCHITECTURE.md) — 工程架构 / 引擎设计
-- [docs/STATUS.md](./STATUS.md) — 当前实现状态
+- [docs/ARCHITECTURE.md](./ARCHITECTURE.md) — 工程架构 / 引擎设计 / 测试
+- [docs/CATALOG.md](./CATALOG.md) — 完整 115 项 catalog 清单
 - [Docker 官方文档 — Compose](https://docs.docker.com/compose/)
 - [Let's Encrypt — Certbot](https://certbot.eff.org/)

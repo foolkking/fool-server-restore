@@ -1,0 +1,30 @@
+{
+  "caddy_email": {
+    "type": "string",
+    "label": "Let's Encrypt 邮箱",
+    "labelEn": "Let's Encrypt email",
+    "default": "admin@example.com",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Caddy 自动签 LE 证书时注册的邮箱。证书快过期会通知此邮箱。**务必真实**。",
+    "helpEn": "Email registered with Let's Encrypt for cert notifications. **Use real address**."
+  },
+  "caddy_default_site": {
+    "type": "string",
+    "label": "主站域名（可选）",
+    "labelEn": "Default site domain",
+    "default": "",
+    "placeholder": "example.com",
+    "help": "Caddy 自动签发此域名的 HTTPS 证书。留空 = 仅起 HTTP :80 占位站点。要 HTTPS 必须填真实 DNS 已指向本机的域名。",
+    "helpEn": "Caddy auto-issues HTTPS cert for this domain. Empty = HTTP-only :80 placeholder. Domain must DNS-point to this server for HTTPS."
+  },
+  "caddy_default_backend": {
+    "type": "string",
+    "label": "反代目标（可选）",
+    "labelEn": "Reverse-proxy backend",
+    "default": "",
+    "placeholder": "127.0.0.1:3000",
+    "help": "Caddy 反代到此地址（如 Node.js / Python 应用）。空 = 静态文件服务器（root /var/www/html）。",
+    "helpEn": "Reverse-proxy target (Node.js / Python app). Empty = static file server.",
+    "show_when": "caddy_default_site != ''"
+  }
+}

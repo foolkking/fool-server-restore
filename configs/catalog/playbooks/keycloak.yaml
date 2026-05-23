@@ -1,0 +1,192 @@
+# Playbook: Keycloak SSO
+#
+# 企业级 SSO 事实标准（Red Hat 主导）—— OIDC + SAML + LDAP federation。
+# 部署：Docker（Keycloak 25+ Quarkus 版，比 21 之前的 WildFly 版轻 3 倍）。
+name: Install Keycloak SSO server
+hosts: all
+
+vars:
+  kc_domain: "auth.example.com"
+  kc_admin_user: "admin"
+  kc_admin_password: ""                  # 留空 = 自动生成 24 位
+  kc_db_password: ""                     # 留空 = 自动生成 24 位
+  kc_port: 8082                          # 本机绑定端口（仅 127.0.0.1）
+  kc_data_dir: /opt/keycloak
+
+tasks:
+  - name: 验证 Docker 可用
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed. Run docker-host-profile first." >&2
+          exit 1
+        fi
+
+  - name: 端口预检（{{ kc_port }}）
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ kc_port }} "; then
+          echo "WARN: Port {{ kc_port }} 占用："
+          ss -tlnp | grep ":{{ kc_port }} "
+        fi
+    failed_when: false
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ kc_data_dir }}/{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - postgres-data
+
+  - name: 生成 admin 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ kc_admin_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ kc_admin_password }}"
+        fi
+    register: kc_admin_pass_value
+    no_log: true
+
+  - name: 生成 PG 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ kc_db_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ kc_db_password }}"
+        fi
+    register: kc_db_pass_value
+    no_log: true
+
+  - name: 备份旧 docker-compose.yml
+    module: shell
+    args:
+      cmd: |
+        if [ -f {{ kc_data_dir }}/docker-compose.yml ]; then
+          cp {{ kc_data_dir }}/docker-compose.yml {{ kc_data_dir }}/docker-compose.yml.envforge.bak.$(date +%s)
+        fi
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ kc_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          postgres:
+            image: postgres:16-alpine
+            container_name: keycloak-db
+            restart: unless-stopped
+            environment:
+              POSTGRES_DB: keycloak
+              POSTGRES_USER: keycloak
+              POSTGRES_PASSWORD: "{{ kc_db_pass_value.stdout }}"
+            volumes:
+              - {{ kc_data_dir }}/postgres-data:/var/lib/postgresql/data
+            healthcheck:
+              test: ["CMD", "pg_isready", "-U", "keycloak"]
+              interval: 10s
+              timeout: 5s
+              retries: 5
+
+          keycloak:
+            image: quay.io/keycloak/keycloak:25.0
+            container_name: keycloak
+            restart: unless-stopped
+            command: start --optimized --hostname-strict=false --proxy-headers=xforwarded --http-enabled=true
+            environment:
+              KEYCLOAK_ADMIN: "{{ kc_admin_user }}"
+              KEYCLOAK_ADMIN_PASSWORD: "{{ kc_admin_pass_value.stdout }}"
+              KC_DB: postgres
+              KC_DB_URL: "jdbc:postgresql://postgres:5432/keycloak"
+              KC_DB_USERNAME: keycloak
+              KC_DB_PASSWORD: "{{ kc_db_pass_value.stdout }}"
+              KC_HOSTNAME: "{{ kc_domain }}"
+              KC_HTTP_ENABLED: "true"
+              KC_HEALTH_ENABLED: "true"
+              KC_METRICS_ENABLED: "true"
+              KC_PROXY_HEADERS: xforwarded
+              KC_LOG_LEVEL: INFO
+            depends_on:
+              postgres:
+                condition: service_healthy
+            ports:
+              - "127.0.0.1:{{ kc_port }}:8080"
+            healthcheck:
+              test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 200"]
+              interval: 30s
+              timeout: 10s
+              retries: 5
+              start_period: 60s
+
+  - name: 启动 Keycloak
+    module: shell
+    args:
+      cmd: |
+        cd {{ kc_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待 Keycloak ready（首次启动较慢）
+    module: shell
+    args:
+      cmd: |
+        echo "等待 Keycloak 启动（首次约 60-120s）..."
+        for i in $(seq 1 60); do
+          if curl -fsS http://127.0.0.1:{{ kc_port }}/health/ready >/dev/null 2>&1; then
+            echo "OK: Keycloak ready"
+            exit 0
+          fi
+          sleep 3
+        done
+        echo "ERROR: Keycloak not ready in 180s"
+        docker logs --tail 100 keycloak
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Keycloak 已就绪"
+        echo "===================================================================="
+        echo "  本机 URL:      http://127.0.0.1:{{ kc_port }}"
+        echo "  Admin 控制台:  http://127.0.0.1:{{ kc_port }}/admin/"
+        echo "  Admin 用户:    {{ kc_admin_user }}"
+        echo "  Admin 密码:    {{ kc_admin_pass_value.stdout }}"
+        echo "  PG 密码:       {{ kc_db_pass_value.stdout }}"
+        echo ""
+        echo "下一步:"
+        echo "  1. 反代到 {{ kc_domain }}（nginx + certbot-ssl）—— 模板见 keycloak.md"
+        echo "  2. **必须** HTTPS 才能正式用（Keycloak 25 强制）"
+        echo "  3. Admin 控制台 → Create Realm（创建一个非 master 的 realm 给应用用）"
+        echo "  4. Realm → Clients → Create client（每个接入应用一个 client）"
+        echo "===================================================================="
+
+verify:
+  - name: keycloak container running
+    cmd: "docker ps --filter name=keycloak --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: |
+      Keycloak 容器没起来：
+        docker logs keycloak | tail -50
+        最常见：PG 启动失败 → docker logs keycloak-db
+        内存不足？Keycloak 至少 1 GB RAM
+
+  - name: postgres container running
+    cmd: "docker ps --filter name=keycloak-db --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "PG 容器没起。看 docker logs keycloak-db。"
+
+  - name: keycloak health endpoint
+    cmd: "curl -fsS http://127.0.0.1:{{ kc_port }}/health/ready -o /dev/null"
+    hint: |
+      /health/ready 不响应。Keycloak 首次启动慢（60-120s）：
+        sleep 60 后重试
+        持续不通看 docker logs --tail 100 keycloak

@@ -1,0 +1,53 @@
+{
+  "influx_admin_user": {
+    "type": "string",
+    "label": "管理员用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "help": "InfluxDB 管理员用户名。",
+    "helpEn": "InfluxDB admin username."
+  },
+  "influx_admin_password": {
+    "type": "password",
+    "label": "管理员密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "管理员登录密码。留空 = 自动生成 24 位。InfluxDB 首次 setup 时建账号。",
+    "helpEn": "Admin password. Empty = auto 24 chars. Set during first-time setup."
+  },
+  "influx_org": {
+    "type": "string",
+    "label": "组织名（org）",
+    "labelEn": "Organization name",
+    "default": "envforge",
+    "help": "InfluxDB 用 organization 隔离用户和 bucket。生产可用公司名 / 团队名。",
+    "helpEn": "Organization name. Isolates users and buckets."
+  },
+  "influx_bucket": {
+    "type": "string",
+    "label": "默认 bucket 名",
+    "labelEn": "Default bucket name",
+    "default": "default",
+    "help": "Bucket 是 InfluxDB 的数据存储单元（类似数据库）。生产建议每业务一个 bucket。",
+    "helpEn": "Bucket = InfluxDB storage unit (like database). One bucket per business in production."
+  },
+  "influx_retention": {
+    "type": "string",
+    "label": "数据保留期",
+    "labelEn": "Retention period",
+    "default": "720h",
+    "validate": "^\\d+(h|d|w|y)$",
+    "help": "格式如 720h（30 天）/ 30d / 1y / 0（永久）。超期数据自动删。",
+    "helpEn": "Format: 720h / 30d / 1y / 0 (forever). Data older than this auto-deleted."
+  },
+  "influx_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 8086,
+    "help": "InfluxDB HTTP API + Web UI 端口。",
+    "helpEn": "InfluxDB HTTP API + Web UI port."
+  }
+}

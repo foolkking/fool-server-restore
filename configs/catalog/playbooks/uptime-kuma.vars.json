@@ -1,0 +1,18 @@
+{
+  "uk_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 3001,
+    "help": "Uptime Kuma HTTP 端口（仅 127.0.0.1）。生产用反代 + HTTPS。",
+    "helpEn": "Uptime Kuma HTTP port (127.0.0.1 only). Front with reverse proxy + HTTPS."
+  },
+  "uk_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/uptime-kuma",
+    "help": "存监控配置 + SQLite + 历史数据。**每周备份**——丢了 = 所有监控配置 / 历史 / 通知规则重设。",
+    "helpEn": "Stores monitor config + SQLite + history. **Back up weekly**—loss = all monitors / history / notifications reset."
+  }
+}

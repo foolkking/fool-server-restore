@@ -1,0 +1,230 @@
+# Playbook: Homelab 控制中心
+#
+# Homepage（应用入口）+ Uptime Kuma（监控）+ Dozzle（实时日志）= 一键部署
+name: Install homelab dashboard stack
+hosts: all
+
+vars:
+  hd_data_dir: /opt/homelab-dashboard
+  hd_uk_port: 3001
+  hd_hp_port: 3010
+  hd_dz_port: 9999
+  hd_admin_password: ""
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        for p in {{ hd_uk_port }} {{ hd_hp_port }} {{ hd_dz_port }}; do
+          if ss -tlnp 2>/dev/null | grep -q ":$p "; then
+            echo "WARN: 端口 $p 占用："
+            ss -tlnp | grep ":$p "
+          fi
+        done
+    failed_when: false
+
+  - name: 创建目录
+    module: file
+    args:
+      path: "{{ hd_data_dir }}/{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - homepage/config
+      - uptime-kuma/data
+      - dozzle
+
+  - name: 生成 Dozzle admin 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ hd_admin_password }}" ]; then
+          openssl rand -base64 12 | tr -d '\n='
+        else
+          echo "{{ hd_admin_password }}"
+        fi
+    register: hd_pass
+    no_log: true
+
+  - name: 计算 Dozzle bcrypt hash
+    module: shell
+    args:
+      cmd: |
+        docker run --rm httpd:2-alpine htpasswd -nbBC 10 "" "{{ hd_pass.stdout }}" 2>/dev/null \
+          | tail -n1 | sed 's/^://'
+    register: hd_pass_hash
+    no_log: true
+
+  - name: 写入 Dozzle users.yml
+    module: copy
+    args:
+      dest: "{{ hd_data_dir }}/dozzle/users.yml"
+      mode: "0640"
+      content: |
+        users:
+          admin:
+            email: admin@localhost
+            name: Administrator
+            password: '{{ hd_pass_hash.stdout }}'
+
+  - name: 写入 Homepage 默认 yaml
+    module: shell
+    args:
+      cmd: |
+        if [ ! -f {{ hd_data_dir }}/homepage/config/services.yaml ]; then
+          cat > {{ hd_data_dir }}/homepage/config/settings.yaml <<'EOF'
+        ---
+        title: Homelab Control Center
+        theme: dark
+        color: slate
+        layout:
+          - 监控:
+              style: row
+              columns: 2
+        EOF
+
+          cat > {{ hd_data_dir }}/homepage/config/services.yaml <<'EOF'
+        ---
+        - 监控:
+            - Uptime Kuma:
+                href: http://localhost:3001
+                description: 服务存活监控 + 状态页
+                icon: uptime-kuma.svg
+            - Dozzle:
+                href: http://localhost:9999
+                description: 实时容器日志查看
+                icon: si-docker
+        EOF
+
+          cat > {{ hd_data_dir }}/homepage/config/widgets.yaml <<'EOF'
+        ---
+        - resources:
+            cpu: true
+            memory: true
+            disk: /
+        - search:
+            provider: duckduckgo
+            target: _blank
+        - datetime:
+            text_size: xl
+            format:
+              dateStyle: long
+              timeStyle: short
+        EOF
+
+          cat > {{ hd_data_dir }}/homepage/config/bookmarks.yaml <<'EOF'
+        ---
+        []
+        EOF
+
+          cat > {{ hd_data_dir }}/homepage/config/docker.yaml <<'EOF'
+        ---
+        my-docker:
+          socket: /var/run/docker.sock
+        EOF
+        fi
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ hd_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          homepage:
+            image: ghcr.io/gethomepage/homepage:latest
+            container_name: dashboard-homepage
+            restart: unless-stopped
+            volumes:
+              - {{ hd_data_dir }}/homepage/config:/app/config
+              - /var/run/docker.sock:/var/run/docker.sock:ro
+            ports:
+              - "127.0.0.1:{{ hd_hp_port }}:3000"
+            environment:
+              HOMEPAGE_ALLOWED_HOSTS: "*"
+
+          uptime-kuma:
+            image: louislam/uptime-kuma:1
+            container_name: dashboard-uptime
+            restart: unless-stopped
+            volumes:
+              - {{ hd_data_dir }}/uptime-kuma/data:/app/data
+              - /var/run/docker.sock:/var/run/docker.sock:ro
+            ports:
+              - "127.0.0.1:{{ hd_uk_port }}:3001"
+
+          dozzle:
+            image: amir20/dozzle:latest
+            container_name: dashboard-dozzle
+            restart: unless-stopped
+            volumes:
+              - /var/run/docker.sock:/var/run/docker.sock:ro
+              - {{ hd_data_dir }}/dozzle/users.yml:/data/users.yml:ro
+            ports:
+              - "127.0.0.1:{{ hd_dz_port }}:8080"
+            environment:
+              DOZZLE_AUTH_PROVIDER: simple
+
+  - name: 启动栈
+    module: shell
+    args:
+      cmd: |
+        cd {{ hd_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待 Homepage ready
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:{{ hd_hp_port }}/ -o /dev/null 2>&1; then
+            echo "OK: Homepage ready"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: Homepage not ready"
+        docker logs --tail 20 dashboard-homepage
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Homelab 控制中心已就绪"
+        echo "===================================================================="
+        echo "  Homepage（入口）:     http://127.0.0.1:{{ hd_hp_port }}"
+        echo "  Uptime Kuma（监控）:  http://127.0.0.1:{{ hd_uk_port }}"
+        echo "  Dozzle（日志）:       http://127.0.0.1:{{ hd_dz_port }}"
+        echo "  Dozzle 凭据:           admin / {{ hd_pass.stdout }}"
+        echo ""
+        echo "下一步:"
+        echo "  1. 反代 3 个域名（home / status / logs）到对应端口"
+        echo "  2. Uptime Kuma 首次访问注册 admin"
+        echo "  3. 编辑 {{ hd_data_dir }}/homepage/config/services.yaml 加你的服务"
+        echo "  4. 给 Dozzle / Homepage 加 SSO 保护（强烈建议）—— 见 sso-stack"
+        echo "===================================================================="
+
+verify:
+  - name: homepage running
+    cmd: "docker ps --filter name=dashboard-homepage --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Homepage 没起。docker logs dashboard-homepage"
+
+  - name: uptime-kuma running
+    cmd: "docker ps --filter name=dashboard-uptime --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Uptime Kuma 没起。docker logs dashboard-uptime"
+
+  - name: dozzle running
+    cmd: "docker ps --filter name=dashboard-dozzle --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Dozzle 没起。docker logs dashboard-dozzle"

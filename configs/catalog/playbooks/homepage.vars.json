@@ -1,0 +1,26 @@
+{
+  "hp_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 3010,
+    "help": "Homepage HTTP 端口（仅 127.0.0.1）。生产用反代。",
+    "helpEn": "Homepage HTTP port (127.0.0.1 only). Front with reverse proxy."
+  },
+  "hp_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/homepage",
+    "help": "存所有 yaml 配置（services / bookmarks / widgets / settings / docker）。**绝大多数定制都在这里手动改 yaml 文件**。",
+    "helpEn": "Stores all yaml configs (services / bookmarks / widgets / settings / docker). **Most customization done by hand-editing these yaml files**."
+  },
+  "hp_page_title": {
+    "type": "string",
+    "label": "页面标题",
+    "labelEn": "Page title",
+    "default": "Homelab",
+    "help": "浏览器标签 + 顶部标题显示的名字。例：\"Acme Homelab\" / \"My Services\"。仅首次安装时写入 settings.yaml——之后改要直接编辑文件。",
+    "helpEn": "Browser tab + top heading text. E.g., \"Acme Homelab\" / \"My Services\". Written to settings.yaml only on first install."
+  }
+}

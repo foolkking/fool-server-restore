@@ -19,7 +19,7 @@
 | 阶段 | 纯手动（DEPLOY.md） | 本文（自管） | 差额 |
 |---|---|---|---|
 | Phase 1：把 EnvForge 跑起来 | 10-15 分钟 + 大约 30 行命令 | 同样 10-15 分钟 | **0**（鸡生蛋，没法省） |
-| Phase 2：HTTPS / 反代 / 防火墙 / SSH 加固 / swap / 自动更新 / fail2ban | 60-90 分钟 + 大约 80 行配置 + 容易写错 | 5-10 分钟 + 点几下 UI | **省 80%** |
+| Phase 2：HTTPS / 反代 / 防火墙 / SSH 加固 / swap / 自动更新 / fail2ban / 监控 / 状态页 | 90-120 分钟 + 大约 100 行配置 + 容易写错 | 8-12 分钟 + 点几下 UI | **省 85%** |
 | 后续 N 台机器 | 每台都重复 Phase 2 | 每台 1-2 分钟（同一 EnvForge 跑 Playbook） | **省 95%** |
 
 直白结论：**头 10 分钟逃不掉**（必须有个跑着的 EnvForge 才能让它"自管"）；**之后所有事都能在 UI 里点完**。
@@ -45,11 +45,12 @@ git clone https://github.com/foolkking/envforge.git .
 # 3. 配置 master key + admin 邮箱
 cp .env.example .env
 KEY=$(openssl rand -base64 32)
-echo "ENVFORGE_MASTER_KEY=$KEY" >> .env
+sed -i "s|^ENVFORGE_MASTER_KEY=.*|ENVFORGE_MASTER_KEY=$KEY|" .env
 echo "ENVFORGE_ADMIN_EMAILS=your-email@example.com" >> .env
 echo "🔑 Master key (please save offline): $KEY"
 
-# 4. 启动
+# 4. 启动（默认绑 127.0.0.1:5173；本阶段先临时改成 0.0.0.0 让自己能从浏览器访问）
+sed -i 's|127.0.0.1:5173:5173|5173:5173|' docker-compose.yml
 docker compose up -d
 
 # 5. 检查
@@ -116,34 +117,53 @@ ssh envforge-mgr@127.0.0.1 -o StrictHostKeyChecking=no echo OK
 
 ### 2.2 用配置市场跑加固 Playbook（按顺序）
 
-回到主页 → "Market" → 选 "Self host" 作为目标 VM → 依次跑下面 5 个 Playbook。
+回到主页 → "Market" → 选 "Self host" 作为目标 VM → 依次跑下面 Playbook。
 
 每个都是 catalog 里现成的（id 列在表头），**不需要自己写 yaml**。安装时按表单填表 → 预览 → 确认 → 看实时日志即可。
 
+#### 必跑（生产基线）
+
 | 顺序 | Catalog 项 (id) | 替代 DEPLOY.md 里哪段 | 表单怎么填 | 预计时间 |
 |---|---|---|---|---|
-| 1 | **Swap 交换空间** (`swap-config`) | DEPLOY.md 七.1（手动 fallocate） | size: 2G, swappiness: 10 | 30 秒 |
-| 2 | **SSH 安全加固** (`ssh-hardening`) | DEPLOY.md 六（散落各处的 SSH 建议） | 端口可改成非标如 22222；保持 PermitRootLogin no | 20 秒 |
-| 3 | **防火墙基线** (`firewall-baseline`) | DEPLOY.md 六.1（关 5173 + 开 80/443） | 放行 SSH 新端口 + 80 + 443，**入站默认 deny** | 30 秒 |
-| 4 | **Nginx Web 服务** (`nginx-web-service`) | DEPLOY.md 六.1（手写 nginx 配置） | domain: 你的域名；listen_port: 443；反向代理: ✅；upstream: `http://127.0.0.1:5173` | 1 分钟 |
-| 5 | **Certbot SSL** (`certbot-ssl`) | DEPLOY.md 六.1（手跑 certbot） | domain: 同上；email: 你的邮箱；challenge: nginx | 1-2 分钟（含 Let's Encrypt API 往返） |
-| 6（可选） | **Fail2Ban 入侵防护** (`fail2ban-protection`) | DEPLOY.md 六（没专门讲，但生产必装） | bantime: 1h；maxretry: 5；ssh_port: 同上面新端口；ignoreip: **务必加你自己 IP**！ | 30 秒 |
-| 7（可选） | **Netdata 实时监控** (`netdata-monitoring`) | DEPLOY.md 没讲；监控自己 | bind: 127.0.0.1；history: 1h | 1 分钟 |
+| 1 | **Swap 交换空间** (`swap-config`) | 没专门讲 | size: 2G, swappiness: 10 | 30 秒 |
+| 2 | **SSH 安全加固** (`ssh-hardening`) | 散落各处的 SSH 建议 | 端口可改成非标如 22222；保持 PermitRootLogin no | 20 秒 |
+| 3 | **防火墙基线** (`firewall-baseline`) | 第六节末尾防火墙配置 | 放行 SSH 新端口 + 80 + 443，**入站默认 deny** | 30 秒 |
+| 4 | **Nginx Web 服务** (`nginx-web-service`) | 第六节 nginx 配置 | domain: 你的域名；listen_port: 443；反向代理: ✅；upstream: `http://127.0.0.1:5173` | 1 分钟 |
+| 5 | **Certbot SSL** (`certbot-ssl`) | 第六节 certbot | domain: 同上；email: 你的邮箱；challenge: nginx | 1-2 分钟（含 LE API 往返） |
+| 6 | **Fail2Ban 入侵防护** (`fail2ban-protection`) | 没专门讲，但生产必装 | bantime: 1h；maxretry: 5；ssh_port: 同上面新端口；ignoreip: **务必加你自己 IP**！ | 30 秒 |
 
-完成后访问 `https://envforge.example.com/`（你的域名）验证——绿色锁、自动 HTTPS 跳转、5173 端口外部不可达。
+跑完上面 6 项 → 访问 `https://envforge.example.com/` 已经是 HTTPS、防爆破、有反代、防火墙严格的生产姿态了。**5-7 分钟**。
+
+#### 推荐（运维 / 监控）
+
+| 顺序 | Catalog 项 (id) | 价值 | 表单怎么填 | 预计时间 |
+|---|---|---|---|---|
+| 7 | **Uptime Kuma 监控** (`uptime-kuma`) | 监控自己 + 给受管 VM 一个状态页 | 默认即可 | 1 分钟 |
+| 8 | **Homepage 应用启动面板** (`homepage`) | 给所有自托管服务一个入口页 | 默认即可 | 1 分钟 |
+| 9 | **Dozzle Docker 日志查看器** (`dozzle`) | 不用 SSH 进容器看日志 | 自动生成 admin 密码 | 30 秒 |
+
+或一键三件套：**Homelab 控制中心** combo (`homelab-dashboard`) — 上面三个一起跑。**1 分钟**。
+
+#### 可选（深度加固）
+
+| Catalog 项 (id) | 用途 |
+|---|---|
+| `netdata-monitoring` | 600+ 指标实时监控 |
+| `prometheus-monitoring` + `grafana-dashboard` + `loki-logging` | 完整可观测性栈（重） |
+| `monitoring-stack` (combo) | 上一行的一键打包 |
+| `authelia` 或 `sso-stack` (combo) | 给 EnvForge / 其他自托管应用统一登录 |
+| `tailscale` | 远程办公时不暴露公网，VPN 进来管 |
+| `adguard-home` 或 `pihole` | 给整个家 / VPN 出口加广告屏蔽 DNS |
+
+完成后访问 `https://envforge.example.com/` 验证—— 绿色锁、自动 HTTPS 跳转、5173 端口外部不可达。
 
 ### 2.3 关掉 5173 直接暴露（最后一步收尾）
 
-跑完上面 5 个之后，5173 端口已经在 firewalld/ufw 默认 deny 名单里（防火墙基线没主动放行）。但 docker-compose.yml 仍然把 5173 绑到 0.0.0.0——挺多公有云的安全组在 docker 之上还是能直接打到。
-
-修一下：
+跑完上面之后，5173 端口已经在 firewalld/ufw 默认 deny 名单里（防火墙基线没主动放行）。但如果你 Phase 1 step 4 改过 `5173:5173`（让自己能从浏览器访问），现在该改回了：
 
 ```bash
 cd /opt/envforge
-nano docker-compose.yml
-# 找到 ports 段，改成：
-#   ports:
-#     - "127.0.0.1:5173:5173"
+sed -i 's|"5173:5173"|"127.0.0.1:5173:5173"|' docker-compose.yml
 docker compose up -d           # 重建 envforge 容器，应用新端口绑定
 ```
 
@@ -155,7 +175,7 @@ docker compose up -d           # 重建 envforge 容器，应用新端口绑定
 
 ## 三、对照清单：哪些工作 EnvForge 替你做了
 
-✅ **EnvForge 自己完成的（占总工作量约 70%）：**
+✅ **EnvForge 自己完成的（占总工作量约 75%）：**
 
 - [x] 装 nginx + 自动检测发行版（Ubuntu 装 `nginx`，RHEL 装 `nginx`，包名差异内部翻译）
 - [x] 写反向代理 server 块、自动检测端口冲突、自动禁用发行版自带 default vhost
@@ -165,6 +185,9 @@ docker compose up -d           # 重建 envforge 容器，应用新端口绑定
 - [x] 加 swap 文件 + 持久化到 /etc/fstab + 设 vm.swappiness
 - [x] 改 sshd_config（禁 root 登录、改端口、限失败次数、闲置超时、AllowUsers 白名单）+ reload sshd 时不切断现有连接
 - [x] 装 fail2ban + 写 jail.local + 配 SSH jail（自动监控你刚改的非标端口）+ 加你 IP 到白名单
+- [x] 装 Uptime Kuma + 端口预检 + 数据持久化
+- [x] 装 Homepage + 默认 yaml + Docker socket 挂载
+- [x] 装 Dozzle + bcrypt admin 密码 + simple auth provider
 - [x] 装 netdata + 关 telemetry + 限制只本机访问
 
 ❌ **必须你自己做的（Phase 1 那 10 分钟，无法省）：**
@@ -184,11 +207,13 @@ docker compose up -d           # 重建 envforge 容器，应用新端口绑定
 
 一旦 Phase 2 跑完，你就有了**一个"管理多台机器"的中央控制台**——它本身也是被管理的目标之一。从此：
 
-- **新增受管 VM**：UI 添加连接 → 同样跑那 5 个加固 Playbook → 1-2 分钟
+- **新增受管 VM**：UI 添加连接 → 同样跑那 6 个加固 Playbook → 1-2 分钟
 - **统一升级**：所有受管 VM 在 Market 选 "swap-config / fail2ban / nginx ..."  时表单填同样的值，跑 N 次
 - **审计**：哪台机器跑过什么 Playbook、什么时候跑、谁跑的，全在任务历史里
 - **漂移检测**：受管 VM 配置被人手动改了？设个基线 + 定时 diff，发现差异自动 webhook
-- **集中备份**：用 catalog 的 `rsync-tools` + cron 模块写定时备份任务，把 `envforge_data` volume 备到对象存储
+- **集中备份**：用 catalog 的 `rsync-tools` + cron 模块写定时备份任务，把 `envforge_data` volume 备到对象存储 / NAS
+- **统一监控**：Uptime Kuma 一处看所有受管 VM 健康；Homepage 集中入口
+- **统一日志**：Loki + Grafana 集中收集（用 `monitoring-stack` combo）
 
 也就是说：**Phase 2 不仅省了"这一次"的功夫，还把"以后所有同类活"都拉平了**。
 
@@ -220,7 +245,9 @@ docker run --rm -v envforge_data:/d -v $(pwd)/backups:/b:ro alpine \
   sh -c 'rm -rf /d/* && tar xzf /b/pre-upgrade-*.tar.gz -C /d'
 ```
 
-整个升级过程**不影响**外面 nginx + 防火墙 + fail2ban——它们由宿主机的 systemd 管理，跟容器解耦。这也是 Phase 2 用 EnvForge 配置完成的另一个好处：**控制台和被管对象的故障域分离**。
+整个升级过程**不影响**外面 nginx + 防火墙 + fail2ban + Uptime Kuma + Homepage——它们由宿主机的 systemd 管理，跟容器解耦。这也是 Phase 2 用 EnvForge 配置完成的另一个好处：**控制台和被管对象的故障域分离**。
+
+> ⚠️ **catalog 改动后**：如果新版含 catalog 新项（`docs/CATALOG.md` 数字增加），**必须 `docker compose build` 重新编译**——前端读编译产物，不重 build 看不到新项。
 
 ---
 
@@ -239,7 +266,7 @@ docker run --rm -v envforge_data:/d -v $(pwd)/backups:/b:ro alpine \
 | 九、卸载 | 不替代（自己不能拆自己） |
 | 十、排错 | 不替代（参考性内容） |
 
-也就是 **DEPLOY.md 第六节那一大段最容易写错的 nginx + certbot + ufw 手工活，本文用 5 次 UI 点击完成**。
+也就是 **DEPLOY.md 第六节那一大段最容易写错的 nginx + certbot + ufw 手工活，本文用 6 次 UI 点击完成**——加上 7-9 顺手补完监控 / dashboard / 日志查看器。
 
 ---
 
@@ -247,5 +274,6 @@ docker run --rm -v envforge_data:/d -v $(pwd)/backups:/b:ro alpine \
 
 - [DEPLOY.md](./DEPLOY.md) — 纯手动从零部署完整流程
 - [README.md](../README.md) — 项目总览
+- [docs/CATALOG.md](./CATALOG.md) — 完整 115 项 catalog 清单（找你想跑的 Playbook）
 - [docs/PRODUCT.md](./PRODUCT.md) — 产品定位 / 角色 / 隐私模型
 - [docs/ARCHITECTURE.md](./ARCHITECTURE.md) — 引擎和模块设计

@@ -1,9 +1,12 @@
-version: "3.8"
-
-# EnvForge — Self-hosted VM configuration management platform
+# EnvForge — Self-hosted Linux server configuration management platform
+#
 # Usage:
-#   docker compose up -d
-#   Open http://localhost:5173
+#   1. cp .env.example .env
+#   2. Set ENVFORGE_MASTER_KEY (32 bytes base64; see .env.example for generation)
+#   3. docker compose up -d
+#   4. Open http://localhost:5173
+#
+# Production: front with nginx + Let's Encrypt — see docs/DEPLOY.md section 6.
 
 services:
   envforge:
@@ -15,12 +18,14 @@ services:
     container_name: envforge
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      # Bind only to localhost in production (nginx reverse-proxy in front).
+      # Change to "5173:5173" for direct access (NOT recommended for public deployments).
+      - "127.0.0.1:5173:5173"
     volumes:
-      # Persist runtime data (users, connections, tasks, playbooks)
+      # Persist runtime data (users, connections, tasks, playbooks, encrypted credentials)
       - envforge_data:/app/data
-      # Mount host SSH keys read-only so EnvForge can connect to target VMs
-      # Adjust the path if your keys are elsewhere
+      # Mount host SSH keys read-only so EnvForge can connect to target VMs.
+      # Override via SSH_KEY_DIR in .env if your keys live elsewhere.
       - ${SSH_KEY_DIR:-~/.ssh}:/home/envforge/.ssh:ro
     environment:
       NODE_ENV: production
@@ -31,9 +36,13 @@ services:
       FOOL_RUNTIME_DB: /app/data/runtime-db.json
       FOOL_SNAPSHOT_DIR: /app/data/snapshots
       SESSION_TTL_HOURS: "168"
-      # Set a strong master key for encrypting SSH passwords
-      # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-      ENVFORGE_MASTER_KEY: ${ENVFORGE_MASTER_KEY:-}
+      # **Required**: encryption key for stored SSH credentials. Do NOT change after first deploy.
+      # Read from .env file. Container fails to start if missing or empty.
+      ENVFORGE_MASTER_KEY: ${ENVFORGE_MASTER_KEY:?ENVFORGE_MASTER_KEY required - see .env.example}
+      # Optional: comma-separated emails that auto-receive admin role on register.
+      ENVFORGE_ADMIN_EMAILS: ${ENVFORGE_ADMIN_EMAILS:-}
+      # Optional: public base URL for OAuth callbacks / generated links.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://127.0.0.1:5173}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5173/api/health"]
       interval: 30s

@@ -1,0 +1,65 @@
+{
+  "oo_domain": {
+    "type": "string",
+    "label": "访问域名",
+    "labelEn": "Domain",
+    "default": "office.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "office.example.com",
+    "help": "OnlyOffice Document Server 公开域名。**必须 HTTPS**——否则 Nextcloud 会拒绝集成（mixed content）。",
+    "helpEn": "OnlyOffice public hostname. **HTTPS required**—Nextcloud rejects mixed content."
+  },
+  "oo_jwt_secret": {
+    "type": "password",
+    "label": "JWT secret",
+    "labelEn": "JWT secret",
+    "default": "",
+    "generate_length": 64,
+    "reveal_after_run": true,
+    "help": "JWT 签名密钥（用于 Nextcloud / 客户端调用 OnlyOffice API 时的认证）。**Nextcloud 集成时必须填同样的值**。留空 = 自动生成 64 位 hex。",
+    "helpEn": "JWT signing key (auth between client and OnlyOffice API). **Must match in Nextcloud integration**. Empty = auto-generate 64-char hex."
+  },
+  "oo_db_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 24,
+    "help": "OnlyOffice 内部 PG 密码。",
+    "helpEn": "Internal PG password."
+  },
+  "oo_rabbitmq_password": {
+    "type": "password",
+    "label": "RabbitMQ 密码",
+    "labelEn": "RabbitMQ password",
+    "default": "",
+    "generate_length": 24,
+    "help": "OnlyOffice 内部 RabbitMQ 密码（用于多组件协调）。",
+    "helpEn": "Internal RabbitMQ password (for component coordination)."
+  },
+  "oo_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 8083,
+    "help": "Document Server HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Document Server HTTP port (127.0.0.1 only)."
+  },
+  "oo_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/onlyoffice",
+    "help": "存 PG + RabbitMQ + 文档缓存。OnlyOffice 不存原文档（每次从 Nextcloud / 调用方 fetch）—— 这里只是临时缓存 + 编辑会话状态。",
+    "helpEn": "Stores PG + RabbitMQ + doc cache. OnlyOffice doesn't store originals (fetches per session)—just cache + edit session state."
+  },
+  "oo_max_request_body_size": {
+    "type": "string",
+    "label": "上传大小上限",
+    "labelEn": "Max upload size",
+    "default": "100M",
+    "validate": "^\\d+[KMG]$",
+    "help": "单文档最大上传 + 编辑大小（如 100M / 1G）。Nextcloud 那边也要设同样大或更大的 PHP upload_max_filesize。",
+    "helpEn": "Max upload + edit size per document (e.g., 100M, 1G). Nextcloud's PHP upload_max_filesize must match or exceed."
+  }
+}

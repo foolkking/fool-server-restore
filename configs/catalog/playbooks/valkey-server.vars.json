@@ -1,0 +1,58 @@
+{
+  "valkey_password": {
+    "type": "password",
+    "label": "Valkey 访问密码",
+    "labelEn": "Valkey password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "Valkey requirepass。留空 = 自动 24 位。Redis 客户端通过 AUTH 命令认证。",
+    "helpEn": "Valkey requirepass. Empty = auto 24 chars. Redis clients use AUTH."
+  },
+  "valkey_port": {
+    "type": "port",
+    "label": "监听端口",
+    "labelEn": "Listen port",
+    "default": 6380,
+    "help": "默认 6380（避免与 redis-server 6379 冲突）。要走 redis 客户端默认端口配 6379。",
+    "helpEn": "Default 6380 (avoids conflict with redis-server 6379)."
+  },
+  "valkey_bind_address": {
+    "type": "string",
+    "label": "监听地址",
+    "labelEn": "Bind address",
+    "default": "127.0.0.1",
+    "help": "127.0.0.1 = 仅本机。0.0.0.0 = 公开（必须配防火墙 + 强密码）。",
+    "helpEn": "127.0.0.1 = local only. 0.0.0.0 = exposed (firewall + password required)."
+  },
+  "valkey_maxmemory_mb": {
+    "type": "number",
+    "label": "最大内存（MB）",
+    "labelEn": "Max memory (MB)",
+    "default": 512,
+    "help": "Valkey 最大内存。物理内存的 50-60%。0 = 无限。",
+    "helpEn": "Max memory. 50-60% of physical RAM. 0 = unlimited."
+  },
+  "valkey_maxmemory_policy": {
+    "type": "choice",
+    "label": "内存满淘汰策略",
+    "labelEn": "Maxmemory policy",
+    "default": "allkeys-lru",
+    "options": [
+      { "value": "allkeys-lru", "label": "allkeys-lru（缓存场景，推荐）" },
+      { "value": "allkeys-lfu", "label": "allkeys-lfu（热点固定）" },
+      { "value": "volatile-lru", "label": "volatile-lru（仅 TTL 项）" },
+      { "value": "noeviction", "label": "noeviction（主存储用，满时写报错）" }
+    ],
+    "help": "缓存：allkeys-lru。主存储：noeviction。",
+    "helpEn": "Cache: allkeys-lru. Primary store: noeviction."
+  },
+  "valkey_appendonly": {
+    "type": "boolean",
+    "label": "启用 AOF 持久化",
+    "labelEn": "Enable AOF persistence",
+    "default": false,
+    "help": "false = 仅 RDB（重启丢最后几分钟）。true = 每秒 fsync AOF（更安全但慢）。",
+    "helpEn": "false = RDB only. true = AOF (more durable but slower)."
+  }
+}

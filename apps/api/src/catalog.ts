@@ -1160,6 +1160,549 @@ function getNewSoftwareCatalog(): CatalogItem[] {
         { type: "system-command", label: "设置面板端口与口令", labelEn: "set panel port + admin", detail: "x-ui setting" }
       ],
       compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "vaultwarden", kind: "software", name: "Vaultwarden 密码管理器", nameEn: "Vaultwarden password manager",
+      category: "service",
+      summary: "自托管 Bitwarden 服务端（Rust 重写版，单容器 + SQLite，~100MB RAM）。",
+      summaryEn: "Self-hosted Bitwarden server (Rust rewrite, single container + SQLite, ~100MB RAM).",
+      rating: 4.9, installs: "0", imageTone: "blue", sensitivity: "privileged",
+      assets: ["vaultwarden", "bitwarden", "passwords", "self-hosted"],
+      guidePath: "configs/catalog/software/vaultwarden.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "vaultwarden/server", labelEn: "vaultwarden/server", detail: "docker image" },
+        { type: "system-command", label: "docker compose up -d", labelEn: "docker compose up -d", detail: "compose deploy" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "caddy-server", kind: "software", name: "Caddy Web 服务器", nameEn: "Caddy web server",
+      category: "service",
+      summary: "Go 写的 web 服务器，自动 HTTPS（内置 LE）+ 极简配置。",
+      summaryEn: "Go web server with automatic HTTPS (built-in Let's Encrypt) and minimal config.",
+      rating: 4.8, installs: "0", imageTone: "emerald", sensitivity: "review",
+      assets: ["caddy", "web", "https", "lets-encrypt"],
+      guidePath: "configs/catalog/software/caddy-server.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
+      components: [
+        { type: "software", label: "caddy", labelEn: "Caddy", detail: "official repo" },
+        { type: "system-command", label: "启动 caddy", labelEn: "start caddy", detail: "systemctl enable --now caddy" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "pihole", kind: "software", name: "Pi-hole 网络广告屏蔽", nameEn: "Pi-hole network-wide ad blocker",
+      category: "network",
+      summary: "本地 DNS 服务器 + 广告/跟踪域名屏蔽，全网设备共享。",
+      summaryEn: "Local DNS server + ad/tracker domain blocking, network-wide.",
+      rating: 4.8, installs: "0", imageTone: "red", sensitivity: "privileged",
+      assets: ["pihole", "dns", "adblock"],
+      guidePath: "configs/catalog/software/pihole.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "pihole/pihole", labelEn: "pihole/pihole", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "authentik", kind: "software", name: "Authentik 身份认证服务器", nameEn: "Authentik identity provider",
+      category: "security",
+      summary: "开源 OIDC / SAML / LDAP 身份服务器，做 SSO 中央认证。",
+      summaryEn: "Open-source OIDC / SAML / LDAP identity provider for centralized SSO.",
+      rating: 4.7, installs: "0", imageTone: "indigo", sensitivity: "privileged",
+      assets: ["authentik", "sso", "oidc", "saml", "ldap"],
+      guidePath: "configs/catalog/software/authentik.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/goauthentik/server", labelEn: "authentik server", detail: "docker compose stack" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "meilisearch", kind: "software", name: "Meilisearch 搜索引擎", nameEn: "Meilisearch full-text search",
+      category: "database",
+      summary: "开箱即用的全文搜索引擎（替代 ES 的轻量方案，<100MB RAM）。",
+      summaryEn: "Out-of-the-box full-text search (lightweight ES alternative, <100MB RAM).",
+      rating: 4.7, installs: "0", imageTone: "amber", sensitivity: "review",
+      assets: ["meilisearch", "search", "full-text"],
+      guidePath: "configs/catalog/software/meilisearch.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
+      components: [
+        { type: "software", label: "meilisearch", labelEn: "Meilisearch", detail: "binary or docker" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "wikijs", kind: "software", name: "Wiki.js 知识库", nameEn: "Wiki.js knowledge base",
+      category: "service",
+      summary: "现代化 Wiki / 知识库（Markdown + git 同步 + 全文搜索）。",
+      summaryEn: "Modern wiki / knowledge base (Markdown + git sync + full-text search).",
+      rating: 4.6, installs: "0", imageTone: "teal", sensitivity: "review",
+      assets: ["wiki", "knowledge-base", "markdown"],
+      guidePath: "configs/catalog/software/wikijs.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "requarks/wiki:2", labelEn: "Wiki.js", detail: "docker compose stack" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "n8n", kind: "software", name: "n8n 工作流自动化", nameEn: "n8n workflow automation",
+      category: "service",
+      summary: "自托管 Zapier 替代品，可视化拖拽编排 400+ 应用集成。",
+      summaryEn: "Self-hosted Zapier alternative, visual drag-and-drop with 400+ integrations.",
+      rating: 4.7, installs: "0", imageTone: "orange", sensitivity: "review",
+      assets: ["n8n", "automation", "workflow", "webhook"],
+      guidePath: "configs/catalog/software/n8n.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "n8nio/n8n", labelEn: "n8n", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "valkey-server", kind: "software", name: "Valkey 内存数据库", nameEn: "Valkey in-memory database",
+      category: "database",
+      summary: "Redis 7.4 的开源 fork（Linux Foundation 主导，BSD 协议），命令完全兼容。",
+      summaryEn: "Open-source fork of Redis 7.4 (Linux Foundation, BSD-licensed), fully command-compatible.",
+      rating: 4.8, installs: "0", imageTone: "rose", sensitivity: "review",
+      assets: ["valkey", "redis", "kv", "in-memory"],
+      guidePath: "configs/catalog/software/valkey-server.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
+      components: [
+        { type: "software", label: "valkey", labelEn: "Valkey", detail: "apt / dnf / docker" },
+        { type: "system-command", label: "启动 valkey-server", labelEn: "start valkey-server", detail: "systemctl enable --now valkey-server" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "clickhouse", kind: "software", name: "ClickHouse 分析数据库", nameEn: "ClickHouse OLAP database",
+      category: "database",
+      summary: "列式 OLAP 数据库，亿级数据 SQL 查询亚秒响应。",
+      summaryEn: "Columnar OLAP database with sub-second SQL queries on billions of rows.",
+      rating: 4.8, installs: "0", imageTone: "amber", sensitivity: "review",
+      assets: ["clickhouse", "olap", "analytics", "columnar"],
+      guidePath: "configs/catalog/software/clickhouse.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
+      components: [
+        { type: "software", label: "clickhouse-server", labelEn: "ClickHouse server", detail: "official deb/rpm repo" },
+        { type: "software", label: "clickhouse-client", labelEn: "ClickHouse client", detail: "official deb/rpm repo" },
+        { type: "system-command", label: "启动 clickhouse-server", labelEn: "start clickhouse-server", detail: "systemctl enable --now clickhouse-server" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "influxdb", kind: "software", name: "InfluxDB 时序数据库", nameEn: "InfluxDB time-series database",
+      category: "database",
+      summary: "专业时序数据库（IoT / 监控指标 / 性能数据），适合长期存储 + 高基数。",
+      summaryEn: "Purpose-built time-series database (IoT / metrics / perf data), ideal for long retention + high cardinality.",
+      rating: 4.7, installs: "0", imageTone: "blue", sensitivity: "review",
+      assets: ["influxdb", "tsdb", "iot", "metrics", "time-series"],
+      guidePath: "configs/catalog/software/influxdb.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system", "docker"],
+      components: [
+        { type: "software", label: "influxdb2", labelEn: "InfluxDB 2.x", detail: "official deb/rpm repo" },
+        { type: "system-command", label: "启动 influxdb", labelEn: "start influxdb", detail: "systemctl enable --now influxdb" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "bookstack", kind: "software", name: "BookStack 文档平台", nameEn: "BookStack documentation platform",
+      category: "service",
+      summary: "层级化技术文档（书 → 章节 → 页面），适合产品文档与培训教材。",
+      summaryEn: "Hierarchical technical docs (Books → Chapters → Pages) for product docs and training material.",
+      rating: 4.6, installs: "0", imageTone: "teal", sensitivity: "review",
+      assets: ["bookstack", "docs", "knowledge-base"],
+      guidePath: "configs/catalog/software/bookstack.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "lscr.io/linuxserver/bookstack", labelEn: "BookStack", detail: "docker compose stack" },
+        { type: "software", label: "lscr.io/linuxserver/mariadb", labelEn: "MariaDB", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "home-assistant", kind: "software", name: "Home Assistant 智能家居", nameEn: "Home Assistant smart home",
+      category: "service",
+      summary: "智能家居自动化中枢（5000+ 设备集成）。",
+      summaryEn: "Smart home automation hub with 5000+ device integrations.",
+      rating: 4.8, installs: "0", imageTone: "indigo", sensitivity: "review",
+      assets: ["home-assistant", "iot", "smart-home", "automation"],
+      guidePath: "configs/catalog/software/home-assistant.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "homeassistant/home-assistant:stable", labelEn: "Home Assistant", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "gitlab-ce", kind: "software", name: "GitLab CE 完整 DevOps 平台", nameEn: "GitLab Community Edition",
+      category: "developer",
+      summary: "完整 DevOps 平台（git + CI + 容器仓库 + issue + wiki），最低 4GB RAM。",
+      summaryEn: "Full DevOps platform (git + CI + container registry + issues + wiki). 4GB RAM minimum.",
+      rating: 4.7, installs: "0", imageTone: "orange", sensitivity: "privileged",
+      assets: ["gitlab", "git", "ci", "devops", "registry"],
+      guidePath: "configs/catalog/software/gitlab-ce.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "gitlab/gitlab-ce", labelEn: "GitLab CE", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "umami", kind: "software", name: "Umami 隐私友好分析", nameEn: "Umami privacy-friendly analytics",
+      category: "service",
+      summary: "Google Analytics 替代品，无 cookie、隐私优先、开源。",
+      summaryEn: "Google Analytics alternative: cookieless, privacy-first, open source.",
+      rating: 4.7, installs: "0", imageTone: "purple", sensitivity: "review",
+      assets: ["umami", "analytics", "privacy", "gdpr"],
+      guidePath: "configs/catalog/software/umami.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/umami-software/umami", labelEn: "Umami", detail: "docker compose stack" },
+        { type: "software", label: "postgres:15-alpine", labelEn: "PostgreSQL", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "nocodb", kind: "software", name: "NocoDB 无代码数据库", nameEn: "NocoDB no-code database",
+      category: "service",
+      summary: "把 MySQL / PG / SQLite 变成 Airtable 风格无代码界面。",
+      summaryEn: "Turns MySQL / PG / SQLite into an Airtable-style no-code interface.",
+      rating: 4.6, installs: "0", imageTone: "amber", sensitivity: "review",
+      assets: ["nocodb", "no-code", "airtable", "database-gui"],
+      guidePath: "configs/catalog/software/nocodb.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "nocodb/nocodb", labelEn: "NocoDB", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "nfs-server", kind: "software", name: "NFS 文件服务器", nameEn: "NFS file server",
+      category: "network",
+      summary: "Linux 之间共享盘的标准方案（NFSv4），与 Samba 互补。",
+      summaryEn: "Standard Linux-to-Linux network filesystem (NFSv4), complement to Samba.",
+      rating: 4.6, installs: "0", imageTone: "slate", sensitivity: "review",
+      assets: ["nfs", "file-share", "linux", "homelab"],
+      guidePath: "configs/catalog/software/nfs-server.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [
+        { type: "software", label: "nfs-kernel-server / nfs-utils", labelEn: "NFS server", detail: "apt / dnf" },
+        { type: "system-command", label: "exportfs -ra", labelEn: "exportfs -ra", detail: "apply exports" },
+        { type: "system-command", label: "启动 nfs-server", labelEn: "start nfs-server", detail: "systemctl enable --now" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "adguard-home", kind: "software", name: "AdGuard Home 网络广告屏蔽", nameEn: "AdGuard Home DNS filter",
+      category: "network",
+      summary: "Pi-hole 现代替代——DNS 广告屏蔽 + 内建 DoH/DoT/DoQ 加密 DNS 服务端。",
+      summaryEn: "Modern Pi-hole alternative—DNS ad-blocking + built-in DoH/DoT/DoQ encrypted DNS server.",
+      rating: 4.8, installs: "0", imageTone: "emerald", sensitivity: "privileged",
+      assets: ["adguard", "dns", "adblock", "doh", "doq"],
+      guidePath: "configs/catalog/software/adguard-home.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "adguard/adguardhome", labelEn: "AdGuard Home", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "tailscale", kind: "software", name: "Tailscale Mesh VPN", nameEn: "Tailscale mesh VPN",
+      category: "network",
+      summary: "基于 WireGuard 的零配置 mesh VPN——设备间自动 P2P，不需 NAT 穿透。",
+      summaryEn: "Zero-config WireGuard-based mesh VPN—automatic P2P between devices, no NAT punching.",
+      rating: 4.8, installs: "0", imageTone: "indigo", sensitivity: "review",
+      assets: ["tailscale", "vpn", "wireguard", "mesh", "remote-access"],
+      guidePath: "configs/catalog/software/tailscale.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [
+        { type: "software", label: "tailscale", labelEn: "Tailscale", detail: "official deb/rpm repo" },
+        { type: "system-command", label: "启动 tailscaled", labelEn: "start tailscaled", detail: "systemctl enable --now" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "keycloak", kind: "software", name: "Keycloak SSO", nameEn: "Keycloak identity provider",
+      category: "security",
+      summary: "企业级 SSO 事实标准（Red Hat 主导）——OIDC + SAML + LDAP federation。",
+      summaryEn: "Enterprise SSO de facto standard (by Red Hat)—OIDC + SAML + LDAP federation.",
+      rating: 4.7, installs: "0", imageTone: "red", sensitivity: "privileged",
+      assets: ["keycloak", "sso", "oidc", "saml", "ldap", "enterprise"],
+      guidePath: "configs/catalog/software/keycloak.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "quay.io/keycloak/keycloak", labelEn: "Keycloak", detail: "docker image" },
+        { type: "software", label: "postgres:16-alpine", labelEn: "PostgreSQL", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "authelia", kind: "software", name: "Authelia 轻量 SSO", nameEn: "Authelia lightweight SSO",
+      category: "security",
+      summary: "轻量 forward-auth SSO 中间件（~50MB RAM）—— 配合反代给任意应用加 SSO。",
+      summaryEn: "Lightweight forward-auth SSO middleware (~50MB RAM)—pairs with reverse proxy to add SSO.",
+      rating: 4.7, installs: "0", imageTone: "purple", sensitivity: "privileged",
+      assets: ["authelia", "sso", "forward-auth", "webauthn", "totp"],
+      guidePath: "configs/catalog/software/authelia.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "authelia/authelia", labelEn: "Authelia", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "docker-mailserver", kind: "software", name: "docker-mailserver 邮件服务器", nameEn: "docker-mailserver self-hosted mail",
+      category: "service",
+      summary: "完整自托管邮件全栈（Postfix + Dovecot + Rspamd + DKIM + DMARC + Fail2Ban）。",
+      summaryEn: "Full self-hosted mail stack (Postfix + Dovecot + Rspamd + DKIM + DMARC + Fail2Ban).",
+      rating: 4.6, installs: "0", imageTone: "blue", sensitivity: "privileged",
+      assets: ["mail", "postfix", "dovecot", "smtp", "imap", "dkim"],
+      guidePath: "configs/catalog/software/docker-mailserver.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/docker-mailserver/docker-mailserver", labelEn: "docker-mailserver", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "onlyoffice-docs", kind: "software", name: "OnlyOffice Document Server", nameEn: "OnlyOffice document server",
+      category: "service",
+      summary: "在线协作 Office（docx / xlsx / pptx）—— Nextcloud / SeaTable 推荐文档后端。",
+      summaryEn: "Online collaborative Office (docx/xlsx/pptx)—recommended backend for Nextcloud/SeaTable.",
+      rating: 4.6, installs: "0", imageTone: "amber", sensitivity: "review",
+      assets: ["onlyoffice", "office", "docx", "collaboration"],
+      guidePath: "configs/catalog/software/onlyoffice-docs.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "onlyoffice/documentserver", labelEn: "Document Server", detail: "docker compose stack" },
+        { type: "software", label: "postgres:15-alpine", labelEn: "PostgreSQL", detail: "docker image" },
+        { type: "software", label: "rabbitmq:3-management-alpine", labelEn: "RabbitMQ", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "immich", kind: "software", name: "Immich 自托管照片库", nameEn: "Immich self-hosted photos",
+      category: "service",
+      summary: "自托管 Google Photos 替代——AI 人脸识别 + 物体分类 + iOS/Android App。",
+      summaryEn: "Self-hosted Google Photos alternative—AI face recognition + object detection + native iOS/Android apps.",
+      rating: 4.9, installs: "0", imageTone: "purple", sensitivity: "review",
+      assets: ["immich", "photos", "self-hosted", "ai", "google-photos"],
+      guidePath: "configs/catalog/software/immich.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/immich-app/immich-server", labelEn: "Immich Server", detail: "docker compose stack" },
+        { type: "software", label: "ghcr.io/immich-app/immich-machine-learning", labelEn: "Immich ML", detail: "docker image" },
+        { type: "software", label: "tensorchord/pgvecto-rs", labelEn: "PG with pgvecto-rs", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "forgejo", kind: "software", name: "Forgejo 自托管 Git", nameEn: "Forgejo self-hosted Git",
+      category: "service",
+      summary: "Gitea 的社区驱动 fork（Codeberg / FSF 推荐），完全开源治理。",
+      summaryEn: "Community-driven Gitea fork (recommended by Codeberg/FSF), fully open governance.",
+      rating: 4.7, installs: "0", imageTone: "orange", sensitivity: "review",
+      assets: ["forgejo", "git", "gitea", "self-hosted", "fsf"],
+      guidePath: "configs/catalog/software/forgejo.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "codeberg.org/forgejo/forgejo", labelEn: "Forgejo", detail: "docker image" },
+        { type: "software", label: "postgres:16-alpine", labelEn: "PostgreSQL", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "k3s", kind: "software", name: "K3s 轻量 Kubernetes", nameEn: "K3s lightweight Kubernetes",
+      category: "container",
+      summary: "Rancher 单二进制 K8s——500MB RAM 起步，去掉 etcd（用 SQLite），适合 homelab/ 边缘。",
+      summaryEn: "Rancher single-binary K8s—starts at 500MB RAM, no etcd (uses SQLite), ideal for homelab/edge.",
+      rating: 4.8, installs: "0", imageTone: "blue", sensitivity: "privileged",
+      assets: ["k3s", "kubernetes", "k8s", "rancher", "edge", "homelab"],
+      guidePath: "configs/catalog/software/k3s.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["system"],
+      components: [
+        { type: "software", label: "k3s", labelEn: "K3s", detail: "official install script" },
+        { type: "system-command", label: "systemctl enable --now k3s", labelEn: "start k3s", detail: "systemd service" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "filebrowser", kind: "software", name: "FileBrowser 网页文件管理器", nameEn: "FileBrowser web file manager",
+      category: "service",
+      summary: "极轻量 web 文件管理器（单二进制 + SQLite，~30MB RAM），多用户权限。",
+      summaryEn: "Ultra-lightweight web file manager (single binary + SQLite, ~30MB RAM), multi-user.",
+      rating: 4.7, installs: "0", imageTone: "amber", sensitivity: "review",
+      assets: ["filebrowser", "files", "web-fm", "self-hosted"],
+      guidePath: "configs/catalog/software/filebrowser.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker", "system"],
+      components: [
+        { type: "software", label: "filebrowser/filebrowser", labelEn: "FileBrowser", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "uptime-kuma", kind: "software", name: "Uptime Kuma 监控", nameEn: "Uptime Kuma uptime monitor",
+      category: "service",
+      summary: "自托管 Uptime Robot 替代——HTTP/TCP/Ping/容器健康检测 + 70+ 通知渠道 + 公开状态页。",
+      summaryEn: "Self-hosted Uptime Robot alternative—HTTP/TCP/Ping/container health + 70+ notify channels + status pages.",
+      rating: 4.9, installs: "0", imageTone: "emerald", sensitivity: "review",
+      assets: ["uptime-kuma", "monitoring", "status-page", "alerts"],
+      guidePath: "configs/catalog/software/uptime-kuma.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "louislam/uptime-kuma", labelEn: "Uptime Kuma", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "homepage", kind: "software", name: "Homepage 应用启动面板", nameEn: "Homepage app dashboard",
+      category: "service",
+      summary: "自托管应用 dashboard——书签 + 服务卡片 + 实时 widgets，给一堆服务一个入口页。",
+      summaryEn: "Self-hosted app dashboard—bookmarks + service cards + live widgets.",
+      rating: 4.8, installs: "0", imageTone: "indigo", sensitivity: "review",
+      assets: ["homepage", "dashboard", "homelab", "starting-page"],
+      guidePath: "configs/catalog/software/homepage.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/gethomepage/homepage", labelEn: "Homepage", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "dozzle", kind: "software", name: "Dozzle Docker 日志查看器", nameEn: "Dozzle Docker log viewer",
+      category: "developer",
+      summary: "实时 Docker 容器日志 web 查看器——挂 socket 就开看，比 ELK / Loki 轻 100×。",
+      summaryEn: "Real-time Docker log web viewer—mount socket and start viewing, 100× lighter than ELK/Loki.",
+      rating: 4.8, installs: "0", imageTone: "slate", sensitivity: "privileged",
+      assets: ["dozzle", "docker", "logs", "real-time"],
+      guidePath: "configs/catalog/software/dozzle.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "amir20/dozzle", labelEn: "Dozzle", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "paperless-ngx", kind: "software", name: "Paperless-ngx 文档管理", nameEn: "Paperless-ngx document management",
+      category: "service",
+      summary: "自托管文档管理——扫描/上传 PDF → OCR 全文索引 + AI 标签 + 全文搜索。",
+      summaryEn: "Self-hosted document management—scan/upload → OCR + AI tags + full-text search.",
+      rating: 4.8, installs: "0", imageTone: "yellow", sensitivity: "review",
+      assets: ["paperless", "documents", "ocr", "scan"],
+      guidePath: "configs/catalog/software/paperless-ngx.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/paperless-ngx/paperless-ngx", labelEn: "Paperless-ngx", detail: "docker compose stack" },
+        { type: "software", label: "postgres:16-alpine", labelEn: "PostgreSQL", detail: "docker image" },
+        { type: "software", label: "redis:7", labelEn: "Redis", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "navidrome", kind: "software", name: "Navidrome 音乐流媒体", nameEn: "Navidrome music streaming",
+      category: "service",
+      summary: "自托管 Spotify 替代——Subsonic API 兼容，能用 100+ 第三方 App。",
+      summaryEn: "Self-hosted Spotify alternative—Subsonic API compatible with 100+ apps.",
+      rating: 4.8, installs: "0", imageTone: "purple", sensitivity: "review",
+      assets: ["navidrome", "music", "subsonic", "streaming"],
+      guidePath: "configs/catalog/software/navidrome.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "deluan/navidrome", labelEn: "Navidrome", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "audiobookshelf", kind: "software", name: "Audiobookshelf 有声书服务器", nameEn: "Audiobookshelf audiobook server",
+      category: "service",
+      summary: "自托管有声书 + 播客服务器——多用户、断点续播、iOS/Android 原生 App。",
+      summaryEn: "Self-hosted audiobook + podcast server—multi-user, resume, native iOS/Android apps.",
+      rating: 4.8, installs: "0", imageTone: "orange", sensitivity: "review",
+      assets: ["audiobookshelf", "audiobook", "podcast", "self-hosted"],
+      guidePath: "configs/catalog/software/audiobookshelf.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/advplyr/audiobookshelf", labelEn: "Audiobookshelf", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "freshrss", kind: "software", name: "FreshRSS 阅读器", nameEn: "FreshRSS RSS reader",
+      category: "service",
+      summary: "自托管 Feedly / Inoreader 替代——RSS / Atom 订阅聚合，多用户 + Fever API。",
+      summaryEn: "Self-hosted Feedly / Inoreader alternative—RSS/Atom aggregator, multi-user + Fever API.",
+      rating: 4.7, installs: "0", imageTone: "rose", sensitivity: "review",
+      assets: ["freshrss", "rss", "atom", "feed-reader"],
+      guidePath: "configs/catalog/software/freshrss.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "freshrss/freshrss", labelEn: "FreshRSS", detail: "docker image" },
+        { type: "software", label: "postgres:16-alpine", labelEn: "PostgreSQL", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "stirling-pdf", kind: "software", name: "Stirling PDF 工具箱", nameEn: "Stirling PDF toolkit",
+      category: "service",
+      summary: "完整 PDF 工具集（合并 / 拆分 / 压缩 / OCR / 加密 / 转换 / 签名），50+ 操作，完全本地。",
+      summaryEn: "Complete PDF toolset (merge/split/compress/OCR/encrypt/convert/sign), 50+ ops, fully local.",
+      rating: 4.7, installs: "0", imageTone: "red", sensitivity: "safe",
+      assets: ["stirling-pdf", "pdf", "tools", "ocr"],
+      guidePath: "configs/catalog/software/stirling-pdf.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "stirlingtools/stirling-pdf", labelEn: "Stirling PDF", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "mealie", kind: "software", name: "Mealie 食谱管理器", nameEn: "Mealie recipe manager",
+      category: "service",
+      summary: "自托管食谱库——网页 URL 一键导入（支持 1000+ 烹饪网站）+ 自动汇总采购清单。",
+      summaryEn: "Self-hosted recipe library—one-click URL import (1000+ cooking sites) + auto shopping list.",
+      rating: 4.7, installs: "0", imageTone: "amber", sensitivity: "safe",
+      assets: ["mealie", "recipe", "cooking", "self-hosted"],
+      guidePath: "configs/catalog/software/mealie.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/mealie-recipes/mealie", labelEn: "Mealie", detail: "docker image" },
+        { type: "software", label: "postgres:16-alpine", labelEn: "PostgreSQL", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "linkwarden", kind: "software", name: "Linkwarden 书签 + 网页归档", nameEn: "Linkwarden bookmarks + archive",
+      category: "service",
+      summary: "自托管 Pocket / Raindrop 替代——书签 + 自动网页全文 + 截图归档（防原页消失）。",
+      summaryEn: "Self-hosted Pocket / Raindrop alternative—bookmarks + auto full-text + screenshot archive.",
+      rating: 4.7, installs: "0", imageTone: "indigo", sensitivity: "review",
+      assets: ["linkwarden", "bookmarks", "archive", "pocket"],
+      guidePath: "configs/catalog/software/linkwarden.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/linkwarden/linkwarden", labelEn: "Linkwarden", detail: "docker image" },
+        { type: "software", label: "postgres:16-alpine", labelEn: "PostgreSQL", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "seafile", kind: "software", name: "Seafile 文件同步", nameEn: "Seafile file sync",
+      category: "service",
+      summary: "自托管 Dropbox 替代——专做文件同步（性能比 Nextcloud 高 10×），块级同步。",
+      summaryEn: "Self-hosted Dropbox alternative—dedicated file sync (10× faster than Nextcloud), block-level.",
+      rating: 4.6, installs: "0", imageTone: "blue", sensitivity: "review",
+      assets: ["seafile", "file-sync", "dropbox", "self-hosted"],
+      guidePath: "configs/catalog/software/seafile.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "seafileltd/seafile-mc", labelEn: "Seafile", detail: "docker compose stack" },
+        { type: "software", label: "mariadb:10.11", labelEn: "MariaDB", detail: "docker image" },
+        { type: "software", label: "memcached:1.6", labelEn: "Memcached", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
     }
   ];
 }
@@ -1297,6 +1840,161 @@ function getNewComboCatalog(): CatalogItem[] {
         { type: "software", label: "unattended-upgrades", labelEn: "Unattended Upgrades", detail: "apt" },
         { type: "system-command", label: "启动 Fail2Ban", labelEn: "start Fail2Ban", detail: "sudo systemctl enable fail2ban" },
         { type: "system-command", label: "启动服务", labelEn: "start services", detail: "sudo systemctl start fail2ban" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "monitoring-stack",
+      kind: "combo",
+      name: "监控全家桶（Prometheus + Grafana + Loki）",
+      nameEn: "Monitoring stack (Prometheus + Grafana + Loki)",
+      category: "service",
+      summary: "完整可观测性栈一键部署：指标 + 日志 + 系统/容器 metrics，预配置数据源。",
+      summaryEn: "Full observability stack: metrics + logs + system/container metrics, pre-wired datasources.",
+      rating: 4.8, installs: "0", imageTone: "orange", sensitivity: "review",
+      assets: ["prometheus", "grafana", "loki", "node_exporter", "cadvisor"],
+      guidePath: "configs/catalog/combos/monitoring-stack.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "prom/prometheus", labelEn: "Prometheus", detail: "docker image" },
+        { type: "software", label: "grafana/grafana-oss", labelEn: "Grafana", detail: "docker image" },
+        { type: "software", label: "grafana/loki", labelEn: "Loki", detail: "docker image" },
+        { type: "software", label: "prom/node-exporter", labelEn: "node_exporter", detail: "docker image" },
+        { type: "software", label: "gcr.io/cadvisor/cadvisor", labelEn: "cadvisor", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "selfhost-essentials",
+      kind: "combo",
+      name: "自托管必备四件套（Traefik + Vaultwarden + Pi-hole + Home Assistant）",
+      nameEn: "Selfhost essentials (Traefik + Vaultwarden + Pi-hole + Home Assistant)",
+      category: "service",
+      summary: "家庭 / 小团队 NAS 必装四件套：反代 + 密码管理 + 广告屏蔽 DNS + 智能家居。",
+      summaryEn: "Home/small-team NAS essentials: reverse proxy + password manager + ad-blocking DNS + smart home.",
+      rating: 4.8, installs: "0", imageTone: "indigo", sensitivity: "privileged",
+      assets: ["traefik", "vaultwarden", "pihole", "home-assistant", "self-hosted"],
+      guidePath: "configs/catalog/combos/selfhost-essentials.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "traefik:v3", labelEn: "Traefik", detail: "docker image" },
+        { type: "software", label: "vaultwarden/server", labelEn: "Vaultwarden", detail: "docker image" },
+        { type: "software", label: "pihole/pihole", labelEn: "Pi-hole", detail: "docker image" },
+        { type: "software", label: "homeassistant/home-assistant", labelEn: "Home Assistant", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "ai-localllm-stack",
+      kind: "combo",
+      name: "本地 AI 推理栈（Ollama + Open-WebUI + SearxNG）",
+      nameEn: "Local AI inference stack (Ollama + Open-WebUI + SearxNG)",
+      category: "service",
+      summary: "完全本地的 ChatGPT 替代——Llama 3 / Qwen / Mistral 等 + Web 界面 + 网络检索。",
+      summaryEn: "Fully local ChatGPT alternative: Llama 3 / Qwen / Mistral + web UI + meta-search retrieval.",
+      rating: 4.8, installs: "0", imageTone: "purple", sensitivity: "review",
+      assets: ["ollama", "open-webui", "searxng", "llm", "ai", "local"],
+      guidePath: "configs/catalog/combos/ai-localllm-stack.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ollama/ollama", labelEn: "Ollama", detail: "docker image" },
+        { type: "software", label: "ghcr.io/open-webui/open-webui", labelEn: "Open-WebUI", detail: "docker image" },
+        { type: "software", label: "searxng/searxng", labelEn: "SearxNG", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "mail-stack",
+      kind: "combo",
+      name: "自托管邮件全栈（Mailserver + Roundcube + Caddy）",
+      nameEn: "Self-hosted mail stack (Mailserver + Roundcube + Caddy)",
+      category: "service",
+      summary: "完整邮件服务一键部署：发收邮件 + Webmail + 反垃圾 + DKIM + 自动 HTTPS。",
+      summaryEn: "Full mail service: SMTP/IMAP + Webmail + anti-spam + DKIM + auto-HTTPS.",
+      rating: 4.7, installs: "0", imageTone: "blue", sensitivity: "privileged",
+      assets: ["mail", "postfix", "dovecot", "roundcube", "self-hosted"],
+      guidePath: "configs/catalog/combos/mail-stack.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/docker-mailserver/docker-mailserver", labelEn: "docker-mailserver", detail: "docker image" },
+        { type: "software", label: "roundcube/roundcubemail", labelEn: "Roundcube webmail", detail: "docker image" },
+        { type: "software", label: "caddy:latest", labelEn: "Caddy (auto HTTPS)", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "sso-stack",
+      kind: "combo",
+      name: "SSO 单点登录中央认证（Authelia + Traefik + Redis）",
+      nameEn: "SSO stack (Authelia + Traefik + Redis)",
+      category: "security",
+      summary: "给所有自托管应用一个统一登录入口——Authelia + Traefik forward-auth + Redis session。",
+      summaryEn: "Unified login for all self-hosted apps—Authelia + Traefik forward-auth + Redis sessions.",
+      rating: 4.7, installs: "0", imageTone: "indigo", sensitivity: "privileged",
+      assets: ["sso", "authelia", "traefik", "forward-auth", "single-sign-on"],
+      guidePath: "configs/catalog/combos/sso-stack.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "traefik:v3", labelEn: "Traefik", detail: "docker image" },
+        { type: "software", label: "authelia/authelia", labelEn: "Authelia", detail: "docker image" },
+        { type: "software", label: "redis:7-alpine", labelEn: "Redis (session store)", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "homelab-dashboard",
+      kind: "combo",
+      name: "Homelab 控制中心（Homepage + Uptime Kuma + Dozzle）",
+      nameEn: "Homelab control center (Homepage + Uptime Kuma + Dozzle)",
+      category: "service",
+      summary: "homelab 管理控制台三件套——应用入口 + 服务监控 + 实时日志，一站式。",
+      summaryEn: "Homelab management trio—app dashboard + uptime monitor + real-time logs.",
+      rating: 4.8, installs: "0", imageTone: "indigo", sensitivity: "privileged",
+      assets: ["homepage", "uptime-kuma", "dozzle", "homelab", "dashboard"],
+      guidePath: "configs/catalog/combos/homelab-dashboard.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "ghcr.io/gethomepage/homepage", labelEn: "Homepage", detail: "docker image" },
+        { type: "software", label: "louislam/uptime-kuma", labelEn: "Uptime Kuma", detail: "docker image" },
+        { type: "software", label: "amir20/dozzle", labelEn: "Dozzle", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "selfhost-media",
+      kind: "combo",
+      name: "自托管多媒体三件套（Jellyfin + Navidrome + Audiobookshelf）",
+      nameEn: "Self-hosted media stack (Jellyfin + Navidrome + Audiobookshelf)",
+      category: "service",
+      summary: "家庭 NAS 完整媒体方案——视频 / 音乐 / 有声书各用专精工具。",
+      summaryEn: "Complete home NAS media stack—video / music / audiobooks each with dedicated tools.",
+      rating: 4.8, installs: "0", imageTone: "purple", sensitivity: "review",
+      assets: ["jellyfin", "navidrome", "audiobookshelf", "media", "self-hosted"],
+      guidePath: "configs/catalog/combos/selfhost-media.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "jellyfin/jellyfin", labelEn: "Jellyfin", detail: "docker image" },
+        { type: "software", label: "deluan/navidrome", labelEn: "Navidrome", detail: "docker image" },
+        { type: "software", label: "ghcr.io/advplyr/audiobookshelf", labelEn: "Audiobookshelf", detail: "docker image" }
+      ],
+      compatibility: { families: ["debian-family", "rhel-family"] }
+    },
+    {
+      id: "selfhost-pkm",
+      kind: "combo",
+      name: "自托管个人知识库（Wiki.js + FreshRSS + Linkwarden）",
+      nameEn: "Self-hosted PKM (Wiki.js + FreshRSS + Linkwarden)",
+      category: "service",
+      summary: "信息消费 → 整理 → 沉淀闭环——RSS 订阅 + 书签归档 + Wiki 笔记。",
+      summaryEn: "Info consumption → archive → notes loop—RSS + bookmark archive + Wiki.",
+      rating: 4.7, installs: "0", imageTone: "teal", sensitivity: "review",
+      assets: ["wikijs", "freshrss", "linkwarden", "pkm", "knowledge"],
+      guidePath: "configs/catalog/combos/selfhost-pkm.md",
+      guideAuthor: "admin", installMode: "skip-existing", deployModes: ["docker"],
+      components: [
+        { type: "software", label: "requarks/wiki:2", labelEn: "Wiki.js", detail: "docker image" },
+        { type: "software", label: "freshrss/freshrss", labelEn: "FreshRSS", detail: "docker image" },
+        { type: "software", label: "ghcr.io/linkwarden/linkwarden", labelEn: "Linkwarden", detail: "docker image" }
       ],
       compatibility: { families: ["debian-family", "rhel-family"] }
     }

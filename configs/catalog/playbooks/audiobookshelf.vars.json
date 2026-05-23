@@ -1,0 +1,34 @@
+{
+  "ab_audiobooks_dir": {
+    "type": "string",
+    "label": "有声书目录",
+    "labelEn": "Audiobooks directory",
+    "default": "/srv/audiobooks",
+    "help": "有声书文件根目录。每书一个子目录，支持 mp3 / m4b / m4a / flac 等。",
+    "helpEn": "Root for audiobooks. One subdir per book. Supports mp3/m4b/m4a/flac/etc."
+  },
+  "ab_podcasts_dir": {
+    "type": "string",
+    "label": "播客目录",
+    "labelEn": "Podcasts directory",
+    "default": "/srv/podcasts",
+    "help": "播客下载目录（Audiobookshelf 自动从 RSS 拉取）。如不用播客可与有声书共用一个目录。",
+    "helpEn": "Podcast download dir (auto-fetched from RSS). Can share with audiobooks dir if not using podcasts."
+  },
+  "ab_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/audiobookshelf",
+    "help": "存配置 + 元数据缓存（封面 / 章节 / 用户进度）。备份此目录 = 备份所有用户阅读进度。",
+    "helpEn": "Stores config + metadata cache (covers/chapters/user progress). Back up = all reading progress."
+  },
+  "ab_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 13378,
+    "help": "Audiobookshelf HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Audiobookshelf HTTP port (127.0.0.1 only)."
+  }
+}

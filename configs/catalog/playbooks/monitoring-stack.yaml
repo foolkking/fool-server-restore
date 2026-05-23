@@ -1,0 +1,286 @@
+# Playbook: Monitoring Stack（Prometheus + Grafana + Loki + node_exporter + cadvisor）
+#
+# 一键部署完整可观测性栈。Docker compose 部署，预配置 Grafana 数据源 + 默认 dashboard。
+name: Install Monitoring Stack (Docker)
+hosts: all
+
+vars:
+  monitoring_data_dir: /opt/monitoring
+  grafana_admin_password: ""             # 留空 = 自动生成
+  monitoring_domain_grafana: "grafana.example.com"
+  prometheus_retention: 30d
+
+tasks:
+  - name: Docker check
+    module: shell
+    args:
+      cmd: command -v docker && docker info >/dev/null 2>&1
+
+  - name: 创建目录结构
+    module: file
+    args:
+      path: "{{ item }}"
+      state: directory
+      mode: "0750"
+    loop:
+      - "{{ monitoring_data_dir }}"
+      - "{{ monitoring_data_dir }}/prometheus-data"
+      - "{{ monitoring_data_dir }}/prometheus-config"
+      - "{{ monitoring_data_dir }}/grafana-data"
+      - "{{ monitoring_data_dir }}/grafana-config"
+      - "{{ monitoring_data_dir }}/loki-data"
+      - "{{ monitoring_data_dir }}/loki-config"
+
+  - name: 生成 Grafana admin 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ grafana_admin_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ grafana_admin_password }}"
+        fi
+    register: grafana_pass
+    no_log: true
+
+  - name: 写 prometheus.yml
+    module: copy
+    args:
+      dest: "{{ monitoring_data_dir }}/prometheus-config/prometheus.yml"
+      content: |
+        global:
+          scrape_interval: 15s
+          evaluation_interval: 15s
+          external_labels:
+            monitor: 'envforge-monitoring-stack'
+
+        scrape_configs:
+          - job_name: prometheus
+            static_configs:
+              - targets: ['localhost:9090']
+
+          - job_name: node
+            static_configs:
+              - targets: ['node-exporter:9100']
+
+          - job_name: cadvisor
+            static_configs:
+              - targets: ['cadvisor:8080']
+
+          - job_name: loki
+            static_configs:
+              - targets: ['loki:3100']
+
+  - name: 写 loki-config.yml
+    module: copy
+    args:
+      dest: "{{ monitoring_data_dir }}/loki-config/loki.yml"
+      content: |
+        auth_enabled: false
+        server:
+          http_listen_port: 3100
+          log_level: info
+        common:
+          path_prefix: /loki
+          storage:
+            filesystem:
+              chunks_directory: /loki/chunks
+              rules_directory: /loki/rules
+          replication_factor: 1
+          ring:
+            kvstore:
+              store: inmemory
+        schema_config:
+          configs:
+            - from: 2024-01-01
+              store: tsdb
+              object_store: filesystem
+              schema: v13
+              index:
+                prefix: index_
+                period: 24h
+        storage_config:
+          tsdb_shipper:
+            active_index_directory: /loki/index
+            cache_location: /loki/index_cache
+        limits_config:
+          retention_period: 168h
+        compactor:
+          working_directory: /loki/compactor
+          retention_enabled: true
+          delete_request_store: filesystem
+        analytics:
+          reporting_enabled: false
+
+  - name: 写 Grafana datasource provisioning
+    module: copy
+    args:
+      dest: "{{ monitoring_data_dir }}/grafana-config/datasources.yml"
+      content: |
+        apiVersion: 1
+        datasources:
+          - name: Prometheus
+            type: prometheus
+            access: proxy
+            url: http://prometheus:9090
+            isDefault: true
+            editable: true
+          - name: Loki
+            type: loki
+            access: proxy
+            url: http://loki:3100
+            editable: true
+
+  - name: 写 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ monitoring_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          prometheus:
+            image: prom/prometheus:latest
+            container_name: prometheus
+            restart: unless-stopped
+            command:
+              - --config.file=/etc/prometheus/prometheus.yml
+              - --storage.tsdb.path=/prometheus
+              - --storage.tsdb.retention.time={{ prometheus_retention }}
+              - --web.enable-lifecycle
+            volumes:
+              - {{ monitoring_data_dir }}/prometheus-config:/etc/prometheus:ro
+              - {{ monitoring_data_dir }}/prometheus-data:/prometheus
+            ports:
+              - "127.0.0.1:9090:9090"
+            networks: [monitoring]
+
+          grafana:
+            image: grafana/grafana-oss:latest
+            container_name: grafana
+            restart: unless-stopped
+            environment:
+              GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_pass.stdout }}"
+              GF_USERS_ALLOW_SIGN_UP: "false"
+              GF_ANALYTICS_REPORTING_ENABLED: "false"
+              GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+              GF_SERVER_ROOT_URL: "https://{{ monitoring_domain_grafana }}/"
+            volumes:
+              - {{ monitoring_data_dir }}/grafana-data:/var/lib/grafana
+              - {{ monitoring_data_dir }}/grafana-config:/etc/grafana/provisioning/datasources
+            ports:
+              - "127.0.0.1:3000:3000"
+            networks: [monitoring]
+            depends_on:
+              - prometheus
+              - loki
+
+          loki:
+            image: grafana/loki:latest
+            container_name: loki
+            restart: unless-stopped
+            command: -config.file=/etc/loki/loki.yml
+            volumes:
+              - {{ monitoring_data_dir }}/loki-config:/etc/loki:ro
+              - {{ monitoring_data_dir }}/loki-data:/loki
+            ports:
+              - "127.0.0.1:3100:3100"
+            networks: [monitoring]
+
+          node-exporter:
+            image: prom/node-exporter:latest
+            container_name: node-exporter
+            restart: unless-stopped
+            command:
+              - --path.procfs=/host/proc
+              - --path.sysfs=/host/sys
+              - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+            volumes:
+              - /proc:/host/proc:ro
+              - /sys:/host/sys:ro
+              - /:/rootfs:ro
+            networks: [monitoring]
+
+          cadvisor:
+            image: gcr.io/cadvisor/cadvisor:latest
+            container_name: cadvisor
+            restart: unless-stopped
+            volumes:
+              - /:/rootfs:ro
+              - /var/run:/var/run:ro
+              - /sys:/sys:ro
+              - /var/lib/docker:/var/lib/docker:ro
+            networks: [monitoring]
+            privileged: true
+
+        networks:
+          monitoring:
+            driver: bridge
+
+  - name: 启动栈
+    module: shell
+    args:
+      cmd: |
+        cd {{ monitoring_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待 Grafana 启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 60); do
+          if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+            echo "OK"
+            exit 0
+          fi
+          sleep 2
+        done
+        docker logs --tail 50 grafana
+        exit 1
+
+  - name: 显示登录信息
+    module: shell
+    args:
+      cmd: |
+        echo "=========================================================="
+        echo "Monitoring Stack 已就绪"
+        echo "=========================================================="
+        echo "  Grafana:    http://$(hostname -I | awk '{print $1}'):3000"
+        echo "    User:     admin"
+        echo "    Password: {{ grafana_pass.stdout }}"
+        echo ""
+        echo "  Prometheus: http://$(hostname -I | awk '{print $1}'):9090"
+        echo "  Loki:       http://$(hostname -I | awk '{print $1}'):3100"
+        echo ""
+        echo "数据源已自动添加到 Grafana。下一步："
+        echo "  1. 登录 Grafana"
+        echo "  2. Dashboards → Import → 输入 ID:"
+        echo "     - 1860 (Node Exporter Full)"
+        echo "     - 14282 (cadvisor exporter)"
+        echo "     - 17777 (Loki Logs)"
+        echo "=========================================================="
+
+verify:
+  - name: prometheus running
+    cmd: "docker ps --filter name=prometheus --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Prometheus 没启起来。docker logs prometheus"
+
+  - name: grafana running
+    cmd: "docker ps --filter name=grafana --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Grafana 没启起来。docker logs grafana"
+
+  - name: loki running
+    cmd: "docker ps --filter name=loki --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Loki 没启起来。docker logs loki"
+
+  - name: prometheus health
+    cmd: "curl -fsS http://127.0.0.1:9090/-/healthy"
+    hint: "Prometheus 健康检查失败。"
+
+  - name: grafana health
+    cmd: "curl -fsS http://127.0.0.1:3000/api/health"
+    hint: "Grafana 健康检查失败。"
+
+  - name: loki ready
+    cmd: "curl -fsS http://127.0.0.1:3100/ready"
+    hint: "Loki ready 失败。等 30 秒后再试。"

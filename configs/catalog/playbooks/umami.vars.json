@@ -1,0 +1,47 @@
+{
+  "umami_domain": {
+    "type": "string",
+    "label": "访问域名",
+    "labelEn": "Domain",
+    "default": "umami.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Umami 对外域名。tracking script 从此 URL 加载。",
+    "helpEn": "Umami public domain. Tracking script loads from this URL."
+  },
+  "umami_port": {
+    "type": "port",
+    "label": "本机监听端口",
+    "labelEn": "Local listen port",
+    "default": 3001,
+    "help": "Umami 容器映射到本机端口。",
+    "helpEn": "Port mapped to localhost."
+  },
+  "umami_db_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": false,
+    "help": "内嵌 PG 密码。留空 = 自动 24 位。",
+    "helpEn": "Internal PG password. Empty = auto."
+  },
+  "umami_app_secret": {
+    "type": "password",
+    "label": "APP_SECRET（关键）",
+    "labelEn": "APP_SECRET",
+    "default": "",
+    "generate_length": 64,
+    "reveal_after_run": true,
+    "help": "Umami 加密 session token 用。**丢失则所有 session 失效**。留空 = 自动 64 hex。",
+    "helpEn": "Encrypts sessions. Loss invalidates all sessions. Empty = auto 64 hex."
+  },
+  "umami_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/umami",
+    "help": "Umami + PG 数据存储位置。",
+    "helpEn": "Umami + PG data location."
+  }
+}

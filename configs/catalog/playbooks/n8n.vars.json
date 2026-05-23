@@ -1,0 +1,63 @@
+{
+  "n8n_domain": {
+    "type": "string",
+    "label": "访问域名",
+    "labelEn": "Domain",
+    "default": "n8n.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "n8n 对外 URL 的域名。webhook 节点用此生成 endpoint URL。",
+    "helpEn": "Public URL hostname. Used by webhook nodes to generate endpoint URLs."
+  },
+  "n8n_port": {
+    "type": "port",
+    "label": "本机监听端口",
+    "labelEn": "Local listen port",
+    "default": 5678,
+    "help": "n8n 容器映射到本机的端口（仅 127.0.0.1）。",
+    "helpEn": "Port mapped to localhost."
+  },
+  "n8n_admin_user": {
+    "type": "string",
+    "label": "管理员用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "help": "Basic Auth 用户名。",
+    "helpEn": "Basic Auth username."
+  },
+  "n8n_admin_password": {
+    "type": "password",
+    "label": "管理员密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "Basic Auth 密码。留空 = 自动 24 位。",
+    "helpEn": "Basic Auth password. Empty = auto 24 chars."
+  },
+  "n8n_encryption_key": {
+    "type": "password",
+    "label": "Encryption Key（关键）",
+    "labelEn": "Encryption key",
+    "default": "",
+    "generate_length": 32,
+    "reveal_after_run": true,
+    "help": "n8n 加密 stored credentials 的密钥。**丢失则所有 saved credentials 永久无法解密**！务必离线备份。",
+    "helpEn": "Encrypts stored credentials. **LOSING THIS KEY = ALL SAVED CREDENTIALS PERMANENTLY UNRECOVERABLE.** Backup offline."
+  },
+  "n8n_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/n8n",
+    "help": "n8n 数据 + SQLite 存储位置。",
+    "helpEn": "n8n data + SQLite storage location."
+  },
+  "n8n_timezone": {
+    "type": "string",
+    "label": "时区",
+    "labelEn": "Timezone",
+    "default": "Asia/Shanghai",
+    "help": "影响 cron 节点的执行时间和日志时间戳。",
+    "helpEn": "Affects cron node execution time and log timestamps."
+  }
+}

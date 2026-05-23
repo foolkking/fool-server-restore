@@ -1,0 +1,123 @@
+# Playbook: Meilisearch 全文搜索引擎
+#
+# Meilisearch 是 Rust 写的轻量搜索引擎——开箱即用，比 Elasticsearch 内存少 100×、启动 1 秒。
+# 适合应用内全文搜索（< 10M 文档）。
+name: Install Meilisearch
+hosts: all
+
+vars:
+  meili_master_key: ""              # 留空 = 自动生成 32 位
+  meili_port: 7700
+  meili_data_dir: /var/lib/meilisearch
+  meili_env: production              # production / development
+
+tasks:
+  - name: 安装依赖
+    module: package
+    args:
+      name: ["curl", "tar"]
+      state: present
+
+  - name: 创建专用用户
+    module: user
+    args:
+      name: meilisearch
+      system: true
+      shell: /sbin/nologin
+      home: "{{ meili_data_dir }}"
+      create_home: true
+
+  - name: 下载 Meilisearch 二进制
+    module: shell
+    args:
+      cmd: |
+        if ! command -v meilisearch >/dev/null 2>&1; then
+          curl -L https://install.meilisearch.com | sh
+          sudo mv meilisearch /usr/local/bin/
+          sudo chmod +x /usr/local/bin/meilisearch
+        fi
+      creates: /usr/local/bin/meilisearch
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ meili_data_dir }}"
+      state: directory
+      owner: meilisearch
+      group: meilisearch
+      mode: "0750"
+
+  - name: 生成 master key
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ meili_master_key }}" ]; then
+          openssl rand -base64 24 | tr -d '\n'
+        else
+          echo "{{ meili_master_key }}"
+        fi
+    register: master_key
+    no_log: true
+
+  - name: 写 systemd unit
+    module: copy
+    args:
+      dest: /etc/systemd/system/meilisearch.service
+      content: |
+        [Unit]
+        Description=Meilisearch
+        After=network.target
+
+        [Service]
+        Type=simple
+        User=meilisearch
+        Group=meilisearch
+        WorkingDirectory={{ meili_data_dir }}
+        Environment="MEILI_NO_ANALYTICS=true"
+        Environment="MEILI_ENV={{ meili_env }}"
+        Environment="MEILI_MASTER_KEY={{ master_key.stdout }}"
+        Environment="MEILI_HTTP_ADDR=127.0.0.1:{{ meili_port }}"
+        Environment="MEILI_DB_PATH={{ meili_data_dir }}/data.ms"
+        Environment="MEILI_DUMPS_DIR={{ meili_data_dir }}/dumps"
+        Environment="MEILI_LOG_LEVEL=INFO"
+        ExecStart=/usr/local/bin/meilisearch
+        Restart=on-failure
+        RestartSec=5
+
+        [Install]
+        WantedBy=multi-user.target
+
+  - name: 启动服务
+    module: service
+    args:
+      name: meilisearch
+      state: started
+      enabled: true
+      daemon_reload: true
+
+  - name: 显示 master key
+    module: shell
+    args:
+      cmd: |
+        echo "================================================="
+        echo "Meilisearch 已就绪"
+        echo "================================================="
+        echo "  URL:        http://127.0.0.1:{{ meili_port }}"
+        echo "  Master Key: {{ master_key.stdout }}"
+        echo ""
+        echo "  curl -H 'Authorization: Bearer {{ master_key.stdout }}' \\"
+        echo "       http://127.0.0.1:{{ meili_port }}/health"
+        echo "================================================="
+
+verify:
+  - name: meilisearch service active
+    cmd: "systemctl is-active --quiet meilisearch"
+    hint: |
+      Meilisearch 没启起来：
+        1. journalctl -u meilisearch -n 50
+        2. 端口被占？sudo ss -tlnp | grep {{ meili_port }}
+        3. 数据目录权限？ls -la {{ meili_data_dir }}
+
+  - name: meilisearch responds
+    cmd: "curl -fsS http://127.0.0.1:{{ meili_port }}/health"
+    hint: "Meilisearch 健康检查失败。等 5 秒后重试或看日志。"

@@ -1,0 +1,134 @@
+# Playbook: Caddy Web 服务器
+#
+# Caddy 是 Go 写的 web 服务器，最大特点：自动 HTTPS（内置 Let's Encrypt 集成）+ 极简配置。
+# 适合替代 nginx 做新项目的 web/反代——3 行 Caddyfile 完成 nginx 50 行的事。
+name: Install Caddy web server
+hosts: all
+
+vars:
+  caddy_email: "admin@example.com"
+  caddy_default_site: ""                 # 主站域名（如 example.com）
+  caddy_default_backend: ""              # 反代目标（如 127.0.0.1:3000）；留空 = 仅静态
+
+tasks:
+  - name: 装依赖
+    module: package
+    args:
+      name: ["curl", "ca-certificates", "gnupg"]
+      state: present
+
+  - name: 添加 Caddy 仓库（Ubuntu/Debian）
+    module: shell
+    args:
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1 && [ ! -f /etc/apt/sources.list.d/caddy-stable.list ]; then
+          curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+            | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+          curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+            | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+          sudo apt-get update -qq
+        fi
+      creates: /etc/apt/sources.list.d/caddy-stable.list
+
+  - name: 添加 Caddy 仓库（RHEL/Anolis）
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/caddy-stable.repo ]; then
+          dnf install -y 'dnf-command(copr)'
+          dnf copr enable -y @caddy/caddy
+        fi
+      creates: /etc/yum.repos.d/_copr*caddy*.repo
+
+  - name: 安装 caddy
+    module: package
+    args:
+      name: caddy
+      state: present
+
+  - name: 备份原 Caddyfile
+    module: shell
+    args:
+      cmd: |
+        if [ -f /etc/caddy/Caddyfile ] && [ ! -f /etc/caddy/Caddyfile.envforge.bak ]; then
+          cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.envforge.bak
+        fi
+
+  - name: 写入 Caddyfile
+    module: copy
+    args:
+      dest: /etc/caddy/Caddyfile
+      mode: "0644"
+      content: |
+        {
+            email {{ caddy_email }}
+            # admin off                       # 取消注释禁用 admin API（生产推荐）
+            # local_certs                      # 强制本地自签（开发用）
+        }
+
+        {% if caddy_default_site %}
+        {{ caddy_default_site }} {
+            {% if caddy_default_backend %}
+            reverse_proxy {{ caddy_default_backend }}
+            {% else %}
+            root * /var/www/html
+            file_server
+            {% endif %}
+            encode gzip zstd
+            log {
+                output file /var/log/caddy/access.log {
+                    roll_size 10mb
+                    roll_keep 10
+                }
+                format json
+            }
+        }
+        {% else %}
+        # 占位站点（80 端口）
+        :80 {
+            root * /var/www/html
+            file_server
+            encode gzip
+        }
+        {% endif %}
+
+  - name: 创建日志目录
+    module: file
+    args:
+      path: /var/log/caddy
+      state: directory
+      owner: caddy
+      group: caddy
+      mode: "0755"
+
+  - name: 创建静态根目录
+    module: file
+    args:
+      path: /var/www/html
+      state: directory
+      mode: "0755"
+
+  - name: 校验 Caddyfile 语法
+    module: shell
+    args:
+      cmd: caddy validate --config /etc/caddy/Caddyfile
+
+  - name: 启用 + 启动 caddy
+    module: service
+    args:
+      name: caddy
+      state: started
+      enabled: true
+
+verify:
+  - name: caddy is active
+    cmd: "systemctl is-active --quiet caddy"
+    hint: |
+      Caddy 没启起来。
+        1. 配置语法：caddy validate --config /etc/caddy/Caddyfile
+        2. 端口被占：sudo ss -tlnp | grep -E ':(80|443) '
+        3. 日志：sudo journalctl -u caddy -n 50
+
+  - name: caddy listening 80
+    cmd: "ss -tlnp | grep -q ':80 '"
+    hint: "Caddy 没在监听 80。检查 Caddyfile 是否含 :80 块。"

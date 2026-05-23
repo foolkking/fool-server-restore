@@ -1,0 +1,236 @@
+# Playbook: 自托管邮件全栈
+#
+# docker-mailserver + Roundcube webmail + Caddy 自动 HTTPS。
+# 一键起完整邮件服务（发 / 收 / 网页版 / 反垃圾 / DKIM / DMARC）。
+name: Install self-hosted mail stack
+hosts: all
+
+vars:
+  ms_mail_hostname: "mail.example.com"
+  ms_mail_domain: "example.com"
+  ms_webmail_hostname: "webmail.example.com"
+  ms_postmaster_email: "postmaster@example.com"
+  ms_data_dir: /opt/mail-stack
+  ms_acme_email: "admin@example.com"      # Caddy LE 注册邮箱
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 关键端口预检（25 / 80 / 143 / 443 / 465 / 587 / 993）
+    module: shell
+    args:
+      cmd: |
+        for p in 25 80 143 443 465 587 993; do
+          if ss -tlnp 2>/dev/null | grep -q ":$p "; then
+            echo "WARN: 端口 $p 占用："
+            ss -tlnp | grep ":$p "
+          fi
+        done
+
+        # 系统 postfix / nginx / apache 冲突
+        for svc in postfix sendmail nginx apache2 httpd; do
+          if systemctl is-active $svc >/dev/null 2>&1; then
+            echo "ERROR: 系统 $svc 在跑，停掉先："
+            echo "  sudo systemctl disable --now $svc"
+            exit 1
+          fi
+        done
+    failed_when: false
+
+  - name: 创建目录
+    module: file
+    args:
+      path: "{{ ms_data_dir }}/{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - mailserver-data
+      - mailserver-state
+      - mailserver-logs
+      - mailserver-config
+      - roundcube-data
+      - caddy-data
+      - caddy-config
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ ms_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          mailserver:
+            image: ghcr.io/docker-mailserver/docker-mailserver:latest
+            container_name: mailserver
+            hostname: {{ ms_mail_hostname }}
+            restart: unless-stopped
+            cap_add:
+              - NET_ADMIN
+            ports:
+              - "25:25"
+              - "143:143"
+              - "465:465"
+              - "587:587"
+              - "993:993"
+            volumes:
+              - {{ ms_data_dir }}/mailserver-data:/var/mail
+              - {{ ms_data_dir }}/mailserver-state:/var/mail-state
+              - {{ ms_data_dir }}/mailserver-logs:/var/log/mail
+              - {{ ms_data_dir }}/mailserver-config:/tmp/docker-mailserver
+              - {{ ms_data_dir }}/caddy-data:/etc/letsencrypt:ro
+              - /etc/localtime:/etc/localtime:ro
+            environment:
+              ENABLE_RSPAMD: 1
+              ENABLE_OPENDKIM: 0
+              ENABLE_OPENDMARC: 0
+              ENABLE_POLICYD_SPF: 1
+              ENABLE_FAIL2BAN: 1
+              ENABLE_CLAMAV: 0
+              POSTMASTER_ADDRESS: "{{ ms_postmaster_email }}"
+              SSL_TYPE: manual
+              SSL_CERT_PATH: /etc/letsencrypt/certificates/{{ ms_mail_hostname }}.crt
+              SSL_KEY_PATH: /etc/letsencrypt/certificates/{{ ms_mail_hostname }}.key
+              SPOOF_PROTECTION: 1
+              MOVE_SPAM_TO_JUNK: 1
+              ONE_DIR: 1
+
+          roundcube:
+            image: roundcube/roundcubemail:latest
+            container_name: roundcube
+            restart: unless-stopped
+            depends_on:
+              - mailserver
+            volumes:
+              - {{ ms_data_dir }}/roundcube-data:/var/roundcube/db
+            environment:
+              ROUNDCUBEMAIL_DEFAULT_HOST: "ssl://mailserver"
+              ROUNDCUBEMAIL_DEFAULT_PORT: 993
+              ROUNDCUBEMAIL_SMTP_SERVER: "tls://mailserver"
+              ROUNDCUBEMAIL_SMTP_PORT: 587
+              ROUNDCUBEMAIL_PLUGINS: "archive,zipdownload,managesieve"
+              ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE: 25M
+
+          caddy:
+            image: caddy:latest
+            container_name: caddy
+            restart: unless-stopped
+            ports:
+              - "80:80"
+              - "443:443"
+            volumes:
+              - {{ ms_data_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
+              - {{ ms_data_dir }}/caddy-data:/data
+              - {{ ms_data_dir }}/caddy-config:/config
+
+  - name: 写入 Caddyfile
+    module: copy
+    args:
+      dest: "{{ ms_data_dir }}/Caddyfile"
+      mode: "0644"
+      content: |
+        {
+            email {{ ms_acme_email }}
+        }
+
+        # webmail 反代到 roundcube
+        {{ ms_webmail_hostname }} {
+            reverse_proxy roundcube:80
+        }
+
+        # 邮件服务器 hostname 也走 caddy（拿 LE 证书 + 简单状态页）
+        {{ ms_mail_hostname }} {
+            respond "Mail server: see docker-mailserver docs" 200
+        }
+
+  - name: 启动栈
+    module: shell
+    args:
+      cmd: |
+        cd {{ ms_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等 Caddy 拿到证书（首次签发约 30s）
+    module: shell
+    args:
+      cmd: |
+        echo "等待 Caddy 签发 LE 证书..."
+        for i in $(seq 1 30); do
+          if [ -f {{ ms_data_dir }}/caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/{{ ms_mail_hostname }}/{{ ms_mail_hostname }}.crt ]; then
+            echo "OK: 证书已签"
+            # 链到 docker-mailserver 期望的位置
+            sudo ln -sf \
+              {{ ms_data_dir }}/caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/{{ ms_mail_hostname }} \
+              {{ ms_data_dir }}/caddy-data/certificates 2>/dev/null || true
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "WARN: 证书未签出 — 检查 DNS A 记录指向本机 + 80 端口出方向通"
+
+  - name: 重启 mailserver 加载证书
+    module: shell
+    args:
+      cmd: |
+        docker restart mailserver
+        sleep 10
+    failed_when: false
+
+  - name: 显示后续步骤
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Mail Stack 已部署 — 以下步骤必须人工完成"
+        echo "===================================================================="
+        echo ""
+        echo "1. 配 DNS（不配等于没装）："
+        echo "   A      {{ ms_mail_hostname }}            $(curl -s ifconfig.me)"
+        echo "   A      {{ ms_webmail_hostname }}         $(curl -s ifconfig.me)"
+        echo "   MX     {{ ms_mail_domain }}              {{ ms_mail_hostname }}    (优先级 10)"
+        echo "   PTR    $(curl -s ifconfig.me)             {{ ms_mail_hostname }}     (VPS 控制台改)"
+        echo "   SPF    {{ ms_mail_domain }}              \"v=spf1 mx ~all\""
+        echo "   DMARC  _dmarc.{{ ms_mail_domain }}      \"v=DMARC1; p=quarantine; rua=mailto:{{ ms_postmaster_email }}\""
+        echo ""
+        echo "2. 加用户："
+        echo "   docker exec -it mailserver setup email add user1@{{ ms_mail_domain }}"
+        echo "   docker exec -it mailserver setup email add {{ ms_postmaster_email }}"
+        echo ""
+        echo "3. 生 DKIM key（含 DNS 指引）："
+        echo "   docker exec -it mailserver setup config dkim"
+        echo "   cat {{ ms_data_dir }}/mailserver-config/opendkim/keys/{{ ms_mail_domain }}/mail.txt"
+        echo "   把内容加到 DNS：mail._domainkey.{{ ms_mail_domain }}（TXT 记录）"
+        echo ""
+        echo "4. 测试："
+        echo "   - 浏览器: https://{{ ms_webmail_hostname }} 登录 user1@{{ ms_mail_domain }}"
+        echo "   - 发邮件：发到 https://www.mail-tester.com 拿到的临时地址"
+        echo "   - 看分数（< 8 分必进垃圾箱，需调整 DNS）"
+        echo ""
+        echo "===================================================================="
+
+verify:
+  - name: mailserver running
+    cmd: "docker ps --filter name=mailserver --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "mailserver 没跑。docker logs mailserver"
+
+  - name: roundcube running
+    cmd: "docker ps --filter name=roundcube --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Roundcube 没跑。docker logs roundcube"
+
+  - name: caddy running
+    cmd: "docker ps --filter name=caddy --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Caddy 没跑。docker logs caddy"
+
+  - name: smtp port 25 listening
+    cmd: "ss -tlnp 2>/dev/null | grep -q ':25 '"
+    hint: "端口 25 没监听。检查 docker compose ports + 防火墙。"
+
+  - name: https port 443 listening
+    cmd: "ss -tlnp 2>/dev/null | grep -q ':443 '"
+    hint: "端口 443 没监听。检查 Caddy 容器 + 防火墙。"

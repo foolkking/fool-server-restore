@@ -1,0 +1,46 @@
+{
+  "nd_music_dir": {
+    "type": "string",
+    "label": "音乐库目录",
+    "labelEn": "Music library directory",
+    "default": "/srv/music",
+    "validate": "^/[a-zA-Z0-9_/.-]*$",
+    "help": "音乐文件所在目录（绝对路径）。子目录递归扫描。**只读挂载**——Navidrome 不会修改你的文件。建议 NAS / 大盘挂载点。",
+    "helpEn": "Music files directory (absolute path). Subdirs scanned recursively. **Mounted read-only**—Navidrome won't modify your files."
+  },
+  "nd_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/navidrome",
+    "help": "存数据库（SQLite，含元数据缓存 + 用户 + 播放历史）+ 缩略图缓存。备份此目录 = 备份 Navidrome 配置（不含音乐文件）。",
+    "helpEn": "Stores SQLite (metadata cache + users + history) + thumbnail cache."
+  },
+  "nd_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 4533,
+    "help": "Navidrome HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Navidrome HTTP port (127.0.0.1 only)."
+  },
+  "nd_admin_user": {
+    "type": "string",
+    "label": "Admin 用户名（首次访问时填）",
+    "labelEn": "Admin username (for first setup)",
+    "default": "admin",
+    "validate": "^[a-zA-Z0-9_-]{3,32}$",
+    "help": "Navidrome 首次访问 Web UI 时会要求创建 admin。本字段是建议值——届时按提示输入。",
+    "helpEn": "Navidrome prompts for admin creation on first Web UI visit. Suggested value."
+  },
+  "nd_admin_password": {
+    "type": "password",
+    "label": "Admin 密码（首次访问时填）",
+    "labelEn": "Admin password (for first setup)",
+    "default": "",
+    "generate_length": 16,
+    "reveal_after_run": true,
+    "help": "Admin 密码。留空 = 自动生成 16 位（运行结束日志显示一次）—— 首次 Web UI 访问时复制粘贴用。",
+    "helpEn": "Admin password. Empty = auto-generate 16-char (paste at first Web UI visit)."
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "k3s_cluster_init_mode": {
+    "type": "choice",
+    "label": "集群模式",
+    "labelEn": "Cluster mode",
+    "default": "single",
+    "options": [
+      { "value": "single", "label": "single — 单机集群（最简单，homelab/CI）" },
+      { "value": "server", "label": "server — 多节点集群的 server（control plane）" },
+      { "value": "agent", "label": "agent — 加入现有集群的 worker 节点" }
+    ],
+    "help": "single = 单机所有事情都本机跑（推荐家庭 / 学习）。server = 多机集群的 control plane。agent = worker 节点，需填 k3s_server_url + k3s_token。",
+    "helpEn": "single = single-node cluster (recommended for home/learning). server = control plane in multi-node. agent = worker, requires k3s_server_url + k3s_token."
+  },
+  "k3s_token": {
+    "type": "password",
+    "label": "Cluster Token（agent 模式必填 / server 多节点时填）",
+    "labelEn": "Cluster token",
+    "default": "",
+    "help": "single 模式：留空（自动生成）。server 多节点：自定义一个长 token（其他节点用此 token join）。agent：填 server 节点 /var/lib/rancher/k3s/server/node-token 的内容。",
+    "helpEn": "single: leave empty (auto-generate). server multi-node: set a long token. agent: paste from server's /var/lib/rancher/k3s/server/node-token."
+  },
+  "k3s_server_url": {
+    "type": "string",
+    "label": "Server URL（仅 agent 模式）",
+    "labelEn": "Server URL (agent mode only)",
+    "default": "",
+    "placeholder": "https://10.0.0.1:6443",
+    "help": "仅 agent 模式填——control plane 的 API URL。",
+    "helpEn": "Agent mode only—control plane API URL."
+  },
+  "k3s_disable_components": {
+    "type": "string",
+    "label": "禁用的内置组件",
+    "labelEn": "Disabled built-in components",
+    "default": "traefik",
+    "help": "K3s 默认含一些组件，自托管常需禁用：traefik（与 nginx 冲突），servicelb（裸金属用 metallb），local-storage（用其他 storage class），coredns（用外部 DNS）。多个用逗号。",
+    "helpEn": "K3s bundles components self-hosters often disable: traefik (conflicts with nginx), servicelb, local-storage, coredns. Comma-separated."
+  },
+  "k3s_cluster_cidr": {
+    "type": "string",
+    "label": "Pod 网段",
+    "labelEn": "Pod CIDR",
+    "default": "10.42.0.0/16",
+    "validate": "^\\d+\\.\\d+\\.\\d+\\.\\d+/\\d+$",
+    "help": "Pod 用的 IP 段。**避免与你的内网段冲突**（如内网是 10.42.0.0/24 就改其它）。默认 10.42.0.0/16 ≈ 65k 个 IP。",
+    "helpEn": "Pod IP range. **Avoid conflicts with your LAN range**. Default 10.42.0.0/16 = ~65k IPs."
+  },
+  "k3s_service_cidr": {
+    "type": "string",
+    "label": "Service 网段",
+    "labelEn": "Service CIDR",
+    "default": "10.43.0.0/16",
+    "validate": "^\\d+\\.\\d+\\.\\d+\\.\\d+/\\d+$",
+    "help": "ClusterIP service 用的 IP 段。同样避免与内网冲突。",
+    "helpEn": "ClusterIP service range. Avoid LAN conflicts."
+  },
+  "k3s_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/var/lib/rancher/k3s",
+    "help": "K3s 状态 + SQLite（默认）/ etcd（大集群）+ 容器数据。**备份此目录** = 备份完整集群状态。",
+    "helpEn": "K3s state + SQLite (default) / etcd (large clusters) + container data. **Back up this dir** = full cluster state."
+  }
+}

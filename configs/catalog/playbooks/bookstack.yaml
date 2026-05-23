@@ -1,0 +1,140 @@
+# Playbook: BookStack 文档平台
+#
+# BookStack 是层级化技术文档（书 → 章节 → 页面）。Docker compose 部署 + 内嵌 MariaDB。
+name: Install BookStack (Docker)
+hosts: all
+
+vars:
+  bookstack_domain: "bookstack.example.com"
+  bookstack_port: 6875
+  bookstack_db_password: ""
+  bookstack_data_dir: /opt/bookstack
+
+tasks:
+  - name: Docker check
+    module: shell
+    args:
+      cmd: command -v docker && docker info >/dev/null 2>&1
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ bookstack_port }} "; then
+          echo "WARN: Port {{ bookstack_port }} already in use"
+        fi
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ item }}"
+      state: directory
+      mode: "0750"
+    loop:
+      - "{{ bookstack_data_dir }}"
+      - "{{ bookstack_data_dir }}/app-data"
+      - "{{ bookstack_data_dir }}/db-data"
+
+  - name: 生成 DB 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ bookstack_db_password }}" ]; then
+          openssl rand -base64 24 | tr -d '\n'
+        else
+          echo "{{ bookstack_db_password }}"
+        fi
+    register: db_pass
+    no_log: true
+
+  - name: 写 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ bookstack_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          bookstack:
+            image: lscr.io/linuxserver/bookstack:latest
+            container_name: bookstack
+            restart: unless-stopped
+            depends_on:
+              db:
+                condition: service_healthy
+            environment:
+              PUID: 1000
+              PGID: 1000
+              APP_URL: "https://{{ bookstack_domain }}"
+              DB_HOST: db
+              DB_PORT: 3306
+              DB_USERNAME: bookstack
+              DB_PASSWORD: "{{ db_pass.stdout }}"
+              DB_DATABASE: bookstackapp
+            volumes:
+              - {{ bookstack_data_dir }}/app-data:/config
+            ports:
+              - "127.0.0.1:{{ bookstack_port }}:80"
+
+          db:
+            image: lscr.io/linuxserver/mariadb:latest
+            container_name: bookstack-db
+            restart: unless-stopped
+            environment:
+              PUID: 1000
+              PGID: 1000
+              MYSQL_ROOT_PASSWORD: "{{ db_pass.stdout }}"
+              MYSQL_DATABASE: bookstackapp
+              MYSQL_USER: bookstack
+              MYSQL_PASSWORD: "{{ db_pass.stdout }}"
+            volumes:
+              - {{ bookstack_data_dir }}/db-data:/config
+            healthcheck:
+              test: ["CMD-SHELL", "mariadb -ubookstack -p{{ db_pass.stdout }} -e 'SELECT 1' bookstackapp"]
+              interval: 10s
+              timeout: 5s
+              retries: 10
+
+  - name: 启动栈
+    module: shell
+    args:
+      cmd: |
+        cd {{ bookstack_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动（首次 2-3 分钟）
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 90); do
+          if curl -fsS http://127.0.0.1:{{ bookstack_port }}/login >/dev/null 2>&1; then
+            echo "OK"
+            exit 0
+          fi
+          sleep 2
+        done
+        docker logs --tail 50 bookstack
+        exit 1
+
+  - name: 显示登录信息
+    module: shell
+    args:
+      cmd: |
+        echo "============================================"
+        echo "BookStack 已就绪"
+        echo "============================================"
+        echo "  URL:      http://$(hostname -I | awk '{print $1}'):{{ bookstack_port }}"
+        echo "  Default:  admin@admin.com / password"
+        echo ""
+        echo "首次登录后立刻改密码！"
+        echo "Settings → Users → admin → 改邮箱 + 密码"
+        echo "============================================"
+
+verify:
+  - name: bookstack container running
+    cmd: "docker ps --filter name=bookstack --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "BookStack 容器没起。docker logs bookstack"
+
+  - name: bookstack reachable
+    cmd: "curl -fsS http://127.0.0.1:{{ bookstack_port }}/login"
+    hint: "首次启动 2-3 分钟（DB migration），等等再试。"

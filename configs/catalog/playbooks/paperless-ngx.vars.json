@@ -1,0 +1,72 @@
+{
+  "pn_admin_user": {
+    "type": "string",
+    "label": "Admin 用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "validate": "^[a-zA-Z0-9_-]{3,32}$",
+    "help": "Paperless admin 账号。**仅首次启动**时创建——之后改密码 / 加用户在 Web UI（Settings → Users）。",
+    "helpEn": "Paperless admin account. Only created on first start—change password / add users in Web UI."
+  },
+  "pn_admin_password": {
+    "type": "password",
+    "label": "Admin 密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 18,
+    "reveal_after_run": true,
+    "help": "Admin 密码。留空 = 自动生成 18 位（运行结束日志显示一次）。",
+    "helpEn": "Admin password. Empty = auto-generate 18-char."
+  },
+  "pn_db_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 24,
+    "help": "Paperless 内部 PG 密码。",
+    "helpEn": "Internal PG password."
+  },
+  "pn_secret_key": {
+    "type": "password",
+    "label": "Django Secret Key",
+    "labelEn": "Django secret key",
+    "default": "",
+    "generate_length": 64,
+    "help": "Django 应用密钥（session / CSRF / 等）。改了 = 用户被踢下线。",
+    "helpEn": "Django app secret. Changing logs out all users."
+  },
+  "pn_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 8000,
+    "help": "Paperless HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Paperless HTTP port (127.0.0.1 only)."
+  },
+  "pn_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/paperless-ngx",
+    "help": "**重要**——所有原文档 + OCR 文本 + 缩略图 + PG 全在这里。**每日备份**——丢了 = 所有扫描的文档没了。",
+    "helpEn": "**Critical**—all originals + OCR text + thumbnails + PG. **Back up daily**."
+  },
+  "pn_ocr_languages": {
+    "type": "string",
+    "label": "OCR 语言",
+    "labelEn": "OCR languages",
+    "default": "eng+chi_sim",
+    "help": "Tesseract 语言代码。多个用 +。常见：eng（英文）/ chi_sim（简中）/ chi_tra（繁中）/ jpn（日文）/ kor（韩文）/ deu（德文）/ fra（法文）。语言越多 OCR 越慢——按需选。",
+    "helpEn": "Tesseract language codes. Multiple with +. Examples: eng / chi_sim / chi_tra / jpn / deu / fra. More languages = slower OCR."
+  },
+  "pn_timezone": {
+    "type": "string",
+    "label": "时区",
+    "labelEn": "Timezone",
+    "default": "Asia/Shanghai",
+    "validate": "^[A-Za-z]+/[A-Za-z_]+$",
+    "help": "IANA 时区。例：Asia/Shanghai / America/New_York / Europe/Berlin。影响文档时间显示 + cron 任务时间。",
+    "helpEn": "IANA timezone. E.g., Asia/Shanghai / America/New_York. Affects displayed times + cron schedules."
+  }
+}

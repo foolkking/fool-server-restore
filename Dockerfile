@@ -1,10 +1,18 @@
 # EnvForge — Multi-stage Dockerfile
-# Stage 1: Build
+# Build: docker compose build
+# Run:   docker compose up -d
+
+# ---------- Stage 1: Build ----------
 FROM node:20-alpine AS builder
+
+# Allow overriding npm registry at build time (e.g. for users in restricted networks)
+ARG NPM_REGISTRY=https://registry.npmjs.org
+RUN npm config set registry $NPM_REGISTRY
 
 WORKDIR /app
 
-# Copy workspace manifests first for better layer caching
+# Copy workspace manifests first for better layer caching.
+# Changes to source code below won't invalidate the npm install layer.
 COPY package.json package-lock.json ./
 COPY packages/core/package.json ./packages/core/
 COPY packages/collectors/package.json ./packages/collectors/
@@ -13,7 +21,7 @@ COPY packages/cli/package.json ./packages/cli/
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 
-# Install all dependencies
+# Install ALL dependencies (build needs devDeps like typescript, vite)
 RUN npm ci --ignore-scripts
 
 # Copy source
@@ -23,15 +31,23 @@ COPY apps/api/ ./apps/api/
 COPY apps/web/ ./apps/web/
 COPY configs/ ./configs/
 
-# Build all workspaces
+# Build all workspaces in dependency order
 RUN npm run build --workspace @fool/core \
  && npm run build --workspace @fool/collectors \
  && npm run build --workspace @fool/restorers \
  && npm run build --workspace @fool/api \
  && npm run build --workspace @fool/web
 
-# Stage 2: Production image
+# ---------- Stage 2: Production image ----------
 FROM node:20-alpine AS production
+
+ARG NPM_REGISTRY=https://registry.npmjs.org
+RUN npm config set registry $NPM_REGISTRY
+
+# Tools needed at runtime:
+#   wget — used by HEALTHCHECK
+#   tini — proper PID 1 / signal handling for graceful shutdown
+RUN apk add --no-cache wget tini
 
 WORKDIR /app
 
@@ -46,26 +62,28 @@ COPY apps/web/package.json ./apps/web/
 
 RUN npm ci --omit=dev --ignore-scripts
 
-# Copy built artifacts
+# Copy built artifacts from builder stage
 COPY --from=builder /app/packages/core/dist ./packages/core/dist
 COPY --from=builder /app/packages/collectors/dist ./packages/collectors/dist
 COPY --from=builder /app/packages/restorers/dist ./packages/restorers/dist
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/web/dist ./apps/web/dist
 
-# Copy catalog configs (Playbook YAMLs and MD files)
+# Copy catalog assets (Playbook YAMLs, vars schemas, MD guides — needed at runtime)
 COPY configs/ ./configs/
 
-# Create data directory (will be overridden by volume mount)
+# Pre-create data directories with correct ownership (will be overlaid by volume mount)
 RUN mkdir -p /app/data /app/data/keys /app/data/snapshots
 
 # Non-root user for security
 RUN addgroup -S envforge && adduser -S envforge -G envforge \
- && chown -R envforge:envforge /app/data
+ && chown -R envforge:envforge /app/data \
+ && mkdir -p /home/envforge/.ssh \
+ && chown -R envforge:envforge /home/envforge
 
 USER envforge
 
-# Environment defaults (override via docker-compose or -e flags)
+# Defaults — override via docker-compose environment or -e flags
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=5173 \
@@ -78,7 +96,9 @@ ENV NODE_ENV=production \
 
 EXPOSE 5173
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -qO- http://localhost:5173/api/health || exit 1
 
+# Use tini for graceful SIGTERM handling
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "apps/api/dist/server.js"]

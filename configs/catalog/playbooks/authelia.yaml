@@ -1,0 +1,287 @@
+# Playbook: Authelia 轻量 SSO（forward-auth）
+#
+# 单容器 SQLite + 轻量 forward-auth 模式 —— 给 nginx / Traefik / Caddy 一行
+# auth_request 就能保护任意应用。~50MB RAM。
+name: Install Authelia forward-auth SSO
+hosts: all
+
+vars:
+  ah_domain: "auth.example.com"
+  ah_admin_user: "admin"
+  ah_admin_password: ""                 # 留空 = 自动生成 24 位
+  ah_jwt_secret: ""                     # 留空 = 自动生成
+  ah_session_secret: ""                 # 留空 = 自动生成
+  ah_storage_secret: ""                 # 留空 = 自动生成
+  ah_port: 9091
+  ah_data_dir: /opt/authelia
+  ah_default_protected_domain: "example.com"
+
+tasks:
+  - name: 验证 Docker 可用
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2
+          exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ ah_port }} "; then
+          echo "WARN: Port {{ ah_port }} 占用："
+          ss -tlnp | grep ":{{ ah_port }} "
+        fi
+    failed_when: false
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ ah_data_dir }}/{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - config
+      - data
+
+  - name: 生成 admin 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ ah_admin_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ ah_admin_password }}"
+        fi
+    register: ah_pass
+    no_log: true
+
+  - name: 计算 admin 密码 argon2id hash（Authelia 推荐）
+    module: shell
+    args:
+      cmd: |
+        # 用 docker 跑 authelia 算 hash
+        docker run --rm authelia/authelia:latest \
+          authelia crypto hash generate argon2 --password "{{ ah_pass.stdout }}" 2>/dev/null \
+          | grep -oP 'Digest:\s*\K.*'
+    register: ah_pass_hash
+    no_log: true
+
+  - name: 生成 JWT secret
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ ah_jwt_secret }}" ]; then
+          openssl rand -hex 32
+        else
+          echo "{{ ah_jwt_secret }}"
+        fi
+    register: ah_jwt
+    no_log: true
+
+  - name: 生成 session secret
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ ah_session_secret }}" ]; then
+          openssl rand -hex 32
+        else
+          echo "{{ ah_session_secret }}"
+        fi
+    register: ah_session
+    no_log: true
+
+  - name: 生成 storage encryption key
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ ah_storage_secret }}" ]; then
+          openssl rand -hex 32
+        else
+          echo "{{ ah_storage_secret }}"
+        fi
+    register: ah_storage
+    no_log: true
+
+  - name: 写入 users_database.yml（文件后端）
+    module: copy
+    args:
+      dest: "{{ ah_data_dir }}/config/users_database.yml"
+      mode: "0640"
+      content: |
+        users:
+          {{ ah_admin_user }}:
+            disabled: false
+            displayname: "Administrator"
+            password: "{{ ah_pass_hash.stdout }}"
+            email: admin@{{ ah_default_protected_domain }}
+            groups:
+              - admins
+              - dev
+
+  - name: 写入主配置 configuration.yml
+    module: copy
+    args:
+      dest: "{{ ah_data_dir }}/config/configuration.yml"
+      mode: "0640"
+      content: |
+        ##
+        ## Authelia configuration
+        ##
+        server:
+          address: 'tcp://0.0.0.0:9091'
+          buffers:
+            read: 4096
+            write: 4096
+
+        log:
+          level: info
+          format: json
+
+        totp:
+          issuer: {{ ah_default_protected_domain }}
+          algorithm: sha1
+          digits: 6
+          period: 30
+          skew: 1
+
+        webauthn:
+          disable: false
+          display_name: Authelia
+          attestation_conveyance_preference: indirect
+          user_verification: preferred
+
+        authentication_backend:
+          file:
+            path: /config/users_database.yml
+            password:
+              algorithm: argon2id
+              iterations: 3
+              memory: 65536
+              parallelism: 4
+
+        access_control:
+          default_policy: deny
+          rules:
+            # Authelia 自身免认证（否则递归）
+            - domain: '{{ ah_domain }}'
+              policy: bypass
+            # 默认所有受保护域子域名要求 2FA
+            - domain: '*.{{ ah_default_protected_domain }}'
+              policy: two_factor
+
+        session:
+          name: authelia_session
+          same_site: lax
+          inactivity: 5m
+          expiration: 1h
+          remember_me: 1M
+          cookies:
+            - domain: '{{ ah_default_protected_domain }}'
+              authelia_url: 'https://{{ ah_domain }}'
+          secret: "{{ ah_session.stdout }}"
+
+        regulation:
+          max_retries: 3
+          find_time: 2m
+          ban_time: 5m
+
+        storage:
+          encryption_key: "{{ ah_storage.stdout }}"
+          local:
+            path: /data/db.sqlite3
+
+        notifier:
+          disable_startup_check: false
+          filesystem:
+            filename: /data/notification.txt
+
+        identity_validation:
+          reset_password:
+            jwt_secret: "{{ ah_jwt.stdout }}"
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ ah_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          authelia:
+            image: authelia/authelia:latest
+            container_name: authelia
+            restart: unless-stopped
+            volumes:
+              - {{ ah_data_dir }}/config:/config:ro
+              - {{ ah_data_dir }}/data:/data
+            ports:
+              - "127.0.0.1:{{ ah_port }}:9091"
+            environment:
+              TZ: "UTC"
+            healthcheck:
+              test: ["CMD-SHELL", "authelia healthcheck --config /config/configuration.yml"]
+              interval: 30s
+              timeout: 5s
+              retries: 3
+
+  - name: 启动 Authelia
+    module: shell
+    args:
+      cmd: |
+        cd {{ ah_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待 Authelia ready
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:{{ ah_port }}/api/health >/dev/null 2>&1; then
+            echo "OK: Authelia ready"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: Authelia not ready"
+        docker logs --tail 50 authelia
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Authelia 已就绪"
+        echo "===================================================================="
+        echo "  本机 URL:      http://127.0.0.1:{{ ah_port }}"
+        echo "  公网 URL:      https://{{ ah_domain }} (需配反代)"
+        echo "  Admin 用户:    {{ ah_admin_user }}"
+        echo "  Admin 密码:    {{ ah_pass.stdout }}"
+        echo ""
+        echo "  TOTP issuer:   {{ ah_default_protected_domain }}"
+        echo "  保护域:        *.{{ ah_default_protected_domain }}"
+        echo ""
+        echo "下一步:"
+        echo "  1. 反代 {{ ah_domain }} → 127.0.0.1:{{ ah_port }} （nginx + LE）"
+        echo "  2. 在保护应用的 nginx config 加 forward-auth 模块（见 authelia.md 模板）"
+        echo "  3. 首次访问被保护应用 → 跳到 Authelia 登录 → 设 TOTP / WebAuthn"
+        echo "===================================================================="
+
+verify:
+  - name: authelia container running
+    cmd: "docker ps --filter name=authelia --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: |
+      Authelia 没起：
+        docker logs authelia | tail -50
+        最常见：configuration.yml 语法错（YAML 严格） / secret 长度 < 32
+
+  - name: authelia api health
+    cmd: "curl -fsS http://127.0.0.1:{{ ah_port }}/api/health -o /dev/null"
+    hint: "API 不响应。docker logs authelia 看启动错误。"
+
+  - name: config files exist
+    cmd: "test -f {{ ah_data_dir }}/config/configuration.yml && test -f {{ ah_data_dir }}/config/users_database.yml"
+    hint: "配置文件丢失。检查 {{ ah_data_dir }}/config/ 目录权限。"

@@ -1,0 +1,211 @@
+# Playbook: AdGuard Home
+#
+# DNS 广告屏蔽 + 加密 DNS（DoH / DoT / DoQ 服务端）+ 现代 Web UI。
+# 是 Pi-hole 的现代替代品（同类，二选一）。
+#
+# 部署方式：Docker。需先装 docker-host-profile。
+name: Install AdGuard Home (Docker)
+hosts: all
+
+vars:
+  agh_admin_user: "admin"
+  agh_admin_password: ""               # 留空 = 自动生成 24 位
+  agh_web_port: 8080                   # Web UI 端口（127.0.0.1 only）
+  agh_dns_port: 53                     # DNS 服务端口（必须 53，否则客户端要带端口号）
+  agh_data_dir: /opt/adguard-home
+
+tasks:
+  - name: 验证 Docker 可用
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed. Run docker-host-profile first." >&2
+          exit 1
+        fi
+
+  - name: 检查端口 53 是否被 systemd-resolved 占用（最常见冲突）
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q "127.0.0.53:53"; then
+          echo "WARN: systemd-resolved 占用 127.0.0.53:53"
+          echo "若 AdGuard 也要监听 :53 需要先关闭它："
+          echo "  sudo systemctl disable --now systemd-resolved"
+          echo "  sudo rm /etc/resolv.conf"
+          echo "  sudo bash -c 'echo nameserver 1.1.1.1 > /etc/resolv.conf'"
+        fi
+    failed_when: false
+
+  - name: 端口预检（Web UI {{ agh_web_port }}）
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ agh_web_port }} "; then
+          echo "WARN: Web port {{ agh_web_port }} 占用："
+          ss -tlnp | grep ":{{ agh_web_port }} "
+        fi
+    failed_when: false
+
+  - name: 创建数据 + 配置目录
+    module: file
+    args:
+      path: "{{ agh_data_dir }}/{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - work
+      - conf
+
+  - name: 生成 admin 密码（若未填）
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ agh_admin_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ agh_admin_password }}"
+        fi
+    register: agh_pass_value
+    no_log: true
+
+  - name: 计算 bcrypt 密码 hash
+    module: shell
+    args:
+      cmd: |
+        # AdGuard 配置文件需要 bcrypt hash。用 docker 跑 htpasswd
+        docker run --rm httpd:2-alpine htpasswd -nbBC 10 "" "{{ agh_pass_value.stdout }}" 2>/dev/null | tail -n1 | sed 's/^://'
+    register: agh_pass_hash
+    no_log: true
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ agh_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          adguardhome:
+            image: adguard/adguardhome:latest
+            container_name: adguardhome
+            restart: unless-stopped
+            network_mode: host
+            volumes:
+              - {{ agh_data_dir }}/work:/opt/adguardhome/work
+              - {{ agh_data_dir }}/conf:/opt/adguardhome/conf
+            cap_add:
+              - NET_ADMIN
+
+  - name: 写入初始配置（首次运行后 AdGuard 会自动接管 / 修改此文件）
+    module: copy
+    args:
+      dest: "{{ agh_data_dir }}/conf/AdGuardHome.yaml"
+      mode: "0640"
+      content: |
+        bind_host: 0.0.0.0
+        bind_port: {{ agh_web_port }}
+        users:
+          - name: {{ agh_admin_user }}
+            password: {{ agh_pass_hash.stdout }}
+        dns:
+          bind_hosts:
+            - 0.0.0.0
+          port: {{ agh_dns_port }}
+          upstream_dns:
+            - https://dns.cloudflare.com/dns-query
+            - https://dns.google/dns-query
+            - quic://dns.adguard-dns.com
+          bootstrap_dns:
+            - 1.1.1.1
+            - 8.8.8.8
+          enable_dnssec: true
+          edns_client_subnet:
+            enabled: false
+          cache_size: 4194304
+          cache_ttl_min: 60
+        filters:
+          - enabled: true
+            url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
+            name: AdGuard DNS filter
+            id: 1
+          - enabled: true
+            url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt
+            name: AdAway Default Blocklist
+            id: 2
+          - enabled: true
+            url: https://easylist-downloads.adblockplus.org/easyprivacy.txt
+            name: EasyPrivacy
+            id: 3
+        statistics:
+          enabled: true
+          interval: 24h
+        querylog:
+          enabled: true
+          interval: 7d
+        log_level: info
+        schema_version: 27
+
+  - name: 启动 AdGuard Home
+    module: shell
+    args:
+      cmd: |
+        cd {{ agh_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:{{ agh_web_port }}/ >/dev/null 2>&1; then
+            echo "OK: AdGuard Home web is responding"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: AdGuard Home not ready in 60s"
+        docker logs --tail 50 adguardhome
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "AdGuard Home 已就绪"
+        echo "===================================================================="
+        echo "  Web UI:        http://$(hostname -I | awk '{print $1}'):{{ agh_web_port }}/"
+        echo "  Admin user:    {{ agh_admin_user }}"
+        echo "  Admin pass:    {{ agh_pass_value.stdout }}"
+        echo "  DNS port:      {{ agh_dns_port }}"
+        echo ""
+        echo "下一步:"
+        echo "  1. 路由器 DHCP 设置 → DNS 改为本机 IP"
+        echo "  2. 或单设备改 DNS 测试（手机连同 WiFi → DNS = $(hostname -I | awk '{print $1}'))"
+        echo "  3. Web UI → Filters → Custom rules 加自定义屏蔽规则"
+        echo "  4. 加密 DNS：Settings → Encryption — 上传证书启用 DoH/DoT"
+        echo "===================================================================="
+
+verify:
+  - name: AdGuard Home container running
+    cmd: "docker ps --filter name=adguardhome --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: |
+      AdGuard 容器没运行：
+        docker logs adguardhome
+        端口冲突：systemd-resolved 占 53？sudo ss -tlnp | grep :53
+        关闭：sudo systemctl disable --now systemd-resolved
+
+  - name: web ui responsive
+    cmd: "curl -fsS http://127.0.0.1:{{ agh_web_port }}/ -o /dev/null"
+    hint: "Web UI 不响应。等 30 秒后重试；持续不通看 docker logs adguardhome。"
+
+  - name: dns port {{ agh_dns_port }} listening
+    cmd: "ss -ulnp 2>/dev/null | grep -q ':{{ agh_dns_port }} '"
+    hint: |
+      DNS 端口 {{ agh_dns_port }} 没监听。
+      最常见原因：systemd-resolved 抢占了 53。
+        sudo systemctl disable --now systemd-resolved
+        sudo rm /etc/resolv.conf
+        sudo bash -c 'echo nameserver 1.1.1.1 > /etc/resolv.conf'
+        docker restart adguardhome

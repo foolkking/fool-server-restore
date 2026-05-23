@@ -1,0 +1,129 @@
+# Playbook: Valkey 内存数据库
+#
+# Valkey = Redis 7.4 的开源 fork（Linux Foundation 接手）。100% 兼容 Redis 协议。
+# Ubuntu 24.10+ 默认仓库；旧版用二进制 / Docker。
+name: Install Valkey
+hosts: all
+
+vars:
+  valkey_password: ""              # 留空 = 自动 24 位
+  valkey_port: 6380                 # 默认改 6380 避免与 redis 冲突
+  valkey_bind_address: "127.0.0.1"
+  valkey_maxmemory_mb: 512
+  valkey_maxmemory_policy: "allkeys-lru"
+  valkey_appendonly: false
+
+tasks:
+  - name: 检查发行版包名（Ubuntu 24.10+ 才有 valkey 包）
+    module: shell
+    args:
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1; then
+          if apt-cache search valkey-server | grep -q valkey-server; then
+            echo VALKEY_PKG=valkey-server > /tmp/valkey_install.env
+            echo VALKEY_AVAILABLE=true >> /tmp/valkey_install.env
+          else
+            echo VALKEY_PKG="" > /tmp/valkey_install.env
+            echo VALKEY_AVAILABLE=false >> /tmp/valkey_install.env
+          fi
+        elif command -v dnf >/dev/null 2>&1; then
+          if dnf info valkey >/dev/null 2>&1; then
+            echo VALKEY_PKG=valkey > /tmp/valkey_install.env
+            echo VALKEY_AVAILABLE=true >> /tmp/valkey_install.env
+          else
+            echo VALKEY_PKG="" > /tmp/valkey_install.env
+            echo VALKEY_AVAILABLE=false >> /tmp/valkey_install.env
+          fi
+        fi
+        cat /tmp/valkey_install.env
+
+  - name: 安装 valkey（如仓库可用）
+    module: shell
+    args:
+      cmd: |
+        source /tmp/valkey_install.env
+        if [ "$VALKEY_AVAILABLE" = "true" ]; then
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get install -y valkey-server valkey-tools
+          else
+            sudo dnf install -y valkey
+          fi
+          exit 0
+        fi
+        echo "ERROR: valkey 未在仓库可用"
+        echo "请使用 Docker 部署（见 valkey-server.md 模板 G）或手动安装二进制"
+        exit 1
+
+  - name: 生成密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ valkey_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n'
+        else
+          echo "{{ valkey_password }}"
+        fi
+    register: vk_pass
+    no_log: true
+
+  - name: 备份原 valkey.conf
+    module: shell
+    args:
+      cmd: |
+        for CONF in /etc/valkey/valkey.conf /etc/valkey.conf; do
+          if [ -f "$CONF" ] && [ ! -f "$CONF.envforge.bak" ]; then
+            sudo cp "$CONF" "$CONF.envforge.bak"
+          fi
+        done
+
+  - name: 改 bind / port / requirepass / maxmemory（Ubuntu 路径）
+    module: shell
+    args:
+      cmd: |
+        CONF=/etc/valkey/valkey.conf
+        if [ -f "$CONF" ]; then
+          sudo sed -i "s/^bind .*/bind {{ valkey_bind_address }} ::1/" "$CONF"
+          sudo sed -i "s/^port .*/port {{ valkey_port }}/" "$CONF"
+          sudo sed -i "s/^# requirepass .*/requirepass {{ vk_pass.stdout }}/" "$CONF"
+          sudo sed -i "s/^requirepass .*/requirepass {{ vk_pass.stdout }}/" "$CONF"
+          sudo sed -i "s/^# maxmemory .*/maxmemory {{ valkey_maxmemory_mb }}mb/" "$CONF"
+          sudo sed -i "s/^maxmemory .*/maxmemory {{ valkey_maxmemory_mb }}mb/" "$CONF"
+          sudo sed -i "s/^# maxmemory-policy .*/maxmemory-policy {{ valkey_maxmemory_policy }}/" "$CONF"
+          sudo sed -i "s/^maxmemory-policy .*/maxmemory-policy {{ valkey_maxmemory_policy }}/" "$CONF"
+          sudo sed -i "s/^appendonly .*/appendonly {{ 'yes' if valkey_appendonly else 'no' }}/" "$CONF"
+        fi
+
+  - name: 启动 valkey
+    module: service
+    args:
+      name: valkey-server
+      state: started
+      enabled: true
+
+  - name: 显示信息
+    module: shell
+    args:
+      cmd: |
+        echo "============================================"
+        echo "Valkey 已就绪"
+        echo "============================================"
+        echo "  Host:     127.0.0.1:{{ valkey_port }}"
+        echo "  Password: {{ vk_pass.stdout }}"
+        echo ""
+        echo "测试："
+        echo "  valkey-cli -p {{ valkey_port }} -a '{{ vk_pass.stdout }}' ping"
+        echo "============================================"
+
+verify:
+  - name: valkey service running
+    cmd: "systemctl is-active --quiet valkey-server"
+    hint: |
+      Valkey 没起来：
+        1. 系统不支持（Ubuntu 24.10+ 才有 valkey 包）
+           → 用 Docker 部署或装 redis-server 替代
+        2. journalctl -u valkey-server -n 30
+        3. 配置语法 → /etc/valkey/valkey.conf
+
+  - name: valkey ping
+    cmd: "valkey-cli -p {{ valkey_port }} -a '{{ vk_pass.stdout }}' --no-auth-warning ping | grep -q PONG"
+    hint: "Valkey 不响应。检查 bind 是否含 127.0.0.1，密码是否正确。"

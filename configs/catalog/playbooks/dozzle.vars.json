@@ -1,0 +1,37 @@
+{
+  "dz_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 9999,
+    "help": "Dozzle HTTP 端口（仅 127.0.0.1）。生产用反代 + HTTPS。",
+    "helpEn": "Dozzle HTTP port (127.0.0.1 only). Front with reverse proxy + HTTPS."
+  },
+  "dz_admin_user": {
+    "type": "string",
+    "label": "Admin 用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "validate": "^[a-zA-Z0-9_-]{3,32}$",
+    "help": "管理员账号。Dozzle 默认无认证——本 Playbook 配了 simple auth provider。后续加用户编辑 users.yml + 重启容器。",
+    "helpEn": "Admin username. Dozzle ships with no auth—this Playbook enables simple auth provider. Add users by editing users.yml + restart."
+  },
+  "dz_admin_password": {
+    "type": "password",
+    "label": "Admin 密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 16,
+    "reveal_after_run": true,
+    "help": "Admin 密码。留空 = 自动生成 16 位（运行结束日志显示一次）。Dozzle 用 bcrypt hash 存储。",
+    "helpEn": "Admin password. Empty = auto-generate 16-char (shown once). Stored as bcrypt hash."
+  },
+  "dz_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/dozzle",
+    "help": "存 docker-compose.yml + users.yml。Dozzle 自身无持久状态——日志直接读 docker daemon，重启不丢。",
+    "helpEn": "Stores compose + users.yml. Dozzle has no persistent state—reads logs directly from docker daemon."
+  }
+}

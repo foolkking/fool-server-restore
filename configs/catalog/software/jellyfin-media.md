@@ -123,6 +123,40 @@ curl -I http://localhost:8096/web/
 - 媒体文件不会被 EnvForge 上传或同步。
 - 用户信息存在 `/var/lib/jellyfin/`。
 
+## 关键参数调优速查
+
+### 转码并发
+
+| 用户数 | 推荐 CPU | 备注 |
+|---|---|---|
+| 1-2 同时 | 2 vCPU + GPU | 软解 4K 单流即可吃 4 vCPU；GPU 大幅缓解 |
+| 3-5 同时 | 4 vCPU + 强 GPU | 推荐 Intel Quick Sync 6 代+ / NVIDIA T400+ |
+| 10+ 同时 | 8 vCPU + 多卡 | 或预转码到多版本 |
+
+### 比特率限制（Web Dashboard → Playback）
+
+| 网络 | Internet 上限 | LAN 上限 |
+|---|---|---|
+| 100 Mbps 上行 | 20 Mbps（4K 流 ~25Mbps） | 无限 |
+| 50 Mbps 上行 | 10 Mbps（1080p） | – |
+| 20 Mbps 上行 | 4 Mbps（720p） | – |
+
+### 缓存
+
+```ini
+# Web Dashboard → Playback → Direct Play / Stream
+# 启用：Direct Play（不转码，最快）
+# 关闭：Auto-transcode（避免误触发转码）
+```
+
+### 资源占用（无转码）
+
+| 库大小 | RAM | 数据库（SQLite） |
+|---|---|---|
+| 1k 文件 | 200 MB | 50 MB |
+| 10k 文件 | 500 MB | 200 MB |
+| 100k 文件 | 2 GB | 1 GB |
+
 ## 配置文件 / 目录速查
 
 ```

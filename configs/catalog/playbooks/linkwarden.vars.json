@@ -1,0 +1,36 @@
+{
+  "lw_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/linkwarden",
+    "help": "存配置 + PG + 网页归档（截图 / PDF / readability 文本）。**归档文件可能很大** —— 5000 链接 ~50 GB。",
+    "helpEn": "Stores config + PG + archived pages (screenshots/PDFs/readability). **Can grow large**—5k links ≈ 50 GB."
+  },
+  "lw_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 3000,
+    "help": "Linkwarden HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Linkwarden HTTP port (127.0.0.1 only)."
+  },
+  "lw_db_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 18,
+    "help": "Linkwarden 内部 PG 密码。",
+    "helpEn": "Internal PG password."
+  },
+  "lw_nextauth_secret": {
+    "type": "password",
+    "label": "NextAuth secret",
+    "labelEn": "NextAuth secret",
+    "default": "",
+    "generate_length": 64,
+    "help": "NextAuth.js session 加密密钥。改了 = 所有用户被踢下线。",
+    "helpEn": "NextAuth.js session encryption. Changing logs out all users."
+  }
+}

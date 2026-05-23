@@ -1,0 +1,34 @@
+{
+  "ha_port": {
+    "type": "port",
+    "label": "Web UI 端口",
+    "labelEn": "Web UI port",
+    "default": 8123,
+    "help": "Home Assistant Web UI 端口。host network 模式下此端口直接暴露在宿主机所有网卡。",
+    "helpEn": "HA Web UI port. In host network mode this is exposed on all host interfaces."
+  },
+  "ha_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/home-assistant",
+    "help": "HA 配置 + 集成 + 历史数据存储位置。**最关键备份目标**。",
+    "helpEn": "HA config + integrations + history storage. **Critical backup target**."
+  },
+  "ha_timezone": {
+    "type": "string",
+    "label": "时区",
+    "labelEn": "Timezone",
+    "default": "Asia/Shanghai",
+    "help": "影响自动化触发时间和日志。",
+    "helpEn": "Affects automation trigger time and logs."
+  },
+  "ha_use_host_network": {
+    "type": "boolean",
+    "label": "使用 host network 模式",
+    "labelEn": "Use host network mode",
+    "default": true,
+    "help": "true（推荐）= host network，让 HA 自动发现 mDNS/SSDP 局域网设备（HomeKit / Sonos / Roku 等）。false = bridge 模式更安全但需手动配 IP。",
+    "helpEn": "true (recommended) = host network for mDNS/SSDP auto-discovery. false = bridge mode (more secure but manual config needed)."
+  }
+}

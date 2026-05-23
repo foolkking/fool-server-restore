@@ -1,0 +1,84 @@
+{
+  "ss_auth_domain": {
+    "type": "string",
+    "label": "Authelia 域名",
+    "labelEn": "Authelia hostname",
+    "default": "auth.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "auth.example.com",
+    "help": "Authelia 自身域名。**必须是受保护根域的子域**（例：保护 example.com → auth.example.com）。",
+    "helpEn": "Authelia's hostname. **Must be a subdomain of protected root domain**."
+  },
+  "ss_protected_domain": {
+    "type": "string",
+    "label": "受保护根域",
+    "labelEn": "Protected root domain",
+    "default": "example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "所有 *.example.com 子域应用都会要 SSO。Authelia 自己也必须在此根域下（cookie 共享）。",
+    "helpEn": "All *.example.com subdomain apps will require SSO. Authelia must be on same root."
+  },
+  "ss_admin_user": {
+    "type": "string",
+    "label": "Admin 用户名",
+    "labelEn": "Admin username",
+    "default": "admin",
+    "validate": "^[a-zA-Z0-9_-]{3,32}$",
+    "help": "首个管理员。后续加用户编辑 users_database.yml + 重启容器。",
+    "helpEn": "First admin. Add more users by editing users_database.yml + restart."
+  },
+  "ss_admin_password": {
+    "type": "password",
+    "label": "Admin 密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "Admin 密码。留空 = 自动生成 24 位（运行结束日志显示一次）。",
+    "helpEn": "Admin password. Empty = auto-generate 24-char."
+  },
+  "ss_jwt_secret": {
+    "type": "password",
+    "label": "JWT secret",
+    "labelEn": "JWT secret",
+    "default": "",
+    "generate_length": 64,
+    "help": "用于密码重置 JWT 签名。改了 = 已发的重置链接失效。",
+    "helpEn": "JWT signing for password reset. Changing invalidates pending links."
+  },
+  "ss_session_secret": {
+    "type": "password",
+    "label": "Session secret",
+    "labelEn": "Session secret",
+    "default": "",
+    "generate_length": 64,
+    "help": "Session cookie 加密密钥。改了 = 所有用户被踢下线。",
+    "helpEn": "Session cookie encryption. Changing logs out all users."
+  },
+  "ss_storage_secret": {
+    "type": "password",
+    "label": "Storage encryption key",
+    "labelEn": "Storage encryption key",
+    "default": "",
+    "generate_length": 64,
+    "help": "SQLite 中加密 TOTP secret + WebAuthn key 的密钥。**改了 = 所有用户 2FA 失效，必须重新设置**。",
+    "helpEn": "Encrypts TOTP/WebAuthn keys in SQLite. **Changing invalidates all users' 2FA**."
+  },
+  "ss_acme_email": {
+    "type": "string",
+    "label": "Let's Encrypt 注册邮箱",
+    "labelEn": "Let's Encrypt email",
+    "default": "admin@example.com",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Traefik 用此邮箱向 LE 注册 ACME 账号。",
+    "helpEn": "Traefik uses this email for LE ACME account registration."
+  },
+  "ss_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/sso-stack",
+    "help": "存配置 + Authelia SQLite + Redis dump + LE 证书。备份此目录 = 备份完整 SSO 状态。",
+    "helpEn": "Stores config + Authelia SQLite + Redis dump + LE certs. Back up dir = full SSO state."
+  }
+}

@@ -1,0 +1,168 @@
+# Playbook: 自托管多媒体三件套
+#
+# Jellyfin（视频）+ Navidrome（音乐）+ Audiobookshelf（有声书）
+name: Install self-hosted media stack
+hosts: all
+
+vars:
+  sm_data_dir: /opt/selfhost-media
+  sm_movies_dir: /srv/media/movies
+  sm_tvshows_dir: /srv/media/tvshows
+  sm_music_dir: /srv/media/music
+  sm_audiobooks_dir: /srv/media/audiobooks
+  sm_jf_port: 8096
+  sm_nd_port: 4533
+  sm_ab_port: 13378
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        for p in {{ sm_jf_port }} {{ sm_nd_port }} {{ sm_ab_port }}; do
+          if ss -tlnp 2>/dev/null | grep -q ":$p "; then
+            echo "WARN: 端口 $p 占用："
+            ss -tlnp | grep ":$p "
+          fi
+        done
+    failed_when: false
+
+  - name: 创建目录
+    module: file
+    args:
+      path: "{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - "{{ sm_data_dir }}"
+      - "{{ sm_data_dir }}/jellyfin/config"
+      - "{{ sm_data_dir }}/jellyfin/cache"
+      - "{{ sm_data_dir }}/navidrome/data"
+      - "{{ sm_data_dir }}/audiobookshelf/config"
+      - "{{ sm_data_dir }}/audiobookshelf/metadata"
+      - "{{ sm_movies_dir }}"
+      - "{{ sm_tvshows_dir }}"
+      - "{{ sm_music_dir }}"
+      - "{{ sm_audiobooks_dir }}"
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ sm_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          jellyfin:
+            image: jellyfin/jellyfin:latest
+            container_name: media-jellyfin
+            restart: unless-stopped
+            user: "1000:1000"
+            ports:
+              - "127.0.0.1:{{ sm_jf_port }}:8096"
+            volumes:
+              - {{ sm_data_dir }}/jellyfin/config:/config
+              - {{ sm_data_dir }}/jellyfin/cache:/cache
+              - {{ sm_movies_dir }}:/movies:ro
+              - {{ sm_tvshows_dir }}:/tvshows:ro
+            environment:
+              TZ: "Asia/Shanghai"
+
+          navidrome:
+            image: deluan/navidrome:latest
+            container_name: media-navidrome
+            restart: unless-stopped
+            user: "1000:1000"
+            ports:
+              - "127.0.0.1:{{ sm_nd_port }}:4533"
+            volumes:
+              - {{ sm_data_dir }}/navidrome/data:/data
+              - {{ sm_music_dir }}:/music:ro
+            environment:
+              ND_LOGLEVEL: info
+              ND_SCANSCHEDULE: "@every 1h"
+
+          audiobookshelf:
+            image: ghcr.io/advplyr/audiobookshelf:latest
+            container_name: media-abs
+            restart: unless-stopped
+            ports:
+              - "127.0.0.1:{{ sm_ab_port }}:80"
+            volumes:
+              - {{ sm_data_dir }}/audiobookshelf/config:/config
+              - {{ sm_data_dir }}/audiobookshelf/metadata:/metadata
+              - {{ sm_audiobooks_dir }}:/audiobooks
+            environment:
+              TZ: "Asia/Shanghai"
+
+  - name: 启动栈
+    module: shell
+    args:
+      cmd: |
+        cd {{ sm_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待 Jellyfin ready
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 60); do
+          if curl -fsS http://127.0.0.1:{{ sm_jf_port }}/web/ -o /dev/null 2>&1; then
+            echo "OK: Jellyfin ready"
+            exit 0
+          fi
+          sleep 3
+        done
+        echo "ERROR: Jellyfin not ready"
+        docker logs --tail 30 media-jellyfin
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "自托管多媒体三件套已就绪"
+        echo "===================================================================="
+        echo "  Jellyfin（视频）:        http://127.0.0.1:{{ sm_jf_port }}"
+        echo "  Navidrome（音乐）:        http://127.0.0.1:{{ sm_nd_port }}"
+        echo "  Audiobookshelf（有声书）: http://127.0.0.1:{{ sm_ab_port }}"
+        echo ""
+        echo "媒体目录:"
+        echo "  电影:   {{ sm_movies_dir }}"
+        echo "  剧集:   {{ sm_tvshows_dir }}"
+        echo "  音乐:   {{ sm_music_dir }}"
+        echo "  有声书: {{ sm_audiobooks_dir }}"
+        echo ""
+        echo "下一步:"
+        echo "  1. 把媒体文件放到对应目录"
+        echo "  2. 反代到 https://media.* / music.* / books.*（nginx + LE）"
+        echo "  3. Jellyfin 首次访问走 setup wizard"
+        echo "  4. Navidrome 首次访问创建 admin"
+        echo "  5. Audiobookshelf 首次访问创建 admin + 配 Library"
+        echo "  6. 移动 App:"
+        echo "     - Jellyfin（官方）"
+        echo "     - Substreamer / Amperfy（Subsonic 协议连 Navidrome）"
+        echo "     - Audiobookshelf（官方）"
+        echo "===================================================================="
+
+verify:
+  - name: jellyfin running
+    cmd: "docker ps --filter name=media-jellyfin --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Jellyfin 没起。docker logs media-jellyfin"
+
+  - name: navidrome running
+    cmd: "docker ps --filter name=media-navidrome --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Navidrome 没起。docker logs media-navidrome"
+
+  - name: audiobookshelf running
+    cmd: "docker ps --filter name=media-abs --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Audiobookshelf 没起。docker logs media-abs"

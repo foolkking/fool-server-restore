@@ -1,0 +1,46 @@
+{
+  "selfhost_acme_email": {
+    "type": "string",
+    "label": "Let's Encrypt 邮箱",
+    "labelEn": "Let's Encrypt email",
+    "default": "admin@example.com",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Traefik 注册 LE 用。证书快过期通知到此。",
+    "helpEn": "Used by Traefik for ACME registration."
+  },
+  "selfhost_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/selfhost",
+    "help": "所有服务的数据存储根目录。",
+    "helpEn": "Root data directory for all services."
+  },
+  "selfhost_vaultwarden_domain": {
+    "type": "string",
+    "label": "Vaultwarden 域名",
+    "labelEn": "Vaultwarden domain",
+    "default": "vault.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Traefik 用此域名签 LE 证书。**DNS 必须已指向本机公网 IP**。",
+    "helpEn": "Domain Traefik signs LE cert for. Must DNS-point to this server."
+  },
+  "selfhost_pihole_password": {
+    "type": "password",
+    "label": "Pi-hole admin 密码",
+    "labelEn": "Pi-hole admin password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "Pi-hole Web admin 密码。留空 = 自动 24 位。",
+    "helpEn": "Pi-hole web admin password. Empty = auto 24 chars."
+  },
+  "selfhost_ha_timezone": {
+    "type": "string",
+    "label": "时区（HA + Pi-hole 用）",
+    "labelEn": "Timezone",
+    "default": "Asia/Shanghai",
+    "help": "Home Assistant + Pi-hole 共用时区。",
+    "helpEn": "Used by Home Assistant + Pi-hole."
+  }
+}

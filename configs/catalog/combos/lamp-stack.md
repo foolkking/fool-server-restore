@@ -383,11 +383,185 @@ sudo systemctl restart apache2
 </IfModule>
 ```
 
-### 与 Certbot 集成（一行签证书）
+## 关键参数调优速查
+
+### MPM 选择（生产关键）
+
+| MPM | 模型 | 适合 |
+|---|---|---|
+| **prefork** | 每请求一个进程 | mod_php 必用（PHP 不线程安全） |
+| **worker** | 多进程 + 线程 | 不用 mod_php，性能好 |
+| **event**（推荐） | worker + async keepalive | PHP-FPM 模式；现代场景 |
+
+切换：
 
 ```bash
-sudo certbot --apache -d myapp.example.com
-# 自动改 vhost、加 SSL 段、配 80 → 443 跳转
+sudo a2dismod mpm_prefork
+sudo a2enmod mpm_event
+sudo systemctl restart apache2
 ```
 
-EnvForge catalog 有 `Certbot SSL` Playbook 可一键完成。
+### `mpm_event` 调优 `/etc/apache2/mods-available/mpm_event.conf`
+
+```apache
+<IfModule mpm_event_module>
+    StartServers             4
+    MinSpareThreads         25
+    MaxSpareThreads         75
+    ThreadLimit             64
+    ThreadsPerChild         25
+    MaxRequestWorkers      400      # 总并发请求上限
+    MaxConnectionsPerChild 10000    # 每 worker 处理 N 个请求后重启（防内存泄漏）
+</IfModule>
+```
+
+### MySQL 调优
+
+| 参数 | 推荐 |
+|---|---|
+| `innodb_buffer_pool_size` | 物理内存 50-70%（专用 DB） |
+| `max_connections` | 200-500（按业务） |
+| `slow_query_log` | ON |
+| `long_query_time` | 2s |
+
+详见 `mysql-server.md` 的"关键参数调优速查"。
+
+### PHP（mod_php / PHP-FPM）
+
+```ini
+upload_max_filesize = 64M
+post_max_size = 64M
+memory_limit = 256M
+max_execution_time = 60
+opcache.enable = 1
+opcache.memory_consumption = 256
+opcache.max_accelerated_files = 20000
+```
+
+### 资源占用
+
+| 部署规模 | RAM | CPU |
+|---|---|---|
+| 个人 / 小流量 | 1 GB | 1 vCPU |
+| 中型（100 req/s） | 2 GB | 2 vCPU |
+| 大流量（1k req/s） | 8 GB+ | 4 vCPU+ |
+
+LAMP 资源占用比 LEMP 高 30-50%（mod_php 每 worker 都吃 PHP 内存）。
+
+## 排错
+
+### `phpinfo` 不解析（直接下载 .php）
+
+```bash
+# mod_php 没启用
+sudo a2enmod php8.3 2>/dev/null
+sudo systemctl restart apache2
+
+# 或切到 PHP-FPM 模式（见上方"VirtualHost — PHP-FPM 模式"）
+```
+
+### Apache 起不来 + `Address already in use`
+
+80 端口被 nginx / haproxy 占：
+
+```bash
+sudo ss -tlnp | grep :80
+sudo systemctl stop nginx
+```
+
+LAMP 与 LEMP 互斥（都占 80）。
+
+### MySQL 连不上
+
+```bash
+sudo systemctl status mysql
+mysql -uroot -p
+# 错误见 mysql-server.md 排错
+```
+
+### `.htaccess` 不生效
+
+```apache
+# VirtualHost 必须开 AllowOverride
+<Directory /var/www/myapp/public>
+    AllowOverride All
+</Directory>
+```
+
+```bash
+sudo a2enmod rewrite
+sudo systemctl restart apache2
+```
+
+### Apache reload vs restart
+
+```bash
+sudo apache2ctl configtest                 # 校验
+sudo systemctl reload apache2              # 平滑（不断现有连接）
+sudo systemctl restart apache2              # 重启（断连接）
+```
+
+### 大上传失败 `413 Request Entity Too Large`
+
+```apache
+# httpd.conf / vhost
+LimitRequestBody 104857600                  # 100 MB
+```
+
+```ini
+; php.ini
+upload_max_filesize = 100M
+post_max_size = 100M
+```
+
+## 验证
+
+```bash
+# 1. 服务在跑
+systemctl is-active apache2 || systemctl is-active httpd
+systemctl is-active mysql
+
+# 2. 端口
+sudo ss -tlnp | grep :80
+
+# 3. 配置语法
+sudo apache2ctl configtest
+
+# 4. 看 mod 启用
+apache2ctl -M | grep -E '(php|rewrite|ssl)'
+
+# 5. 看 PHP 模块
+php -m | head -20
+
+# 6. MySQL 连接
+mysql -uroot -p"$ROOT_PASSWORD" -e "SELECT VERSION();"
+
+# 7. PHP 解析（测完删）
+echo "<?php phpinfo(); ?>" | sudo tee /var/www/html/info.php
+curl http://localhost/info.php | grep "PHP Version"
+sudo rm /var/www/html/info.php
+```
+
+## ⚠️ 敏感性
+
+**review** — Apache + MySQL + PHP，多层公网攻击面。
+
+强制：
+
+1. **删 phpinfo / phpmyadmin / 任何 info.php**
+2. `ServerTokens Prod` + `ServerSignature Off`（不暴露版本）
+3. `display_errors = Off`（生产）
+4. MySQL 跑 `mysql_secure_installation`
+5. 业务用专用账号
+6. HTTPS（certbot）
+
+## 多次运行
+
+`installMode: skip-existing`。包安装幂等。**MySQL root 密码每次按表单值更新**。
+
+## 隐私说明
+
+- Apache access log（`/var/log/apache2/access.log`）含 IP / URL / UA
+- PHP error log 可能含路径 / 变量值
+- MySQL log 见 `mysql-server.md`
+- LAMP 不发遥测

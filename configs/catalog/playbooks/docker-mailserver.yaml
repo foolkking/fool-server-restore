@@ -1,0 +1,197 @@
+# Playbook: docker-mailserver 完整邮件栈
+#
+# 自托管邮件服务器（Postfix + Dovecot + Rspamd + ClamAV + Fail2Ban + DKIM）。
+# 单容器集成，比 Mailcow 简单。
+#
+# **重要前置**：
+#   1. 25/465/587/143/993 端口必须开放
+#   2. PTR 记录（反向 DNS）必须正确（否则邮件被拒）
+#   3. SPF / DKIM / DMARC DNS 记录必须配置（否则邮件进垃圾箱）
+name: Install docker-mailserver self-hosted mail
+hosts: all
+
+vars:
+  dms_hostname: "mail.example.com"
+  dms_domain: "example.com"
+  dms_postmaster_email: "postmaster@example.com"
+  dms_data_dir: /opt/mail
+  dms_enable_clamav: false        # ClamAV 吃 1 GB+ RAM，小机器可关
+  dms_enable_fail2ban: true
+  dms_log_level: info
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检（25 / 465 / 587 / 143 / 993）
+    module: shell
+    args:
+      cmd: |
+        for p in 25 465 587 143 993; do
+          if ss -tlnp 2>/dev/null | grep -q ":$p "; then
+            echo "WARN: 端口 $p 占用："
+            ss -tlnp | grep ":$p "
+          fi
+        done
+
+        # Postfix / sendmail 已装会冲突
+        if systemctl is-active postfix >/dev/null 2>&1; then
+          echo "ERROR: 系统 postfix 在跑，停掉先："
+          echo "  sudo systemctl disable --now postfix"
+          exit 1
+        fi
+        if systemctl is-active sendmail >/dev/null 2>&1; then
+          echo "ERROR: sendmail 在跑，停掉先："
+          echo "  sudo systemctl disable --now sendmail"
+          exit 1
+        fi
+    failed_when: false
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ dms_data_dir }}/{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - data
+      - state
+      - logs
+      - config
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ dms_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          mailserver:
+            image: ghcr.io/docker-mailserver/docker-mailserver:latest
+            container_name: mailserver
+            hostname: {{ dms_hostname }}
+            restart: unless-stopped
+            cap_add:
+              - NET_ADMIN
+            ports:
+              - "25:25"
+              - "143:143"
+              - "465:465"
+              - "587:587"
+              - "993:993"
+            volumes:
+              - {{ dms_data_dir }}/data:/var/mail
+              - {{ dms_data_dir }}/state:/var/mail-state
+              - {{ dms_data_dir }}/logs:/var/log/mail
+              - {{ dms_data_dir }}/config:/tmp/docker-mailserver
+              - /etc/localtime:/etc/localtime:ro
+            environment:
+              ENABLE_RSPAMD: 1
+              ENABLE_OPENDKIM: 0          # 用 Rspamd DKIM
+              ENABLE_OPENDMARC: 0          # 用 Rspamd DMARC
+              ENABLE_POLICYD_SPF: 1
+              ENABLE_FAIL2BAN: {{ '1' if dms_enable_fail2ban else '0' }}
+              ENABLE_CLAMAV: {{ '1' if dms_enable_clamav else '0' }}
+              POSTMASTER_ADDRESS: "{{ dms_postmaster_email }}"
+              SSL_TYPE: letsencrypt
+              SSL_DOMAIN: {{ dms_hostname }}
+              UPDATE_CHECK_INTERVAL: 1d
+              LOG_LEVEL: {{ dms_log_level }}
+              SPOOF_PROTECTION: 1
+              ENABLE_SPAMASSASSIN: 0       # 用 Rspamd
+              MOVE_SPAM_TO_JUNK: 1
+              MARK_SPAM_AS_READ: 0
+              ONE_DIR: 1
+            healthcheck:
+              test: ["CMD-SHELL", "supervisorctl status all | grep -v 'STOPPED\\|FATAL'"]
+              interval: 30s
+              timeout: 10s
+              retries: 3
+
+  - name: 启动 mailserver
+    module: shell
+    args:
+      cmd: |
+        cd {{ dms_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        echo "等待 mailserver 启动（首次较慢）..."
+        for i in $(seq 1 60); do
+          if docker exec mailserver supervisorctl status postfix 2>/dev/null | grep -q RUNNING; then
+            echo "OK: postfix running"
+            exit 0
+          fi
+          sleep 3
+        done
+        echo "ERROR: postfix not running"
+        docker logs --tail 50 mailserver
+        exit 1
+
+  - name: 显示后续步骤
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "docker-mailserver 已就绪 — 但需要手动配置 DNS + 用户"
+        echo "===================================================================="
+        echo "  数据目录:      {{ dms_data_dir }}"
+        echo "  Hostname:      {{ dms_hostname }}"
+        echo "  Domain:        {{ dms_domain }}"
+        echo ""
+        echo "下一步（顺序很重要）："
+        echo ""
+        echo "  1. 配 DNS 记录（去你的 DNS 提供商）："
+        echo "     A      {{ dms_hostname }}                  $(curl -s ifconfig.me)"
+        echo "     MX     {{ dms_domain }}                    {{ dms_hostname }}      (优先级 10)"
+        echo "     PTR    $(curl -s ifconfig.me)              {{ dms_hostname }}      (反向 DNS——VPS 控制台改)"
+        echo "     SPF    {{ dms_domain }}                    \"v=spf1 mx ~all\""
+        echo "     DMARC  _dmarc.{{ dms_domain }}            \"v=DMARC1; p=quarantine; rua=mailto:{{ dms_postmaster_email }}\""
+        echo ""
+        echo "  2. 加邮箱用户（容器内）："
+        echo "     docker exec -it mailserver setup email add user1@{{ dms_domain }}"
+        echo ""
+        echo "  3. 生成 DKIM key："
+        echo "     docker exec -it mailserver setup config dkim"
+        echo "     cat {{ dms_data_dir }}/config/opendkim/keys/{{ dms_domain }}/mail.txt"
+        echo "     ↑ 把这个 TXT 内容加到 DNS：mail._domainkey.{{ dms_domain }}"
+        echo ""
+        echo "  4. 配 LE 证书（先停 mailserver / 用 webroot）："
+        echo "     sudo certbot certonly --standalone -d {{ dms_hostname }}"
+        echo "     ln -s /etc/letsencrypt {{ dms_data_dir }}/state/letsencrypt"
+        echo "     docker restart mailserver"
+        echo ""
+        echo "  5. 测试发邮件："
+        echo "     swaks --to test@gmail.com --from user1@{{ dms_domain }} --server {{ dms_hostname }}:587 --auth"
+        echo ""
+        echo "  6. 测试得分（接到能收的邮箱发，去 mail-tester.com 看分）"
+        echo "===================================================================="
+
+verify:
+  - name: mailserver container running
+    cmd: "docker ps --filter name=mailserver --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "mailserver 没起。docker logs mailserver | head -50"
+
+  - name: postfix daemon running
+    cmd: "docker exec mailserver supervisorctl status postfix 2>/dev/null | grep -q RUNNING"
+    hint: |
+      Postfix 没跑：
+        docker exec mailserver supervisorctl status all
+        某个组件 fatal → docker logs mailserver
+
+  - name: smtp port 25 listening
+    cmd: "ss -tlnp 2>/dev/null | grep -q ':25 '"
+    hint: "端口 25 没监听。检查 docker compose ports 配置 + 防火墙。"
+
+  - name: imap port 993 listening
+    cmd: "ss -tlnp 2>/dev/null | grep -q ':993 '"
+    hint: "端口 993（IMAPS）没监听。"

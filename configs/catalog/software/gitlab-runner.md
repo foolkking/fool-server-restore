@@ -117,12 +117,167 @@ sudo gitlab-runner unregister --all-runners
 sudo gitlab-runner unregister --name "production-deploy"
 ```
 
-## ⚠️ 敏感性
+## 关键参数调优速查
 
-**privileged** — Runner 跑你 CI 里所有 script，里面通常有部署凭据。**Runner 攻陷 = 你所有项目的部署目标攻陷**。
-1. shell executor 务必专机专用，不要 shell executor + 共享 runner
-2. docker executor 不要 privileged（除非真要 dind）
-3. 用 GitLab 的 protected variable，敏感凭据只在 protected branch 暴露
+### Concurrent jobs
+
+```toml
+# /etc/gitlab-runner/config.toml
+concurrent = 4                              # 全机最多 4 个 job 并发
+```
+
+每个 job 独立资源——总 CPU / RAM 按 `concurrent × 单 job 占用` 估算。
+
+### Cache 加速（避免每次重复下载依赖）
+
+```toml
+[[runners]]
+  [runners.cache]
+    Type = "s3"
+    Path = "ci-cache"
+    Shared = true
+    [runners.cache.s3]
+      ServerAddress = "minio.example.com:9000"
+      AccessKey = "..."
+      SecretKey = "..."
+      BucketName = "ci-cache"
+      Insecure = true
+```
+
+`.gitlab-ci.yml`:
+
+```yaml
+build:
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}"
+    paths:
+      - node_modules/
+      - .yarn/
+  script:
+    - yarn install --frozen-lockfile
+    - yarn build
+```
+
+### Docker executor 优化
+
+```toml
+[runners.docker]
+  pull_policy = ["if-not-present"]          # 避免每次拉镜像
+  helper_image_flavor = "alpine"
+  privileged = false
+  shm_size = 268435456                       # 256MB（chrome / 测试需要）
+```
+
+### 资源占用
+
+| 模式 | 单 job RAM | 单 job CPU |
+|---|---|---|
+| shell | 视项目 | 视项目 |
+| docker | 200 MB+（无限制） | 视项目 |
+| docker + 限制 | `mem_limit = "2g"` `cpus = 1.5` | 同 |
+
+## 跨发行版兼容
+
+| 项 | Ubuntu/Debian | RHEL/Anolis 9 |
+|---|---|---|
+| 仓库 | `packages.gitlab.com/runner/gitlab-runner/{ubuntu,debian}` | `packages.gitlab.com/runner/gitlab-runner/el/9` |
+| 包名 | `gitlab-runner` | `gitlab-runner` |
+| 服务 | `gitlab-runner` | `gitlab-runner` |
+| 用户 | `gitlab-runner` | `gitlab-runner` |
+
+## 与其它 catalog 项的配合
+
+- **`docker-host-profile`** — docker executor 必装前提
+- **`gitea-server`** — Gitea 兼容 GitLab Runner（API 兼容）
+- **`minio-storage`** — Cache 后端（模板 cache）
+- **`vault-secrets`** — 通过 Vault 拿动态凭据，避免 CI variable 长期 secret
+
+## 排错
+
+### `couldn't execute POST against ... /api/v4/runners`
+
+token 不对 / GitLab URL 错。重新拿 token：
+
+```bash
+sudo gitlab-runner unregister --all-runners
+sudo gitlab-runner register      # 重新走向导
+```
+
+### Runner 显示 offline
+
+```bash
+sudo systemctl status gitlab-runner
+sudo gitlab-runner verify
+sudo journalctl -u gitlab-runner -n 50
+```
+
+常见：网络断、token 失效、机器时间偏差。
+
+### Docker executor: `Cannot connect to Docker daemon`
+
+```bash
+sudo usermod -aG docker gitlab-runner
+sudo systemctl restart gitlab-runner
+```
+
+### Job 超时
+
+```yaml
+# .gitlab-ci.yml
+job:
+  timeout: 2 hours                            # 默认 1 小时
+```
+
+或 `/etc/gitlab-runner/config.toml`:
+
+```toml
+[[runners]]
+  build_dir = "/cache"
+  cache_dir = "/cache"
+  output_limit = 4096                         # KB
+```
+
+## 验证
+
+```bash
+# 1. 服务在跑
+systemctl is-active gitlab-runner
+
+# 2. Runner 注册了
+sudo gitlab-runner list
+
+# 3. 能连 GitLab
+sudo gitlab-runner verify
+
+# 4. 看版本
+gitlab-runner --version
+
+# 5. UI 上 runner 状态绿
+# GitLab UI → Settings → CI/CD → Runners
+```
+
+## 配置文件速查
+
+```
+/etc/gitlab-runner/
+├── config.toml                              # ← 主配置
+├── certs/                                    # 自签 GitLab 用
+└── builds/
+
+/var/log/gitlab-runner/                      # 日志（按 job）
+/home/gitlab-runner/                          # gitlab-runner 用户家目录
+└── builds/                                    # 默认 build 目录
+
+/usr/lib/gitlab-runner/                       # 二进制
+/usr/bin/gitlab-runner                         # 主命令链接
+```
+
+| 项 | 说明 |
+|---|---|
+| 包名 | `gitlab-runner` |
+| 服务 | `gitlab-runner` |
+| 用户 | `gitlab-runner`（普通用户，shell executor 时构建以此身份跑） |
+| 默认 build dir | `/home/gitlab-runner/builds/` |
 
 ## 验证
 

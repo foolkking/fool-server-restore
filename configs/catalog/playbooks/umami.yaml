@@ -1,0 +1,133 @@
+# Playbook: Umami 隐私优先网站分析
+#
+# Google Analytics 替代品。无 cookie、GDPR 合规。Docker compose + PG。
+name: Install Umami (Docker)
+hosts: all
+
+vars:
+  umami_domain: "umami.example.com"
+  umami_port: 3001
+  umami_db_password: ""
+  umami_app_secret: ""
+  umami_data_dir: /opt/umami
+
+tasks:
+  - name: Docker check
+    module: shell
+    args:
+      cmd: command -v docker && docker info >/dev/null 2>&1
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ item }}"
+      state: directory
+      mode: "0750"
+    loop:
+      - "{{ umami_data_dir }}"
+      - "{{ umami_data_dir }}/db-data"
+
+  - name: 生成 DB 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ umami_db_password }}" ]; then
+          openssl rand -base64 24 | tr -d '\n'
+        else
+          echo "{{ umami_db_password }}"
+        fi
+    register: db_pass
+    no_log: true
+
+  - name: 生成 APP_SECRET
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ umami_app_secret }}" ]; then
+          openssl rand -hex 32 | tr -d '\n'
+        else
+          echo "{{ umami_app_secret }}"
+        fi
+    register: app_secret
+    no_log: true
+
+  - name: 写 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ umami_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          umami:
+            image: ghcr.io/umami-software/umami:postgresql-latest
+            container_name: umami
+            restart: unless-stopped
+            ports:
+              - "127.0.0.1:{{ umami_port }}:3000"
+            environment:
+              DATABASE_URL: postgresql://umami:{{ db_pass.stdout }}@db:5432/umami
+              DATABASE_TYPE: postgresql
+              APP_SECRET: "{{ app_secret.stdout }}"
+              DISABLE_TELEMETRY: "1"
+            depends_on:
+              db:
+                condition: service_healthy
+
+          db:
+            image: postgres:16-alpine
+            container_name: umami-db
+            restart: unless-stopped
+            environment:
+              POSTGRES_DB: umami
+              POSTGRES_USER: umami
+              POSTGRES_PASSWORD: "{{ db_pass.stdout }}"
+            volumes:
+              - {{ umami_data_dir }}/db-data:/var/lib/postgresql/data
+            healthcheck:
+              test: ["CMD-SHELL", "pg_isready -U umami"]
+              interval: 5s
+
+  - name: 启动
+    module: shell
+    args:
+      cmd: |
+        cd {{ umami_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 60); do
+          if curl -fsS http://127.0.0.1:{{ umami_port }}/api/heartbeat >/dev/null 2>&1; then
+            echo "OK"
+            exit 0
+          fi
+          sleep 2
+        done
+        docker logs --tail 50 umami
+        exit 1
+
+  - name: 显示登录信息
+    module: shell
+    args:
+      cmd: |
+        echo "============================================"
+        echo "Umami 已就绪"
+        echo "============================================"
+        echo "  URL:      http://$(hostname -I | awk '{print $1}'):{{ umami_port }}"
+        echo "  Default:  admin / umami"
+        echo ""
+        echo "首次登录后立刻改密码！"
+        echo "Settings → Profile → Password"
+        echo "============================================"
+
+verify:
+  - name: umami container running
+    cmd: "docker ps --filter name=umami --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Umami 容器没起。docker logs umami"
+
+  - name: umami responds
+    cmd: "curl -fsS http://127.0.0.1:{{ umami_port }}/api/heartbeat"
+    hint: "Umami heartbeat 失败。等启动 30s 重试。"

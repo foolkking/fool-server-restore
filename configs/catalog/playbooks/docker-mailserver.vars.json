@@ -1,0 +1,70 @@
+{
+  "dms_hostname": {
+    "type": "string",
+    "label": "邮件服务器 hostname",
+    "labelEn": "Mail server hostname",
+    "default": "mail.example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "mail.example.com",
+    "help": "邮件服务器 FQDN。**这是 MX 记录指向的主机名**——必须有 A 记录 + 反向 DNS（PTR）匹配。VPS 控制台改 PTR：很多大厂（DigitalOcean / Linode / Vultr）面板里直接改；AWS 要发工单。",
+    "helpEn": "Mail server FQDN. **MX record points here**. Must have matching A and PTR (reverse DNS) records. PTR is changed via VPS console (DO/Linode/Vultr easy; AWS requires support ticket)."
+  },
+  "dms_domain": {
+    "type": "string",
+    "label": "邮件域",
+    "labelEn": "Mail domain",
+    "default": "example.com",
+    "validate": "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "placeholder": "example.com",
+    "help": "邮箱地址 @ 后面的部分。例：user@example.com → mail_domain=example.com。MX 记录加在此域上指向 hostname。",
+    "helpEn": "Domain after @ in email addresses. Example: user@example.com → mail_domain=example.com. MX record on this domain points to hostname."
+  },
+  "dms_postmaster_email": {
+    "type": "string",
+    "label": "Postmaster 邮箱",
+    "labelEn": "Postmaster email",
+    "default": "postmaster@example.com",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "DMARC report 发到这里。RFC 要求每个邮件域必须有 postmaster@ 别名。Playbook **不会自动创建**——记得手动加：docker exec -it mailserver setup email add postmaster@example.com",
+    "helpEn": "DMARC reports go here. RFC requires postmaster@ alias for each mail domain. Playbook does NOT auto-create—add manually: docker exec -it mailserver setup email add postmaster@example.com"
+  },
+  "dms_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/mail",
+    "help": "存所有邮件 + 配置 + 日志。**每日备份此目录**——丢了 = 所有邮件 + DKIM key 重来。Maildir 格式（每邮件一文件，备份友好）。",
+    "helpEn": "Stores all mail + config + logs. **Back up daily**—loss = all mail + DKIM keys gone. Maildir format (one file per mail, backup friendly)."
+  },
+  "dms_enable_clamav": {
+    "type": "boolean",
+    "label": "启用 ClamAV 病毒扫描",
+    "labelEn": "Enable ClamAV antivirus",
+    "default": false,
+    "help": "true = 病毒扫附件。**吃 1 GB+ RAM** + 首次启动慢（下载病毒库）。**家庭 / VPS 一般关闭**——Rspamd 已检查附件 hash。",
+    "helpEn": "true = scan attachments. **Eats 1 GB+ RAM**, slow first start (downloads virus DB). Usually disabled for home/VPS—Rspamd already checks attachment hashes."
+  },
+  "dms_enable_fail2ban": {
+    "type": "boolean",
+    "label": "启用 Fail2Ban",
+    "labelEn": "Enable Fail2Ban",
+    "default": true,
+    "help": "true（推荐）= 自动封反复登录失败的 IP（暴力破解 SMTP / IMAP 密码）。",
+    "helpEn": "true (recommended) = auto-ban IPs with repeated SMTP/IMAP login failures."
+  },
+  "dms_log_level": {
+    "type": "choice",
+    "label": "日志级别",
+    "labelEn": "Log level",
+    "default": "info",
+    "options": [
+      { "value": "trace", "label": "trace（最详细，调试用）" },
+      { "value": "debug", "label": "debug" },
+      { "value": "info", "label": "info（默认）" },
+      { "value": "warn", "label": "warn" },
+      { "value": "error", "label": "error（仅错误）" }
+    ],
+    "help": "trace / debug 仅排错时短期开（日志爆炸）。",
+    "helpEn": "Use trace/debug only for short troubleshooting (log explosion)."
+  }
+}

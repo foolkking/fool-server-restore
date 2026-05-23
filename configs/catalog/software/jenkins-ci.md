@@ -155,7 +155,40 @@ sudo cat /var/lib/jenkins/secrets/initialAdminPassword
 - initial admin 密码在 `/var/lib/jenkins/secrets/initialAdminPassword`，仅 jenkins 用户可读。
 - Jenkins 自身不发遥测，但很多插件会（如 Adobe Analytics 插件）。
 
-## 关键配置文件 / 路径
+## 关键参数调优速查
+
+### 资源占用
+
+| 部署 | RAM | CPU | 磁盘 |
+|---|---|---|---|
+| 单 user 简单项目 | 1 GB | 0.5 vCPU | 5 GB |
+| 5-10 项目并行构建 | 4 GB+ | 2 vCPU+ | 50 GB |
+| 100+ 项目，多 agent | master 8 GB / agent 按需 | – | – |
+
+### JVM 调优
+
+模板 A 已含 `-Xms / -Xmx / G1GC`。生产推荐：
+
+- `-Xms2g -Xmx2g`（heap 固定，避开扩缩抖动）
+- `-XX:+UseG1GC` + `-XX:+UseStringDeduplication`
+- `-Dorg.jenkinsci.plugins.gitclient.Git.timeOut=20`（git 操作超时）
+
+### 老构建清理
+
+UI → Job 配置 → Discard old builds → 保留最近 30 天 / 最多 50 次。
+
+不清的话 `/var/lib/jenkins/jobs/<job>/builds/` 几个月就 GB 级。
+
+### Authorization
+
+UI → Manage Jenkins → Configure Global Security：
+
+- Authentication: Jenkins' own user database（默认）/ LDAP / SAML / OAuth
+- Authorization: **Matrix-based security**（推荐）/ Role-Based（plugin）
+
+最小权限 + protected branch + 强制 PR review。
+
+## 配置文件 / 目录速查
 
 ```
 /etc/default/jenkins (Ubuntu)        # 启动参数：JVM 选项、HTTP 端口、JENKINS_HOME

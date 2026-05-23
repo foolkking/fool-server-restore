@@ -1,0 +1,46 @@
+{
+  "ml_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/mealie",
+    "help": "存配置 + PG + 食谱图片。备份 = 备份所有食谱。",
+    "helpEn": "Stores config + PG + recipe images. Back up = all recipes."
+  },
+  "ml_port": {
+    "type": "port",
+    "label": "本机绑定端口",
+    "labelEn": "Local listen port",
+    "default": 9000,
+    "help": "Mealie HTTP 端口（仅 127.0.0.1）。",
+    "helpEn": "Mealie HTTP port (127.0.0.1 only)."
+  },
+  "ml_admin_email": {
+    "type": "string",
+    "label": "Admin 邮箱",
+    "labelEn": "Admin email",
+    "default": "admin@example.com",
+    "validate": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+    "help": "Mealie 用邮箱作为账号 ID。仅首次启动时使用——之后改密码 / 加用户在 Web UI。",
+    "helpEn": "Mealie uses email as account ID. Only used on first start."
+  },
+  "ml_admin_password": {
+    "type": "password",
+    "label": "Admin 密码",
+    "labelEn": "Admin password",
+    "default": "",
+    "generate_length": 16,
+    "reveal_after_run": true,
+    "help": "Admin 密码。留空 = 自动生成 16 位。**仅首次启动时设置**。",
+    "helpEn": "Admin password. Empty = auto-generate 16-char. Only set on first start."
+  },
+  "ml_db_password": {
+    "type": "password",
+    "label": "PostgreSQL 密码",
+    "labelEn": "PostgreSQL password",
+    "default": "",
+    "generate_length": 18,
+    "help": "Mealie 内部 PG 密码。",
+    "helpEn": "Internal PG password."
+  }
+}

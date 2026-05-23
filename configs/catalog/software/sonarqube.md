@@ -114,13 +114,91 @@ server {
 }
 ```
 
-## ⚠️ 敏感性
+## 关键参数调优速查
 
-**review** — SonarQube 扫描你所有代码，**结果数据库里有所有发现的安全漏洞**——是攻击者的目标。
-1. 不要 9000 直接暴露公网
-2. 反向代理 + HTTPS + 认证
-3. 用强密码替换默认 admin/admin
-4. token 用 protected branch 保护
+### 资源占用
+
+SonarQube 是 **JVM + Elasticsearch** 双服务，**最低要求 3 GB RAM**。
+
+| 项目数 | RAM | CPU | 磁盘 |
+|---|---|---|---|
+| 个人（< 10 项目） | 4 GB | 2 vCPU | 10 GB |
+| 小团队（< 50 项目） | 8 GB | 4 vCPU | 50 GB |
+| 中型（< 500 项目） | 16 GB | 8 vCPU | 200 GB |
+
+### JVM 调优 `/opt/sonarqube/conf/sonar.properties`
+
+```properties
+# Web server JVM
+sonar.web.javaOpts=-Xmx2g -Xms2g -XX:+UseG1GC
+
+# Compute Engine（分析作业）
+sonar.ce.javaOpts=-Xmx4g -Xms2g -XX:+UseG1GC
+
+# Search server (Elasticsearch)
+sonar.search.javaOpts=-Xmx4g -Xms4g -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError
+```
+
+### vm.max_map_count（必设）
+
+```bash
+sudo sysctl -w vm.max_map_count=524288
+echo "vm.max_map_count=524288" | sudo tee /etc/sysctl.d/99-sonarqube.conf
+```
+
+EnvForge Playbook 自动配。
+
+### File handle limit
+
+```bash
+# /etc/security/limits.d/99-sonarqube.conf
+sonarqube   -   nofile   65536
+sonarqube   -   nproc    4096
+```
+
+## 跨发行版兼容
+
+| 项 | Ubuntu/Debian | RHEL/Anolis 9 |
+|---|---|---|
+| 安装方式 | 二进制 zip 解压 | 同 |
+| Java | OpenJDK 17 | OpenJDK 17 |
+| 安装位置 | `/opt/sonarqube` | 同 |
+| 服务名 | `sonarqube` | `sonarqube` |
+| Anolis 9 | – | ✅（与 RHEL 9 一致） |
+
+## 与其它 catalog 项的配合
+
+- **`openjdk-runtime`** — Java 17 是 SonarQube 必装前提
+- **`postgres-profile`** — 生产 backend（替代内嵌 H2）
+- **`nginx-web-service`** + **`certbot-ssl`** — 反代 + HTTPS
+- **`jenkins-ci` / `gitlab-runner`** — CI 跑 sonar-scanner
+
+## 配置文件速查
+
+```
+/opt/sonarqube/
+├── bin/                                   # 启动脚本
+├── conf/
+│   └── sonar.properties                    # ← 主配置
+├── data/                                    # 索引 + ES 数据
+│   ├── es8/                                 # Elasticsearch
+│   └── h2/                                   # H2 数据库（开发用）
+├── extensions/                               # 扩展 plugin
+├── logs/
+│   ├── sonar.log                            # 主日志
+│   ├── ce.log                                # Compute Engine
+│   ├── es.log                                 # Elasticsearch
+│   └── web.log
+└── temp/
+
+/etc/systemd/system/sonarqube.service       # systemd unit
+```
+
+| 项 | 说明 |
+|---|---|
+| 端口 | 9000（默认） |
+| 数据目录 | `/opt/sonarqube/data/` |
+| 用户 | `sonarqube`（**不能用 root 启动**——SonarQube 拒绝） |
 
 ## 验证
 

@@ -1,0 +1,215 @@
+# Playbook: Authentik 身份认证服务器
+#
+# Authentik 是开源 SSO 解决方案——OIDC / SAML / LDAP 三协议中央认证服务器。
+# 部署：4 容器（PG + Redis + server + worker），需 ≥ 2 GB RAM。
+name: Install Authentik (Docker)
+hosts: all
+
+vars:
+  authentik_domain: "auth.example.com"
+  authentik_port: 9000
+  authentik_admin_email: "admin@example.com"
+  authentik_pg_password: ""        # 留空 = 自动生成
+  authentik_secret_key: ""          # 留空 = 自动生成
+  authentik_data_dir: /opt/authentik
+
+tasks:
+  - name: Docker check
+    module: shell
+    args:
+      cmd: command -v docker && docker info >/dev/null 2>&1
+
+  - name: 内存预检
+    module: shell
+    args:
+      cmd: |
+        TOTAL_MB=$(free -m | awk '/^Mem:/{print $2}')
+        if [ "$TOTAL_MB" -lt 1800 ]; then
+          echo "WARN: 物理内存 ${TOTAL_MB}MB < 推荐 2GB——Authentik 可能 OOM"
+          echo "  建议先跑 swap-config Playbook 加 swap"
+        fi
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ item }}"
+      state: directory
+      mode: "0750"
+    loop:
+      - "{{ authentik_data_dir }}"
+      - "{{ authentik_data_dir }}/db-data"
+      - "{{ authentik_data_dir }}/redis-data"
+      - "{{ authentik_data_dir }}/media"
+      - "{{ authentik_data_dir }}/templates"
+      - "{{ authentik_data_dir }}/certs"
+
+  - name: 生成 PG 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ authentik_pg_password }}" ]; then
+          openssl rand -base64 24 | tr -d '\n'
+        else
+          echo "{{ authentik_pg_password }}"
+        fi
+    register: pg_pass
+    no_log: true
+
+  - name: 生成 Authentik secret key
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ authentik_secret_key }}" ]; then
+          openssl rand -base64 60 | tr -d '\n'
+        else
+          echo "{{ authentik_secret_key }}"
+        fi
+    register: secret_key
+    no_log: true
+
+  - name: 写 .env
+    module: copy
+    args:
+      dest: "{{ authentik_data_dir }}/.env"
+      mode: "0600"
+      content: |
+        PG_PASS={{ pg_pass.stdout }}
+        AUTHENTIK_SECRET_KEY={{ secret_key.stdout }}
+        AUTHENTIK_ERROR_REPORTING__ENABLED=false
+        AUTHENTIK_BOOTSTRAP_PASSWORD={{ pg_pass.stdout }}
+
+  - name: 写 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ authentik_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          postgresql:
+            image: docker.io/library/postgres:16-alpine
+            restart: unless-stopped
+            healthcheck:
+              test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+              start_period: 20s
+              interval: 30s
+              retries: 5
+              timeout: 5s
+            volumes:
+              - {{ authentik_data_dir }}/db-data:/var/lib/postgresql/data
+            environment:
+              POSTGRES_PASSWORD: ${PG_PASS}
+              POSTGRES_USER: authentik
+              POSTGRES_DB: authentik
+
+          redis:
+            image: docker.io/library/redis:alpine
+            command: --save 60 1 --loglevel warning
+            restart: unless-stopped
+            healthcheck:
+              test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+              start_period: 20s
+              interval: 30s
+              retries: 5
+              timeout: 3s
+            volumes:
+              - {{ authentik_data_dir }}/redis-data:/data
+
+          server:
+            image: ghcr.io/goauthentik/server:latest
+            restart: unless-stopped
+            command: server
+            environment:
+              AUTHENTIK_REDIS__HOST: redis
+              AUTHENTIK_POSTGRESQL__HOST: postgresql
+              AUTHENTIK_POSTGRESQL__USER: authentik
+              AUTHENTIK_POSTGRESQL__NAME: authentik
+              AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+              AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+              AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+              AUTHENTIK_BOOTSTRAP_EMAIL: "{{ authentik_admin_email }}"
+              AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD}
+            volumes:
+              - {{ authentik_data_dir }}/media:/media
+              - {{ authentik_data_dir }}/templates:/templates
+              - {{ authentik_data_dir }}/certs:/certs
+            ports:
+              - "127.0.0.1:{{ authentik_port }}:9000"
+              - "127.0.0.1:9443:9443"
+            depends_on:
+              postgresql:
+                condition: service_healthy
+              redis:
+                condition: service_healthy
+
+          worker:
+            image: ghcr.io/goauthentik/server:latest
+            restart: unless-stopped
+            command: worker
+            environment:
+              AUTHENTIK_REDIS__HOST: redis
+              AUTHENTIK_POSTGRESQL__HOST: postgresql
+              AUTHENTIK_POSTGRESQL__USER: authentik
+              AUTHENTIK_POSTGRESQL__NAME: authentik
+              AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+              AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+              AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+            user: root
+            volumes:
+              - /var/run/docker.sock:/var/run/docker.sock
+              - {{ authentik_data_dir }}/media:/media
+              - {{ authentik_data_dir }}/certs:/certs
+              - {{ authentik_data_dir }}/templates:/templates
+            depends_on:
+              postgresql:
+                condition: service_healthy
+              redis:
+                condition: service_healthy
+
+  - name: 启动栈
+    module: shell
+    args:
+      cmd: |
+        cd {{ authentik_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动（首次需 1-2 分钟初始化 DB）
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 90); do
+          if curl -fsS http://127.0.0.1:{{ authentik_port }}/-/health/live/ >/dev/null 2>&1; then
+            echo "OK"
+            exit 0
+          fi
+          sleep 2
+        done
+        docker logs --tail 50 $(docker ps -q --filter "name=authentik")
+        exit 1
+
+  - name: 显示登录信息
+    module: shell
+    args:
+      cmd: |
+        echo "================================================="
+        echo "Authentik 已就绪"
+        echo "================================================="
+        echo "  URL:                http://$(hostname -I | awk '{print $1}'):{{ authentik_port }}/if/flow/initial-setup/"
+        echo "  Bootstrap Email:    {{ authentik_admin_email }}"
+        echo "  Bootstrap Password: {{ pg_pass.stdout }}"
+        echo ""
+        echo "首次访问 /if/flow/initial-setup/ 创建 admin 账号"
+        echo "之后挂反代 + HTTPS（参考 authentik.md）"
+        echo ""
+        echo "⚠️ Secret Key 务必备份："
+        echo "  {{ secret_key.stdout }}"
+        echo "================================================="
+
+verify:
+  - name: authentik server running
+    cmd: "docker ps --filter name=server --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: "Server 容器没起来。docker compose logs server"
+
+  - name: authentik health endpoint
+    cmd: "curl -fsS http://127.0.0.1:{{ authentik_port }}/-/health/live/"
+    hint: "Health 不通。等 1-2 分钟（首次启动 DB migration 需时间）。"

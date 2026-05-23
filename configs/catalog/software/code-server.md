@@ -110,6 +110,48 @@ curl -I http://127.0.0.1:8080/
 - code-server 不发遥测，但底层 VSCode 内核默认有 telemetry——UI 里 File → Preferences → Settings 搜 "telemetry" 关掉。
 - 你的代码所有内容都在服务器上 `~/`，不上传不同步。
 
+## 关键参数调优速查
+
+### 资源占用
+
+| 部署 | RAM | CPU | 磁盘 |
+|---|---|---|---|
+| 个人用 | 512 MB | 0.5 vCPU | 1-2 GB（含扩展） |
+| 多项目（10+ workspace） | 2 GB | 1-2 vCPU | – |
+| 大项目（含语言 server） | 4 GB+ | 2-4 vCPU | – |
+
+### LSP server 内存
+
+```
+- pyright / pylsp（Python）: 200-500 MB
+- gopls（Go）: 200 MB
+- rust-analyzer: 500 MB+（大项目 1-2 GB）
+- typescript-language-server: 300 MB+
+```
+
+低配机器关闭重 LSP 或仅 IntelliSense（不开 type check）。
+
+### Performance settings.json
+
+```json
+{
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/node_modules/**": true,
+    "**/target/**": true,
+    "**/dist/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true
+  },
+  "editor.acceptSuggestionOnEnter": "off",
+  "editor.suggestOnTriggerCharacters": false,        // 输入时不弹补全（性能）
+  "extensions.autoUpdate": false,
+  "telemetry.telemetryLevel": "off"
+}
+```
+
 ## 配置文件速查
 
 ```

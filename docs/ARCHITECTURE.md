@@ -1,6 +1,6 @@
 # EnvForge — 工程架构与设计
 
-最后更新：2026-05-22
+最后更新：2026-05-24
 
 > 本文合并自 PROJECT_STRUCTURE、AUTH_AND_CONCURRENCY_PLAN、ADMIN_CATALOG_PLAN、BUILD_AND_RESTORE_FLOW、DEPLOYMENT 五篇旧文档。
 
@@ -37,7 +37,7 @@ EnvForge/
 │   │       ├── capture.ts     环境保留：反向生成 Playbook
 │   │       ├── sensitive-scan.ts  13 条敏感字段扫描规则
 │   │       ├── snapshot-deploy.ts vm-snapshot 四阶段拆分
-│   │       ├── catalog.ts     基线 catalog（72 项静态硬编码）
+│   │       ├── catalog.ts     基线 catalog（115 项静态硬编码）
 │   │       ├── catalog-overrides.ts  admin overlay（merge / Playbook YAML / Markdown）
 │   │       ├── database.ts    catalog 读取（baseline + override merge）
 │   │       ├── config-files.ts  远程配置文件 list/read/write/diff
@@ -100,7 +100,7 @@ EnvForge/
 │           └── lib/types.ts   Locale / Page / navItems / text 字典
 ├── configs/
 │   └── catalog/
-│       ├── playbooks/<id>.yaml  72 个基线 Playbook
+│       ├── playbooks/<id>.yaml  115 个基线 Playbook
 │       ├── software/<id>.md     软件说明
 │       ├── combos/<id>.md       组合说明
 │       ├── docker/<id>.yaml     docker-compose 片段
@@ -114,8 +114,14 @@ EnvForge/
 │       └── guides/<id>.md
 ├── docs/
 │   ├── PRODUCT.md             产品定位与设计
-│   ├── ARCHITECTURE.md        本文（工程架构与流程）
-│   └── STATUS.md              当前实现状态 + 部署 + 测试
+│   ├── ARCHITECTURE.md        本文（工程架构 / 引擎设计 / 测试）
+│   ├── DEPLOY.md              纯手动 Docker 部署
+│   ├── DEPLOY_SELF.md         用 EnvForge 自管 EnvForge
+│   ├── CATALOG.md             115 项 catalog 完整清单
+│   ├── CATALOG_AUTHORING.md   catalog 项编写规范
+│   ├── CATALOG_EXPAND_PROMPT.md   给 LLM 的扩展 prompt
+│   ├── CROSS_DISTRO_STRATEGY.md   跨发行版兼容策略
+│   └── AGENT_HANDOFF.md       会话交接文件
 ├── scripts/
 │   ├── preflight.mjs          npm run preflight
 │   ├── start-production.sh    Linux 启动脚本
@@ -248,7 +254,7 @@ POST /api/auth/email/verify      → 验证码正确后才创建账户
 ### 数据布局
 
 ```
-configs/catalog/playbooks/<id>.yaml  ← 基线 Playbook（只读，72 项随代码发布）
+configs/catalog/playbooks/<id>.yaml  ← 基线 Playbook（只读，115 项随代码发布）
 configs/catalog/software/<id>.md     ← 基线说明（只读）
 data/catalog-overrides/playbooks/<id>.yaml  ← admin override Playbook
 data/catalog-overrides/guides/<id>.md       ← admin override 说明
@@ -303,14 +309,18 @@ node apps/api/dist/server.js     # 或 npm run start:prod
 ### Docker 部署（推荐）
 
 ```bash
-export ENVFORGE_MASTER_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")
+git clone https://github.com/foolkking/envforge.git
+cd envforge
+cp .env.example .env
+# 编辑 .env：填 ENVFORGE_MASTER_KEY（必填）+ ENVFORGE_ADMIN_EMAILS（强烈建议）
 docker compose up -d
+# 默认绑 127.0.0.1:5173 → 用 nginx 反代到外部
 ```
 
 > 从零开始的详细步骤（装 Docker、生成 master key、git clone、配 .env、HTTPS 反代、
 > systemd 自启、备份恢复、升级卸载、排错）见 **[docs/DEPLOY.md](./DEPLOY.md)**。
 >
-> 想用 EnvForge 自己来加固 EnvForge 宿主机（5 次 UI 点击替代 80 行手工配置）见
+> 想用 EnvForge 自己来加固 EnvForge 宿主机（6 次 UI 点击替代 100 行手工配置）见
 > **[docs/DEPLOY_SELF.md](./DEPLOY_SELF.md)**。
 
 ### 沙盒演示（含一台 Ubuntu target VM）
@@ -328,6 +338,21 @@ GET /api/health   # 简单 ping
 GET /api/ready    # 检查数据目录可写、web 静态文件存在
 npm run smoke:test
 ```
+
+### 测试
+
+```bash
+npm run build --workspace @fool/api
+node --test apps/api/dist/engine/tests/*.test.js
+```
+
+```
+# tests 116
+# pass 116
+# fail 0
+```
+
+测试套件覆盖：runner / errors / 各模块（package / service / shell / lineinfile 等）/ 任务队列 / 敏感扫描 / cron 解析器 / migrations / catalog overrides / 跨发行版翻译 / 包模块 preflight 阶段 (EPEL/module/exclude 探测)。
 
 ### 关键 .env 变量
 

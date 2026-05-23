@@ -1,0 +1,176 @@
+# Playbook: ClickHouse 列式 OLAP 数据库
+#
+# ClickHouse 用于日志分析 / 用户行为 / metric 长期存储。亚秒级 SQL 查询。
+# 用 ClickHouse 官方仓库装。
+name: Install ClickHouse
+hosts: all
+
+vars:
+  clickhouse_password: ""              # 留空 = 自动生成
+  clickhouse_tcp_port: 9000
+  clickhouse_http_port: 8123
+  clickhouse_max_memory_gb: 4
+  clickhouse_data_dir: /var/lib/clickhouse
+
+tasks:
+  - name: 内存预检
+    module: shell
+    args:
+      cmd: |
+        TOTAL_MB=$(free -m | awk '/^Mem:/{print $2}')
+        if [ "$TOTAL_MB" -lt 3500 ]; then
+          echo "WARN: 物理内存 ${TOTAL_MB}MB < 推荐 4GB"
+          echo "  ClickHouse 会用大量 RAM 做查询缓存"
+        fi
+
+  - name: 安装依赖
+    module: package
+    args:
+      name: ["curl", "ca-certificates", "gnupg"]
+      state: present
+
+  - name: 添加 ClickHouse apt 仓库（Ubuntu/Debian）
+    module: shell
+    args:
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1 && [ ! -f /etc/apt/sources.list.d/clickhouse.list ]; then
+          curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' \
+            | sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/clickhouse.list
+          sudo apt-get update -qq
+        fi
+      creates: /etc/apt/sources.list.d/clickhouse.list
+
+  - name: 添加 ClickHouse yum 仓库（RHEL/Anolis）
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 && [ ! -f /etc/yum.repos.d/clickhouse.repo ]; then
+          sudo dnf install -y yum-utils
+          sudo dnf config-manager --add-repo https://packages.clickhouse.com/rpm/clickhouse.repo
+        fi
+      creates: /etc/yum.repos.d/clickhouse.repo
+
+  - name: 生成密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ clickhouse_password }}" ]; then
+          openssl rand -base64 24 | tr -d '\n'
+        else
+          echo "{{ clickhouse_password }}"
+        fi
+    register: ch_pass
+    no_log: true
+
+  - name: 安装 ClickHouse server + client（Debian 系）
+    module: shell
+    args:
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1; then
+          # ClickHouse 安装时交互问 default user 密码——用 debconf 预设
+          export DEBIAN_FRONTEND=noninteractive
+          echo "clickhouse-server clickhouse-server/default-password password {{ ch_pass.stdout }}" | sudo debconf-set-selections
+          echo "clickhouse-server clickhouse-server/default-password-confirm password {{ ch_pass.stdout }}" | sudo debconf-set-selections
+          sudo -E apt-get install -y clickhouse-server clickhouse-client
+        fi
+      ignore_errors: true
+
+  - name: 安装 ClickHouse（RHEL 系）
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1; then
+          sudo dnf install -y clickhouse-server clickhouse-client
+        fi
+      ignore_errors: true
+
+  - name: 配置 default user 密码（RHEL 系不能 debconf 预设）
+    module: shell
+    args:
+      cmd: |
+        SHA256_HASH=$(echo -n "{{ ch_pass.stdout }}" | sha256sum | awk '{print $1}')
+        cat > /etc/clickhouse-server/users.d/default-password.xml <<EOF
+        <?xml version="1.0"?>
+        <clickhouse>
+          <users>
+            <default>
+              <password remove="1"/>
+              <password_sha256_hex>$SHA256_HASH</password_sha256_hex>
+            </default>
+          </users>
+        </clickhouse>
+        EOF
+        chown clickhouse:clickhouse /etc/clickhouse-server/users.d/default-password.xml
+        chmod 640 /etc/clickhouse-server/users.d/default-password.xml
+
+  - name: 配置端口 + 监听 + 内存
+    module: copy
+    args:
+      dest: /etc/clickhouse-server/config.d/envforge.xml
+      mode: "0640"
+      content: |
+        <?xml version="1.0"?>
+        <clickhouse>
+            <listen_host>127.0.0.1</listen_host>
+            <tcp_port>{{ clickhouse_tcp_port }}</tcp_port>
+            <http_port>{{ clickhouse_http_port }}</http_port>
+            <max_server_memory_usage_to_ram_ratio>0.5</max_server_memory_usage_to_ram_ratio>
+            <max_memory_usage>{{ clickhouse_max_memory_gb * 1073741824 }}</max_memory_usage>
+            <max_concurrent_queries>100</max_concurrent_queries>
+            <max_connections>1024</max_connections>
+        </clickhouse>
+
+  - name: 启动 ClickHouse
+    module: service
+    args:
+      name: clickhouse-server
+      state: started
+      enabled: true
+
+  - name: 等待 ClickHouse 启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if curl -fsS "http://127.0.0.1:{{ clickhouse_http_port }}/ping" 2>/dev/null | grep -q Ok; then
+            exit 0
+          fi
+          sleep 2
+        done
+        sudo journalctl -u clickhouse-server -n 30 --no-pager
+        exit 1
+
+  - name: 显示登录信息
+    module: shell
+    args:
+      cmd: |
+        echo "============================================"
+        echo "ClickHouse 已就绪"
+        echo "============================================"
+        echo "  HTTP API:    http://127.0.0.1:{{ clickhouse_http_port }}"
+        echo "  TCP（client）: 127.0.0.1:{{ clickhouse_tcp_port }}"
+        echo "  Default user: default"
+        echo "  Password:     {{ ch_pass.stdout }}"
+        echo ""
+        echo "测试："
+        echo "  clickhouse-client -h 127.0.0.1 --password={{ ch_pass.stdout }}"
+        echo "============================================"
+
+verify:
+  - name: clickhouse service running
+    cmd: "systemctl is-active --quiet clickhouse-server"
+    hint: |
+      ClickHouse 没起来：
+        1. journalctl -u clickhouse-server -n 50
+        2. 内存 < 1G 容易 OOM
+        3. /var/log/clickhouse-server/clickhouse-server.log
+
+  - name: clickhouse responds
+    cmd: "curl -fsS 'http://127.0.0.1:{{ clickhouse_http_port }}/ping' | grep -q Ok"
+    hint: "ping 不通。检查端口是否被占。"
+
+  - name: query works
+    cmd: "curl -fsS 'http://default:{{ ch_pass.stdout }}@127.0.0.1:{{ clickhouse_http_port }}/' --data-urlencode 'query=SELECT 1' | grep -q '^1$'"
+    hint: "查询失败——用户密码错或权限不对。"

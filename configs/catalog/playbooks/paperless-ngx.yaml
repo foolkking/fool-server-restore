@@ -1,0 +1,239 @@
+# Playbook: Paperless-ngx 文档管理
+#
+# 自托管文档管理——扫描/上传 PDF → OCR 全文索引 + AI 标签 + 全文搜索。
+# 多容器栈：app + PG + Redis + tika + gotenberg
+name: Install Paperless-ngx document management
+hosts: all
+
+vars:
+  pn_admin_user: "admin"
+  pn_admin_password: ""           # 留空 = 自动生成
+  pn_db_password: ""              # 留空 = 自动生成
+  pn_secret_key: ""               # 留空 = 自动生成
+  pn_port: 8000
+  pn_data_dir: /opt/paperless-ngx
+  pn_ocr_languages: "eng+chi_sim"  # OCR 语言（多个用 +）
+  pn_timezone: "Asia/Shanghai"
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ pn_port }} "; then
+          echo "WARN: Port {{ pn_port }} 占用："
+          ss -tlnp | grep ":{{ pn_port }} "
+        fi
+    failed_when: false
+
+  - name: 创建目录
+    module: file
+    args:
+      path: "{{ pn_data_dir }}/{{ item }}"
+      state: directory
+      mode: "0755"
+    loop:
+      - data
+      - media
+      - export
+      - consume
+      - postgres-data
+      - redis-data
+
+  - name: 生成 admin 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ pn_admin_password }}" ]; then
+          openssl rand -base64 18 | tr -d '\n='
+        else
+          echo "{{ pn_admin_password }}"
+        fi
+    register: pn_pass
+    no_log: true
+
+  - name: 生成 DB 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ pn_db_password }}" ]; then
+          openssl rand -base64 24 | tr -d '\n='
+        else
+          echo "{{ pn_db_password }}"
+        fi
+    register: pn_db_pass
+    no_log: true
+
+  - name: 生成 secret key
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ pn_secret_key }}" ]; then
+          openssl rand -hex 32
+        else
+          echo "{{ pn_secret_key }}"
+        fi
+    register: pn_skey
+    no_log: true
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ pn_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          broker:
+            image: docker.io/library/redis:7
+            container_name: paperless-redis
+            restart: unless-stopped
+            volumes:
+              - {{ pn_data_dir }}/redis-data:/data
+
+          db:
+            image: docker.io/library/postgres:16-alpine
+            container_name: paperless-db
+            restart: unless-stopped
+            volumes:
+              - {{ pn_data_dir }}/postgres-data:/var/lib/postgresql/data
+            environment:
+              POSTGRES_DB: paperless
+              POSTGRES_USER: paperless
+              POSTGRES_PASSWORD: "{{ pn_db_pass.stdout }}"
+            healthcheck:
+              test: ["CMD", "pg_isready", "-U", "paperless"]
+
+          gotenberg:
+            image: docker.io/gotenberg/gotenberg:8
+            container_name: paperless-gotenberg
+            restart: unless-stopped
+            command:
+              - "gotenberg"
+              - "--chromium-disable-javascript=true"
+              - "--chromium-allow-list=file:///tmp/.*"
+
+          tika:
+            image: docker.io/apache/tika:latest
+            container_name: paperless-tika
+            restart: unless-stopped
+
+          webserver:
+            image: ghcr.io/paperless-ngx/paperless-ngx:latest
+            container_name: paperless
+            restart: unless-stopped
+            depends_on:
+              db:
+                condition: service_healthy
+              broker:
+                condition: service_started
+              gotenberg:
+                condition: service_started
+              tika:
+                condition: service_started
+            ports:
+              - "127.0.0.1:{{ pn_port }}:8000"
+            volumes:
+              - {{ pn_data_dir }}/data:/usr/src/paperless/data
+              - {{ pn_data_dir }}/media:/usr/src/paperless/media
+              - {{ pn_data_dir }}/export:/usr/src/paperless/export
+              - {{ pn_data_dir }}/consume:/usr/src/paperless/consume
+            environment:
+              PAPERLESS_REDIS: redis://broker:6379
+              PAPERLESS_DBHOST: db
+              PAPERLESS_DBNAME: paperless
+              PAPERLESS_DBUSER: paperless
+              PAPERLESS_DBPASS: "{{ pn_db_pass.stdout }}"
+              PAPERLESS_SECRET_KEY: "{{ pn_skey.stdout }}"
+              PAPERLESS_TIME_ZONE: "{{ pn_timezone }}"
+              PAPERLESS_OCR_LANGUAGE: "{{ pn_ocr_languages }}"
+              PAPERLESS_TIKA_ENABLED: 1
+              PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+              PAPERLESS_TIKA_ENDPOINT: http://tika:9998
+              PAPERLESS_URL: ""
+              PAPERLESS_ADMIN_USER: "{{ pn_admin_user }}"
+              PAPERLESS_ADMIN_PASSWORD: "{{ pn_pass.stdout }}"
+              USERMAP_UID: 1000
+              USERMAP_GID: 1000
+            healthcheck:
+              test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:8000/api/"]
+              interval: 30s
+              timeout: 10s
+              retries: 5
+              start_period: 60s
+
+  - name: 启动栈
+    module: shell
+    args:
+      cmd: |
+        cd {{ pn_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待 Paperless ready（首次启动慢）
+    module: shell
+    args:
+      cmd: |
+        echo "等待 Paperless-ngx 启动（首次约 90-180s——下 OCR 模型 + DB migration）..."
+        for i in $(seq 1 90); do
+          if curl -fsS http://127.0.0.1:{{ pn_port }}/api/ -o /dev/null 2>&1; then
+            echo "OK: Paperless ready"
+            exit 0
+          fi
+          sleep 3
+        done
+        echo "ERROR: Paperless not ready in 270s"
+        docker logs --tail 50 paperless
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Paperless-ngx 已就绪"
+        echo "===================================================================="
+        echo "  本机 URL:        http://127.0.0.1:{{ pn_port }}"
+        echo "  Admin 用户:       {{ pn_admin_user }}"
+        echo "  Admin 密码:       {{ pn_pass.stdout }}"
+        echo "  OCR 语言:         {{ pn_ocr_languages }}"
+        echo "  时区:             {{ pn_timezone }}"
+        echo ""
+        echo "工作流:"
+        echo "  1. 反代到 https://docs.example.com（nginx + LE）"
+        echo "  2. 浏览器登录 → Settings → 配标签 / 类型 / 通讯方"
+        echo "  3. 上传方式:"
+        echo "     a) Web UI: 直接拖拽上传"
+        echo "     b) Consume 目录: 把 PDF 放到 {{ pn_data_dir }}/consume/"
+        echo "                       Paperless 自动 OCR + 入库 + 移走"
+        echo "     c) 邮件: 配 IMAP，发邮件附件自动入库"
+        echo "     d) 移动 App: PaperlessButler / Paperless Mobile"
+        echo "  4. OCR 完成后全文搜索 + 标签分类"
+        echo "===================================================================="
+
+verify:
+  - name: paperless container running
+    cmd: "docker ps --filter name=paperless --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: |
+      Paperless 没起：
+        docker logs paperless | tail -100
+        最常见：DB 没就绪 / OCR 模型下载失败
+
+  - name: postgres healthy
+    cmd: "docker exec paperless-db pg_isready -U paperless"
+    hint: "PG 没就绪。docker logs paperless-db"
+
+  - name: api responsive
+    cmd: "curl -fsS http://127.0.0.1:{{ pn_port }}/api/ -o /dev/null"
+    hint: "API 不响应。Paperless 仍在启动？等 60 秒后重试。docker logs paperless"
+
+  - name: consume dir exists
+    cmd: "test -d {{ pn_data_dir }}/consume"
+    hint: "Consume 目录不存在。检查 {{ pn_data_dir }} 权限。"

@@ -1,0 +1,51 @@
+{
+  "ai_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/ai-stack",
+    "help": "Ollama 模型 + Open WebUI 配置 + SearXNG 配置存储位置。模型文件大（数 GB - 数十 GB）。",
+    "helpEn": "Ollama models + UI configs storage. Models are large (GB - 10s GB)."
+  },
+  "ai_webui_port": {
+    "type": "port",
+    "label": "Open WebUI 端口",
+    "labelEn": "Open WebUI port",
+    "default": 3030,
+    "help": "Open WebUI（ChatGPT 风格界面）端口。",
+    "helpEn": "Open WebUI port."
+  },
+  "ai_ollama_port": {
+    "type": "port",
+    "label": "Ollama API 端口",
+    "labelEn": "Ollama API port",
+    "default": 11434,
+    "help": "Ollama 推理 API 端口。OpenAI 兼容 API 也在此端口（/v1/chat/completions）。",
+    "helpEn": "Ollama inference API port. OpenAI-compatible API also here."
+  },
+  "ai_searxng_port": {
+    "type": "port",
+    "label": "SearXNG 端口",
+    "labelEn": "SearXNG port",
+    "default": 8888,
+    "help": "SearXNG（元搜索）端口。Open WebUI 调用此做 RAG web search。",
+    "helpEn": "SearXNG (metasearch) port. Open WebUI uses for RAG web search."
+  },
+  "ai_default_model": {
+    "type": "choice",
+    "label": "默认模型",
+    "labelEn": "Default model",
+    "default": "llama3.2:3b",
+    "options": [
+      { "value": "llama3.2:3b",   "label": "Llama 3.2 3B（2GB，CPU 可跑）" },
+      { "value": "llama3.1:8b",   "label": "Llama 3.1 8B（4.7GB，需 8GB+ RAM）" },
+      { "value": "qwen2.5:7b",     "label": "Qwen 2.5 7B（中文好，4.4GB）" },
+      { "value": "qwen2.5:14b",    "label": "Qwen 2.5 14B（中文好，9GB，需 16GB+）" },
+      { "value": "phi3:mini",       "label": "Phi-3 Mini（微软，2.3GB）" },
+      { "value": "mistral:7b",       "label": "Mistral 7B（4.1GB）" },
+      { "value": "deepseek-coder-v2:16b", "label": "DeepSeek Coder V2 16B（代码用，9GB）" }
+    ],
+    "help": "首次启动 Playbook 会下载此模型（可能 1-10 分钟）。装好后可用 'docker exec ollama ollama pull <name>' 装更多。",
+    "helpEn": "Auto-pulled on first launch. Install more: 'docker exec ollama ollama pull <name>'."
+  }
+}

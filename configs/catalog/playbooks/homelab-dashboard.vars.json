@@ -1,0 +1,44 @@
+{
+  "hd_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/homelab-dashboard",
+    "help": "存 Homepage 配置 + Uptime Kuma DB + Dozzle 用户。",
+    "helpEn": "Stores Homepage config + Uptime Kuma DB + Dozzle users."
+  },
+  "hd_uk_port": {
+    "type": "port",
+    "label": "Uptime Kuma 端口",
+    "labelEn": "Uptime Kuma port",
+    "default": 3001,
+    "help": "监控端口（仅 127.0.0.1）。",
+    "helpEn": "Monitor port (127.0.0.1 only)."
+  },
+  "hd_hp_port": {
+    "type": "port",
+    "label": "Homepage 端口",
+    "labelEn": "Homepage port",
+    "default": 3010,
+    "help": "Dashboard 端口（仅 127.0.0.1）。",
+    "helpEn": "Dashboard port (127.0.0.1 only)."
+  },
+  "hd_dz_port": {
+    "type": "port",
+    "label": "Dozzle 端口",
+    "labelEn": "Dozzle port",
+    "default": 9999,
+    "help": "日志查看器端口（仅 127.0.0.1）。",
+    "helpEn": "Log viewer port (127.0.0.1 only)."
+  },
+  "hd_admin_password": {
+    "type": "password",
+    "label": "Dozzle Admin 密码",
+    "labelEn": "Dozzle admin password",
+    "default": "",
+    "generate_length": 16,
+    "reveal_after_run": true,
+    "help": "Dozzle 登录密码（Homepage 默认无认证，Uptime Kuma 首次访问注册）。留空 = 自动生成 16 位。",
+    "helpEn": "Dozzle login password. Empty = auto-generate 16-char."
+  }
+}

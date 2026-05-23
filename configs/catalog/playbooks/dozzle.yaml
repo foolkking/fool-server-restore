@@ -1,0 +1,157 @@
+# Playbook: Dozzle Docker 日志查看器
+#
+# 实时 Docker 容器日志 web 查看器——单容器，挂 socket 就开看。
+# 不需要 ELK / Loki 这类重栈。
+name: Install Dozzle Docker log viewer
+hosts: all
+
+vars:
+  dz_port: 9999
+  dz_admin_user: "admin"
+  dz_admin_password: ""              # 留空 = 自动生成 16 位
+  dz_data_dir: /opt/dozzle
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed." >&2; exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ dz_port }} "; then
+          echo "WARN: Port {{ dz_port }} 占用："
+          ss -tlnp | grep ":{{ dz_port }} "
+        fi
+    failed_when: false
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ dz_data_dir }}"
+      state: directory
+      mode: "0755"
+
+  - name: 生成 admin 密码
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ dz_admin_password }}" ]; then
+          openssl rand -base64 12 | tr -d '\n='
+        else
+          echo "{{ dz_admin_password }}"
+        fi
+    register: dz_pass
+    no_log: true
+
+  - name: 计算 admin 密码 bcrypt hash
+    module: shell
+    args:
+      cmd: |
+        # Dozzle users.yaml 用 bcrypt
+        docker run --rm httpd:2-alpine htpasswd -nbBC 10 "" "{{ dz_pass.stdout }}" 2>/dev/null \
+          | tail -n1 | sed 's/^://'
+    register: dz_pass_hash
+    no_log: true
+
+  - name: 写入 users.yaml（认证后端）
+    module: copy
+    args:
+      dest: "{{ dz_data_dir }}/users.yml"
+      mode: "0640"
+      content: |
+        users:
+          {{ dz_admin_user }}:
+            email: admin@localhost
+            name: Administrator
+            password: '{{ dz_pass_hash.stdout }}'
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ dz_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          dozzle:
+            image: amir20/dozzle:latest
+            container_name: dozzle
+            restart: unless-stopped
+            volumes:
+              - /var/run/docker.sock:/var/run/docker.sock:ro
+              - {{ dz_data_dir }}/users.yml:/data/users.yml:ro
+            ports:
+              - "127.0.0.1:{{ dz_port }}:8080"
+            environment:
+              DOZZLE_AUTH_PROVIDER: simple
+              DOZZLE_ENABLE_ACTIONS: "false"           # 默认不允许容器操作（安全）
+              DOZZLE_LEVEL: info
+
+  - name: 启动 Dozzle
+    module: shell
+    args:
+      cmd: |
+        cd {{ dz_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:{{ dz_port }}/healthcheck 2>/dev/null | grep -q healthy; then
+            echo "OK: Dozzle ready"
+            exit 0
+          fi
+          # /healthcheck 没就用 / 测试
+          if curl -fsS http://127.0.0.1:{{ dz_port }}/ -o /dev/null 2>&1; then
+            echo "OK: Dozzle ready (no healthcheck endpoint)"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: Dozzle not ready"
+        docker logs --tail 50 dozzle
+        exit 1
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "Dozzle 已就绪"
+        echo "===================================================================="
+        echo "  本机 URL:      http://127.0.0.1:{{ dz_port }}"
+        echo "  Admin 用户:    {{ dz_admin_user }}"
+        echo "  Admin 密码:    {{ dz_pass.stdout }}"
+        echo ""
+        echo "下一步:"
+        echo "  1. 反代到 https://logs.example.com（nginx + LE）"
+        echo "  2. 浏览器登录 → 看所有容器日志（实时滚动）"
+        echo "  3. 点容器名进详情 → 全屏日志 + 关键词过滤 + 时间范围"
+        echo ""
+        echo "高级（多主机）："
+        echo "  Settings → Add hosts，跨多台 Docker 主机集中看日志"
+        echo "===================================================================="
+
+verify:
+  - name: dozzle container running
+    cmd: "docker ps --filter name=dozzle --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: |
+      Dozzle 没起：
+        docker logs dozzle | tail -30
+        最常见：socket 权限不对 / 未挂
+
+  - name: web ui responds
+    cmd: "curl -fsS http://127.0.0.1:{{ dz_port }}/ -o /dev/null"
+    hint: "Web UI 不响应。docker logs dozzle"
+
+  - name: docker socket accessible from container
+    cmd: "docker exec dozzle ls -la /var/run/docker.sock"
+    hint: "Dozzle 看不到 docker socket。检查挂载 + 权限。"

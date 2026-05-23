@@ -1,0 +1,44 @@
+{
+  "clickhouse_password": {
+    "type": "password",
+    "label": "default user 密码",
+    "labelEn": "default user password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "ClickHouse default 用户密码。留空 = 自动 24 位。生产建议建专用业务账号，default 仅运维用。",
+    "helpEn": "Password for 'default' user. Empty = auto 24 chars. Production: create dedicated business users."
+  },
+  "clickhouse_tcp_port": {
+    "type": "port",
+    "label": "TCP 端口（native 协议）",
+    "labelEn": "TCP port (native protocol)",
+    "default": 9000,
+    "help": "clickhouse-client 连接端口。注意：与 Prometheus 9090 接近，避免冲突。",
+    "helpEn": "clickhouse-client connection port. Note: close to Prometheus 9090, avoid conflicts."
+  },
+  "clickhouse_http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 8123,
+    "help": "REST API 端口。boto3 / Python clickhouse-driver / dbt 等用此。",
+    "helpEn": "REST API port. Used by boto3 / Python clickhouse-driver / dbt."
+  },
+  "clickhouse_max_memory_gb": {
+    "type": "number",
+    "label": "单查询最大内存（GB）",
+    "labelEn": "Max memory per query (GB)",
+    "default": 4,
+    "help": "单查询的内存上限。物理内存的 50-70%。低于 1 GB 大查询会失败。",
+    "helpEn": "Max RAM per query. Recommend 50-70% of physical RAM. Below 1GB will fail large queries."
+  },
+  "clickhouse_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/var/lib/clickhouse",
+    "help": "ClickHouse 数据存储位置。生产推荐 NVMe SSD。",
+    "helpEn": "Data storage location. NVMe SSD recommended for production."
+  }
+}

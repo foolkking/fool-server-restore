@@ -1,0 +1,53 @@
+{
+  "gitlab_external_url": {
+    "type": "string",
+    "label": "External URL",
+    "labelEn": "External URL",
+    "default": "https://gitlab.example.com",
+    "validate": "^https?://[a-zA-Z0-9.-]+(:[0-9]+)?$",
+    "help": "GitLab 对外完整 URL（含协议）。生产 https://...。所有 webhook / clone URL 基于此。**改后整体重启 + 可能要改 LFS 等子服务**。",
+    "helpEn": "Full GitLab public URL with protocol. All webhooks / clone URLs based on this."
+  },
+  "gitlab_root_password": {
+    "type": "password",
+    "label": "Root 密码",
+    "labelEn": "Root password",
+    "default": "",
+    "generate_length": 24,
+    "reveal_after_run": true,
+    "help": "GitLab root admin 密码。留空 = 自动 24 位。**仅首次启动设**——之后改密码用 UI。",
+    "helpEn": "GitLab root admin password. Empty = auto 24 chars. Only set on first launch."
+  },
+  "gitlab_data_dir": {
+    "type": "string",
+    "label": "数据目录",
+    "labelEn": "Data directory",
+    "default": "/opt/gitlab",
+    "help": "GitLab 配置 + PG 数据 + git 仓库 + uploads。可达数十 GB。",
+    "helpEn": "GitLab config + PG data + git repos + uploads. Can grow to 10s GB."
+  },
+  "gitlab_http_port": {
+    "type": "port",
+    "label": "HTTP 端口",
+    "labelEn": "HTTP port",
+    "default": 8080,
+    "help": "GitLab HTTP 端口。生产用反代到 443。",
+    "helpEn": "HTTP port. Use reverse proxy for 443 in production."
+  },
+  "gitlab_https_port": {
+    "type": "port",
+    "label": "HTTPS 端口",
+    "labelEn": "HTTPS port",
+    "default": 8443,
+    "help": "GitLab 内置 HTTPS 端口（少用——一般反代）。",
+    "helpEn": "Built-in HTTPS port (rarely used, prefer reverse proxy)."
+  },
+  "gitlab_ssh_port": {
+    "type": "port",
+    "label": "Git SSH 端口",
+    "labelEn": "Git SSH port",
+    "default": 2222,
+    "help": "Git clone via SSH 端口。**不能与 sshd 22 冲突**——所以默认 2222。clone URL 自动生成 ssh://git@host:2222/...",
+    "helpEn": "Git SSH port. Cannot conflict with sshd 22, so default 2222. Clone URL auto-generated."
+  }
+}

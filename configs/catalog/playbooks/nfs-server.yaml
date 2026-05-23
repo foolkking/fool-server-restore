@@ -1,0 +1,142 @@
+# Playbook: NFS 文件服务器
+#
+# NFS（Network File System）— Linux 之间共享盘的事实标准协议。
+# 比 Samba 简单，比 SMB 快 30%+，但仅 Linux 友好（Windows 默认无客户端）。
+#
+# 部署方式：系统包（apt: nfs-kernel-server / dnf: nfs-utils）。
+name: Install NFS file server
+hosts: all
+
+vars:
+  nfs_export_path: /srv/nfs/share
+  nfs_allowed_clients: "192.168.1.0/24"
+  nfs_options: "rw,sync,no_subtree_check,no_root_squash"
+  nfs_protocol_version: "4"
+  nfs_create_export_dir: true
+
+tasks:
+  - name: 安装 NFS server（Debian 系）
+    module: package
+    args:
+      name: nfs-kernel-server
+    when: family == "debian-family"
+
+  - name: 安装 NFS server（RHEL 系）
+    module: package
+    args:
+      name: nfs-utils
+    when: family == "rhel-family"
+
+  - name: 创建 export 目录（若启用）
+    module: file
+    args:
+      path: "{{ nfs_export_path }}"
+      state: directory
+      mode: "0755"
+    when: nfs_create_export_dir
+
+  - name: 备份旧 /etc/exports
+    module: shell
+    args:
+      cmd: |
+        if [ -f /etc/exports ] && [ ! -f /etc/exports.envforge.bak ]; then
+          cp /etc/exports /etc/exports.envforge.bak
+        fi
+
+  - name: 写入 export 规则
+    module: lineinfile
+    args:
+      path: /etc/exports
+      line: "{{ nfs_export_path }} {{ nfs_allowed_clients }}({{ nfs_options }})"
+      create: true
+      mode: "0644"
+
+  - name: 仅 NFSv4 时禁用 v2/v3（性能 + 安全）
+    module: shell
+    args:
+      cmd: |
+        if [ "{{ nfs_protocol_version }}" = "4" ]; then
+          if [ -f /etc/nfs.conf ]; then
+            sed -i 's/^# *vers2.*/vers2=n/' /etc/nfs.conf
+            sed -i 's/^# *vers3.*/vers3=n/' /etc/nfs.conf
+          fi
+        fi
+    when: family == "rhel-family"
+
+  - name: 应用 export 规则
+    module: shell
+    args:
+      cmd: "exportfs -ra"
+
+  - name: 启动并自启 NFS server（Debian）
+    module: service
+    args:
+      name: nfs-kernel-server
+      state: started
+      enabled: true
+    when: family == "debian-family"
+
+  - name: 启动并自启 NFS server（RHEL）
+    module: service
+    args:
+      name: nfs-server
+      state: started
+      enabled: true
+    when: family == "rhel-family"
+
+  - name: 防火墙放行 NFS（仅 NFSv4 需 2049）
+    module: shell
+    args:
+      cmd: |
+        if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+          ufw allow from {{ nfs_allowed_clients }} to any port 2049 proto tcp comment 'NFS'
+        fi
+        if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+          firewall-cmd --permanent --add-service=nfs
+          firewall-cmd --permanent --add-service=mountd
+          firewall-cmd --permanent --add-service=rpc-bind
+          firewall-cmd --reload
+        fi
+
+  - name: 显示挂载提示
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "NFS server 已就绪"
+        echo "===================================================================="
+        echo "  Export:    {{ nfs_export_path }}"
+        echo "  Clients:   {{ nfs_allowed_clients }}"
+        echo "  Options:   {{ nfs_options }}"
+        echo ""
+        echo "客户端挂载示例（在另一台 Linux 上）:"
+        echo "  sudo mount -t nfs $(hostname -I | awk '{print $1}'):{{ nfs_export_path }} /mnt/nfs"
+        echo ""
+        echo "永久挂载（写入 /etc/fstab）:"
+        echo "  $(hostname -I | awk '{print $1}'):{{ nfs_export_path }} /mnt/nfs nfs defaults 0 0"
+        echo "===================================================================="
+
+verify:
+  - name: nfs server running
+    cmd: "systemctl is-active nfs-kernel-server 2>/dev/null || systemctl is-active nfs-server"
+    hint: |
+      NFS server 没运行：
+        Debian: sudo systemctl status nfs-kernel-server
+        RHEL:   sudo systemctl status nfs-server
+        日志:   sudo journalctl -u nfs-server -n 30
+
+  - name: export rule registered
+    cmd: "exportfs -v | grep -q '{{ nfs_export_path }}'"
+    hint: |
+      Export 没生效：
+        sudo cat /etc/exports
+        sudo exportfs -ra
+        sudo exportfs -v
+
+  - name: nfs port 2049 listening
+    cmd: "ss -tlnp 2>/dev/null | grep -q ':2049 ' || netstat -tlnp 2>/dev/null | grep -q ':2049 '"
+    hint: "端口 2049 没监听——服务起来了但 portmap / rpcbind 没起。检查 systemctl status rpcbind"
+
+  - name: export directory exists
+    cmd: "test -d {{ nfs_export_path }}"
+    hint: "Export 目录 {{ nfs_export_path }} 不存在。手动创建：sudo mkdir -p {{ nfs_export_path }}"

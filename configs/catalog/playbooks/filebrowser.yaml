@@ -1,0 +1,181 @@
+# Playbook: FileBrowser 网页文件管理器
+#
+# 极轻量 web 文件管理器（单二进制 + SQLite，~30 MB RAM）。
+# 浏览 / 上传 / 下载 / 编辑 / 多用户。
+name: Install FileBrowser web file manager
+hosts: all
+
+vars:
+  fb_root_dir: /srv
+  fb_port: 8088
+  fb_admin_user: "admin"
+  fb_admin_password: ""              # 留空 = 自动生成 16 位
+  fb_data_dir: /opt/filebrowser
+
+tasks:
+  - name: 验证 Docker
+    module: shell
+    args:
+      cmd: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "ERROR: Docker not installed. Run docker-host-profile first." >&2
+          exit 1
+        fi
+
+  - name: 端口预检
+    module: shell
+    args:
+      cmd: |
+        if ss -tlnp 2>/dev/null | grep -q ":{{ fb_port }} "; then
+          echo "WARN: Port {{ fb_port }} 占用："
+          ss -tlnp | grep ":{{ fb_port }} "
+        fi
+    failed_when: false
+
+  - name: 检查 root 目录存在 + 可读
+    module: shell
+    args:
+      cmd: |
+        if [ ! -d "{{ fb_root_dir }}" ]; then
+          echo "ERROR: root 目录 {{ fb_root_dir }} 不存在" >&2
+          exit 1
+        fi
+        if [ ! -r "{{ fb_root_dir }}" ]; then
+          echo "WARN: root 目录 {{ fb_root_dir }} 当前用户不可读"
+        fi
+
+  - name: 创建数据目录
+    module: file
+    args:
+      path: "{{ fb_data_dir }}"
+      state: directory
+      mode: "0755"
+
+  - name: 生成 admin 密码（若未填）
+    module: shell
+    args:
+      cmd: |
+        if [ -z "{{ fb_admin_password }}" ]; then
+          openssl rand -base64 12 | tr -d '\n='
+        else
+          echo "{{ fb_admin_password }}"
+        fi
+    register: fb_pass_value
+    no_log: true
+
+  - name: 写入 docker-compose.yml
+    module: copy
+    args:
+      dest: "{{ fb_data_dir }}/docker-compose.yml"
+      mode: "0640"
+      content: |
+        services:
+          filebrowser:
+            image: filebrowser/filebrowser:latest
+            container_name: filebrowser
+            restart: unless-stopped
+            user: "0:0"                          # 以 root 跑（能管所有文件）—— 内部仍走 admin 账号鉴权
+            volumes:
+              - {{ fb_root_dir }}:/srv
+              - {{ fb_data_dir }}/database.db:/database.db
+              - {{ fb_data_dir }}/.filebrowser.json:/.filebrowser.json:ro
+            ports:
+              - "127.0.0.1:{{ fb_port }}:80"
+            healthcheck:
+              test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1/health"]
+              interval: 30s
+              timeout: 5s
+              retries: 3
+
+  - name: 写入 filebrowser 配置
+    module: copy
+    args:
+      dest: "{{ fb_data_dir }}/.filebrowser.json"
+      mode: "0644"
+      content: |
+        {
+          "port": 80,
+          "baseURL": "",
+          "address": "0.0.0.0",
+          "log": "stdout",
+          "database": "/database.db",
+          "root": "/srv"
+        }
+
+  - name: 创建空数据库（首次）
+    module: shell
+    args:
+      cmd: |
+        if [ ! -f {{ fb_data_dir }}/database.db ]; then
+          touch {{ fb_data_dir }}/database.db
+        fi
+
+  - name: 启动 FileBrowser
+    module: shell
+    args:
+      cmd: |
+        cd {{ fb_data_dir }}
+        docker compose pull
+        docker compose up -d
+
+  - name: 等待启动
+    module: shell
+    args:
+      cmd: |
+        for i in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:{{ fb_port }}/health 2>/dev/null | grep -q OK; then
+            echo "OK: FileBrowser ready"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: FileBrowser not ready"
+        docker logs --tail 50 filebrowser
+        exit 1
+
+  - name: 重置 admin 密码（首次或表单值变了）
+    module: shell
+    args:
+      cmd: |
+        # FileBrowser 默认 admin/admin —— 必须改
+        docker exec filebrowser /filebrowser users update admin \
+          --password "{{ fb_pass_value.stdout }}" 2>&1 || \
+        docker exec filebrowser /filebrowser users add {{ fb_admin_user }} \
+          "{{ fb_pass_value.stdout }}" --perm.admin 2>&1
+    no_log: true
+    failed_when: false
+
+  - name: 显示访问信息
+    module: shell
+    args:
+      cmd: |
+        echo "===================================================================="
+        echo "FileBrowser 已就绪"
+        echo "===================================================================="
+        echo "  本机 URL:     http://127.0.0.1:{{ fb_port }}"
+        echo "  根目录映射:   {{ fb_root_dir }} → /srv（容器内）"
+        echo "  Admin 用户:    {{ fb_admin_user }}"
+        echo "  Admin 密码:    {{ fb_pass_value.stdout }}"
+        echo ""
+        echo "下一步:"
+        echo "  1. 反代到 https://files.example.com（nginx + LE）"
+        echo "  2. 浏览器打开登录 → 改密码（强烈建议）"
+        echo "  3. Settings → Users → 加家庭成员账号 + 各自的家目录"
+        echo "  4. Settings → Branding → 改名字 + LOGO（个性化）"
+        echo "===================================================================="
+
+verify:
+  - name: filebrowser container running
+    cmd: "docker ps --filter name=filebrowser --format '{{ '{{' }}.Status{{ '}}' }}' | grep -q Up"
+    hint: |
+      FileBrowser 没起：
+        docker logs filebrowser
+        最常见：root 目录权限不对（容器以 root 跑，挂载点应可读）
+
+  - name: web ui responds
+    cmd: "curl -fsS http://127.0.0.1:{{ fb_port }}/health -o /dev/null"
+    hint: "Web UI 不响应。docker logs filebrowser 看启动错误。"
+
+  - name: root mount visible
+    cmd: "docker exec filebrowser ls /srv >/dev/null"
+    hint: "root 目录挂载失败。检查 {{ fb_root_dir }} 真实存在。"
