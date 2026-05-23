@@ -1,40 +1,103 @@
 # Playbook: Kubernetes 工具集 (kubectl + helm)
-name: Install kubectl and Helm
+#
+# 包名审查矩阵 (§7.5.2)：
+#   kubectl   — Debian apt repo (pkgs.k8s.io/deb) ✅；
+#               RHEL yum repo  (pkgs.k8s.io/rpm) ✅；
+#               双轨已实现。
+#   helm      — 上游官方安装脚本（与 OS 无关）✅
+#
+# 关键：之前版本仅写 apt，RHEL 上整个任务失败。
+name: Install kubectl and Helm (cross-distro)
 hosts: all
 
-tasks:
-  - name: Install prerequisites
-    module: package
-    args:
-      name:
-        - apt-transport-https
-        - ca-certificates
-        - curl
-        - gnupg
-      state: present
+vars:
+  k8s_version: "v1.30"
 
-  - name: Add Kubernetes repository
+tasks:
+  - name: Install prerequisites (apt path)
     module: shell
     args:
       cmd: |
-        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-        sudo apt-get update -qq
-      creates: /etc/apt/sources.list.d/kubernetes.list
+        if command -v apt-get >/dev/null 2>&1; then
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            ca-certificates curl gnupg
+        fi
 
-  - name: Install kubectl
-    module: package
+  - name: Install prerequisites (dnf/yum path)
+    module: shell
     args:
-      name: kubectl
-      state: present
+      cmd: |
+        if command -v dnf >/dev/null 2>&1; then
+          sudo dnf install -y ca-certificates curl gnupg2
+        elif command -v yum >/dev/null 2>&1; then
+          sudo yum install -y ca-certificates curl gnupg2
+        fi
 
-  - name: Install Helm
+  - name: Add Kubernetes apt repository (Debian/Ubuntu)
+    module: shell
+    args:
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1; then
+          sudo install -d -m 0755 /etc/apt/keyrings
+          curl -fsSL https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/Release.key \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+          echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/ /" \
+            | sudo tee /etc/apt/sources.list.d/kubernetes.list >/dev/null
+          sudo apt-get update -qq
+        fi
+
+  - name: Add Kubernetes yum repository (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+          PM="$(command -v dnf || command -v yum)"
+          sudo tee /etc/yum.repos.d/kubernetes.repo >/dev/null <<'EOF'
+        [kubernetes]
+        name=Kubernetes
+        baseurl=https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/rpm/
+        enabled=1
+        gpgcheck=1
+        gpgkey=https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/rpm/repodata/repomd.xml.key
+        exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+        EOF
+          # `exclude=` above lets the repo be defined but only `dnf install --disableexcludes=kubernetes`
+          # actually pulls these packages — this matches upstream guidance to avoid auto-upgrades.
+          sudo "$PM" makecache -y >/dev/null 2>&1 || true
+        fi
+
+  - name: Install kubectl (Debian/Ubuntu)
+    module: shell
+    args:
+      cmd: |
+        if command -v apt-get >/dev/null 2>&1; then
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y kubectl
+        fi
+
+  - name: Install kubectl (RHEL/Anolis)
+    module: shell
+    args:
+      cmd: |
+        if command -v dnf >/dev/null 2>&1; then
+          sudo dnf install -y --disableexcludes=kubernetes kubectl
+        elif command -v yum >/dev/null 2>&1; then
+          sudo yum install -y --disableexcludes=kubernetes kubectl
+        fi
+
+  - name: Install Helm (upstream script, OS-agnostic)
     module: shell
     args:
       cmd: "curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
       creates: /usr/local/bin/helm
 
-  - name: Verify kubectl and Helm
-    module: shell
-    args:
-      cmd: "kubectl version --client && helm version"
+verify:
+  - name: kubectl works
+    cmd: "kubectl version --client 2>&1 | head -3"
+    hint: |
+      kubectl 没装上。检查：
+        Debian/Ubuntu: cat /etc/apt/sources.list.d/kubernetes.list && apt-cache policy kubectl
+        RHEL/Anolis:   cat /etc/yum.repos.d/kubernetes.repo && dnf info kubectl
+      然后看上一步任务的 stderr。
+  - name: helm works
+    cmd: "helm version 2>&1 | head -1"
+    hint: "Helm 没装上：上游 get-helm-3 脚本失败（curl 网络问题），手动重跑或下 release 包。"

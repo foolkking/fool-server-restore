@@ -9,6 +9,9 @@ vars:
 
 tasks:
   - name: Install dependencies
+    # 包名审查矩阵 (§7.5.2)：
+    #   curl / git — 全平台默认仓库 ✅
+    #   build-essential — Debian/Ubuntu；RHEL → @development-tools（PACKAGE_ALIASES 已映射）
     module: package
     args:
       name: ["curl", "git", "build-essential"]

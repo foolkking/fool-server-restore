@@ -1,4 +1,11 @@
 # Playbook: Ruby + Bundler
+#
+# 包名审查矩阵 (§7.5.2)：
+#   ruby            — Debian/Ubuntu ✅；RHEL 默认仓库 ✅
+#   ruby-dev        — Debian/Ubuntu ✅；RHEL → ruby-devel（PACKAGE_ALIASES 已映射）
+#   build-essential — Debian/Ubuntu ✅；RHEL → @development-tools（已映射）
+#   zlib1g-dev      — Debian/Ubuntu ✅；RHEL → zlib-devel（已映射）
+#   libssl-dev      — Debian/Ubuntu ✅；RHEL → openssl-devel（已映射）
 name: Install Ruby and Bundler
 hosts: all
 

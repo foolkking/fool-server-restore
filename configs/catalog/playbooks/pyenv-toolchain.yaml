@@ -2,6 +2,11 @@
 #
 # 装 pyenv + 编译 Python 需要的所有 build 依赖（zlib / openssl / sqlite / etc.）。
 # Pyenv 会从源码编译每个 Python 版本（首次 5-15 分钟），所以前置依赖很重要。
+#
+# 包名审查矩阵 (§7.5.2)：
+#   - Debian/Ubuntu 任务 + RHEL/Anolis 任务并行写出（各自的 -dev/-devel 名）。
+#   - 两边都 `ignore_missing: true`：跑在 Ubuntu 时 RHEL task 内的 dnf 包全 skip，反之亦然。
+#   - 即便 PACKAGE_ALIASES 已映射，这里仍保留双 task 写法（更清晰、调试友好）。
 name: Install pyenv + Python build dependencies
 hosts: all
 

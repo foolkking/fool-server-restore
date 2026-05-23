@@ -8,6 +8,10 @@ hosts: all
 
 tasks:
   - name: Install build dependencies (rustup needs curl + cc + ssl)
+    # 包名审查矩阵 (§7.5.2)：
+    #   build-essential / libssl-dev — Debian/Ubuntu 包名；
+    #     PACKAGE_ALIASES 已映射到 RHEL 的 @development-tools / openssl-devel
+    #   pkg-config — Debian/Ubuntu；RHEL 包名 pkgconfig（已映射）
     module: package
     args:
       name:

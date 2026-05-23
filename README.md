@@ -2,7 +2,7 @@
  * @Author: fool
  * @Date: 2026-05-19 21:03:39
  * @LastEditors: fool
- * @LastEditTime: 2026-05-22 21:10:33
+ * @LastEditTime: 2026-05-23 18:13:15
  * @FilePath: \EnvForge\README.md
  * @Description:  
  * @Note:  
@@ -59,8 +59,8 @@ docker compose up -d
 > 完整的从零部署步骤（Docker 安装、HTTPS 反代、systemd 自启、备份恢复、升级、卸载、排错）见
 > **[docs/DEPLOY.md](./docs/DEPLOY.md)**。
 >
-> 想用 EnvForge 自己来配反代 / 防火墙 / SSH 加固这台宿主机？见
-> **[docs/DEPLOY_SELF.md](./docs/DEPLOY_SELF.md)**——6 次 UI 点击替代 100 行手工配置。
+> 已经有一台运行中的 EnvForge，想用它来部署**另一台**新的 EnvForge 服务器？见
+> **[docs/DEPLOY_SELF.md](./docs/DEPLOY_SELF.md)**——用现成 catalog Playbook 完成新实例的基础设施 + HTTPS + 防火墙，13-15 分钟。
 
 ## 沙盒演示（含一台 Ubuntu target VM，免买 VPS）
 
@@ -80,7 +80,7 @@ docker compose -f docker-compose.demo.yml up -d
 | [docs/CATALOG_AUTHORING.md](./docs/CATALOG_AUTHORING.md) | 新增 / 修改 catalog 项的统一规范（md / yaml / vars.json / catalog.ts） |
 | [docs/CATALOG_EXPAND_PROMPT.md](./docs/CATALOG_EXPAND_PROMPT.md) | 给 LLM 的扩展建议 prompt（粘贴整段拿到值得新增的清单） |
 | [docs/DEPLOY.md](./docs/DEPLOY.md) | Docker 从零部署：依赖、HTTPS、systemd、备份、升级、排错 |
-| [docs/DEPLOY_SELF.md](./docs/DEPLOY_SELF.md) | 用 EnvForge 自管 EnvForge 宿主机：6 次 UI 点击替代 100 行手工配置 |
+| [docs/DEPLOY_SELF.md](./docs/DEPLOY_SELF.md) | 用现有 EnvForge 部署一台新的 EnvForge 服务器（多区域 / 蓝绿升级 / 给客户复制） |
 | [docs/CROSS_DISTRO_STRATEGY.md](./docs/CROSS_DISTRO_STRATEGY.md) | 跨发行版兼容策略：包名/服务名翻译、preflight、compatibility 声明 |
 
 ## 技术栈

@@ -1,9 +1,17 @@
 # Playbook: 系统监控工具集
+#
+# 包名审查矩阵 (§7.5.2)：
+#   htop / iotop / iftop / ncdu — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
+#   btop                        — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
+#   net-tools / sysstat / lsof / strace — 两边默认仓库 ✅
+#   duf                         — Debian ✅；RHEL **不在 EPEL**，需 GitHub release fallback
+#
+# duf fallback 策略：先试系统仓库（apt 有），失败则从 muesli/duf 拉 .deb / 静态二进制。
 name: Install system monitoring and diagnostic tools
 hosts: all
 
 tasks:
-  - name: Install monitoring tools
+  - name: Install monitoring tools (system repos)
     module: package
     args:
       name:
@@ -12,14 +20,62 @@ tasks:
         - iotop
         - iftop
         - ncdu
-        - duf
         - net-tools
         - sysstat
         - lsof
         - strace
       state: present
+      ignore_missing: true
 
-  - name: Verify htop
+  # duf 单独处理：apt 有，但 EPEL 没；RHEL 走 GitHub release fallback
+  - name: Install duf (repo first, GitHub release fallback)
     module: shell
     args:
-      cmd: "htop --version"
+      cmd: |
+        if command -v duf >/dev/null 2>&1; then
+          echo "duf already installed: $(duf --version 2>&1 | head -1)"
+          exit 0
+        fi
+        ARCH="$(uname -m)"
+        DUF_VER="0.8.1"
+        case "$ARCH" in
+          x86_64|amd64) DEB_ARCH="amd64"; TAR_ARCH="x86_64" ;;
+          aarch64|arm64) DEB_ARCH="arm64"; TAR_ARCH="aarch64" ;;
+          *) echo "ERROR: unsupported arch $ARCH" >&2; exit 1 ;;
+        esac
+        if command -v apt-get >/dev/null 2>&1; then
+          if sudo apt-get install -y duf 2>/dev/null; then
+            exit 0
+          fi
+          URL="https://github.com/muesli/duf/releases/download/v${DUF_VER}/duf_${DUF_VER}_linux_${DEB_ARCH}.deb"
+          echo "[fallback] downloading $URL"
+          curl -fsSLo /tmp/duf.deb "$URL"
+          sudo dpkg -i /tmp/duf.deb
+          rm -f /tmp/duf.deb
+          exit 0
+        fi
+        if command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+          # 上游不发 .rpm，下静态 tarball 解压到 /usr/local/bin
+          URL="https://github.com/muesli/duf/releases/download/v${DUF_VER}/duf_${DUF_VER}_linux_${TAR_ARCH}.tar.gz"
+          echo "[fallback] no duf in repo, installing binary from $URL"
+          TMP="$(mktemp -d)"
+          curl -fsSLo "$TMP/duf.tar.gz" "$URL"
+          tar -xzf "$TMP/duf.tar.gz" -C "$TMP"
+          sudo install -m 0755 "$TMP/duf" /usr/local/bin/duf
+          rm -rf "$TMP"
+          /usr/local/bin/duf --version 2>&1 | head -1
+          exit 0
+        fi
+
+verify:
+  - name: htop works
+    cmd: "htop --version 2>&1 | head -1"
+    hint: "htop 没装上：RHEL 需要 EPEL（preflight 自动启用）。"
+  - name: monitoring tools present
+    cmd: |
+      echo "btop:    $(btop --version 2>/dev/null | head -1 || echo MISSING)"
+      echo "iotop:   $(iotop --version 2>/dev/null || echo MISSING)"
+      echo "iftop:   $(iftop -h 2>&1 | head -1 || echo MISSING)"
+      echo "ncdu:    $(ncdu -v 2>/dev/null | head -1 || echo MISSING)"
+      echo "duf:     $(duf --version 2>&1 | head -1 || echo MISSING)"
+    hint: "用 ; 分隔，单个工具缺也能看到全图。MISSING 的对应 EPEL 没启用或镜像缺包。"

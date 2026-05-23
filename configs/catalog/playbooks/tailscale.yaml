@@ -144,4 +144,7 @@ verify:
 
   - name: tailscale binary works
     cmd: "tailscale version"
-    hint: "tailscale 二进制不可用。重装：sudo apt install --reinstall tailscale"
+    hint: |
+      tailscale 二进制不可用。重装：
+        Debian/Ubuntu: sudo apt install --reinstall tailscale
+        RHEL/Anolis:   sudo dnf reinstall tailscale

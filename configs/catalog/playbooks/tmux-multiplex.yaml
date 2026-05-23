@@ -1,4 +1,7 @@
 # Playbook: tmux 终端复用器
+#
+# 包名审查矩阵 (§7.5.2)：
+#   tmux — Debian ✅；RHEL 默认仓库 ✅（也在 EPEL 里）
 name: Install tmux with sane defaults
 hosts: all
 

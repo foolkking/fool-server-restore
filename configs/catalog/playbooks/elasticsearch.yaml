@@ -19,10 +19,14 @@ vars:
 
 tasks:
   - name: Install prerequisites
+    # 包名审查矩阵 (§7.5.2)：
+    #   curl / gnupg          — 两边默认仓库 ✅
+    #   apt-transport-https   — Debian/Ubuntu only，RHEL 上 PACKAGE_ALIASES 自动 (skip)
     module: package
     args:
       name: ["curl", "gnupg", "apt-transport-https"]
       state: present
+      ignore_missing: true
 
   - name: Add Elastic GPG key + apt repo (Debian/Ubuntu)
     module: shell

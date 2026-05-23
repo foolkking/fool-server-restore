@@ -1,4 +1,9 @@
 # Playbook: Fish Shell + Starship Prompt
+#
+# 包名审查矩阵 (§7.5.2)：
+#   fish — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
+#   curl — 两边默认仓库 ✅
+#   starship — 上游官方安装脚本（OS 无关），写到 /usr/local/bin
 name: Install Fish shell with Starship prompt
 hosts: all
 
@@ -10,6 +15,7 @@ tasks:
         - fish
         - curl
       state: present
+      ignore_missing: true
 
   - name: Install Starship prompt
     module: shell

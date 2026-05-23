@@ -1,4 +1,9 @@
 # Playbook: Neovim 编辑器
+#
+# 包名审查矩阵 (§7.5.2)：
+#   neovim — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
+#   vim    — 两边默认仓库 ✅
+#   git    — 两边默认仓库 ✅
 name: Install Neovim with basic config
 hosts: all
 
@@ -11,6 +16,7 @@ tasks:
         - vim
         - git
       state: present
+      ignore_missing: true
 
   - name: Verify Neovim
     module: shell

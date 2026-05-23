@@ -61,6 +61,42 @@ const PACKAGE_ALIASES: Record<string, { rhel?: string; fedora?: string }> = {
   "python3-venv":            { rhel: "python3", fedora: "python3" },
   "python3-dev":             { rhel: "python3-devel", fedora: "python3-devel" },
   "python3-pip":             { rhel: "python3-pip", fedora: "python3-pip" },
+  "tldr":                    { rhel: "tealdeer", fedora: "tealdeer" },
+  // ── Common -dev/-devel libraries (Debian → RHEL) ──
+  // Toolchain playbooks (rust/ruby/python build deps) reference Debian names; map them
+  // to their EL equivalents so a single PACKAGE_ALIASES table fixes all toolchains at once.
+  "libssl-dev":              { rhel: "openssl-devel", fedora: "openssl-devel" },
+  "zlib1g-dev":              { rhel: "zlib-devel", fedora: "zlib-devel" },
+  "libbz2-dev":              { rhel: "bzip2-devel", fedora: "bzip2-devel" },
+  "libreadline-dev":         { rhel: "readline-devel", fedora: "readline-devel" },
+  "libsqlite3-dev":          { rhel: "sqlite-devel", fedora: "sqlite-devel" },
+  "libffi-dev":              { rhel: "libffi-devel", fedora: "libffi-devel" },
+  "liblzma-dev":             { rhel: "xz-devel", fedora: "xz-devel" },
+  "libxml2-dev":             { rhel: "libxml2-devel", fedora: "libxml2-devel" },
+  "libxmlsec1-dev":          { rhel: "xmlsec1-devel", fedora: "xmlsec1-devel" },
+  "libncursesw5-dev":        { rhel: "ncurses-devel", fedora: "ncurses-devel" },
+  "libncurses5-dev":         { rhel: "ncurses-devel", fedora: "ncurses-devel" },
+  "libcurl4-openssl-dev":    { rhel: "libcurl-devel", fedora: "libcurl-devel" },
+  "libpq-dev":               { rhel: "libpq-devel", fedora: "libpq-devel" },
+  "libmysqlclient-dev":      { rhel: "mariadb-connector-c-devel", fedora: "mariadb-connector-c-devel" },
+  "libjpeg-dev":             { rhel: "libjpeg-turbo-devel", fedora: "libjpeg-turbo-devel" },
+  "libpng-dev":              { rhel: "libpng-devel", fedora: "libpng-devel" },
+  "libtool":                 { rhel: "libtool", fedora: "libtool" },
+  "pkg-config":              { rhel: "pkgconfig", fedora: "pkgconfig" },
+  "xz-utils":                { rhel: "xz", fedora: "xz" },
+  "tk-dev":                  { rhel: "tk-devel", fedora: "tk-devel" },
+  // Ruby
+  "ruby-dev":                { rhel: "ruby-devel", fedora: "ruby-devel" },
+  // Python alt names
+  "python3-setuptools":      { rhel: "python3-setuptools", fedora: "python3-setuptools" },
+  // Misc
+  "lsb-release":             { rhel: "redhat-lsb-core", fedora: "redhat-lsb-core" },
+  "gnupg":                   { rhel: "gnupg2", fedora: "gnupg2" },
+  // SQLite naming (libsqlite3-dev already mapped above; keep client name here)
+  "sqlite3":                 { rhel: "sqlite", fedora: "sqlite" },
+  // Certbot plugin packages — naming differs between distros
+  "python3-certbot-nginx":   { rhel: "python3-certbot-nginx", fedora: "python3-certbot-nginx" },
+  "python3-certbot-apache":  { rhel: "python3-certbot-apache", fedora: "python3-certbot-apache" },
 };
 
 /**
@@ -69,8 +105,12 @@ const PACKAGE_ALIASES: Record<string, { rhel?: string; fedora?: string }> = {
  */
 const NEEDS_EPEL = new Set([
   "bat", "btop", "fd-find", "ripgrep", "zoxide", "git-lfs",
-  "fish", "neofetch", "ncdu", "fzf", "tldr",
-  "caddy", "cockpit", "fail2ban", "certbot"
+  "fish", "neofetch", "ncdu", "fzf", "tldr", "tealdeer", "micro",
+  "neovim", "htop", "iotop", "iftop", "nethogs", "ranger", "tmux",
+  "vnstat", "rclone", "borgbackup", "restic",
+  "caddy", "cockpit", "fail2ban", "certbot",
+  "python-certbot-nginx", "certbot-nginx",
+  "python3-certbot-nginx", "python3-certbot-apache",
 ]);
 
 /**

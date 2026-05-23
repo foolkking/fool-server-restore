@@ -3,20 +3,82 @@ name: Install modern Rust-based CLI tools
 hosts: all
 
 tasks:
-  - name: Install via apt (where available)
+  - name: Install via package manager (where available)
     module: package
     args:
       name:
         - bat
         - fd-find
         - ripgrep
-        - exa
         - zoxide
         - fzf
         - tldr
+        - micro
       state: present
+
+  # lsd 在某些 EPEL 镜像（如阿里云 Anolis）里不发布；
+  # 上游官方只发 .deb + 静态 musl 二进制 tarball（没有 .rpm）。
+  # 策略：先试系统仓库，失败 → apt 装官方 deb，dnf/yum 解 musl tarball 直接放 /usr/local/bin。
+  - name: Install lsd (repo first, GitHub release fallback)
+    module: shell
+    args:
+      cmd: |
+        if command -v lsd >/dev/null 2>&1; then
+          echo "lsd already installed: $(lsd --version)"
+          exit 0
+        fi
+        ARCH="$(uname -m)"
+        LSD_VER="1.2.0"
+        # arch mapping
+        case "$ARCH" in
+          x86_64|amd64) DEB_ARCH="amd64"; TAR_ARCH="x86_64" ;;
+          aarch64|arm64) DEB_ARCH="arm64"; TAR_ARCH="aarch64" ;;
+          *) echo "ERROR: unsupported arch $ARCH" >&2; exit 1 ;;
+        esac
+
+        if command -v apt-get >/dev/null 2>&1; then
+          sudo apt-get update -qq || true
+          if sudo apt-get install -y lsd 2>/dev/null; then
+            exit 0
+          fi
+          URL="https://github.com/lsd-rs/lsd/releases/download/v${LSD_VER}/lsd_${LSD_VER}_${DEB_ARCH}.deb"
+          echo "[fallback] downloading $URL"
+          curl -fsSLo /tmp/lsd.deb "$URL"
+          sudo dpkg -i /tmp/lsd.deb
+          rm -f /tmp/lsd.deb
+          exit 0
+        fi
+
+        if command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+          PM="$(command -v dnf || command -v yum)"
+          if sudo "$PM" install -y lsd 2>/dev/null; then
+            exit 0
+          fi
+          # Upstream has no .rpm — install the static musl binary into /usr/local/bin
+          URL="https://github.com/lsd-rs/lsd/releases/download/v${LSD_VER}/lsd-v${LSD_VER}-${TAR_ARCH}-unknown-linux-musl.tar.gz"
+          echo "[fallback] no lsd in repo, installing musl binary from $URL"
+          TMP="$(mktemp -d)"
+          curl -fsSLo "$TMP/lsd.tar.gz" "$URL"
+          tar -xzf "$TMP/lsd.tar.gz" -C "$TMP"
+          sudo install -m 0755 "$TMP"/lsd-*/lsd /usr/local/bin/lsd
+          rm -rf "$TMP"
+          /usr/local/bin/lsd --version
+          exit 0
+        fi
+
+        echo "ERROR: no supported package manager (apt/dnf/yum) found" >&2
+        exit 1
 
   - name: Verify tools
     module: shell
     args:
-      cmd: "bat --version && rg --version && fd --version | head -1"
+      cmd: |
+        # 用 ; 而不是 && —— 单个工具缺失也能看到全部状态
+        echo "bat:    $(bat --version 2>/dev/null || batcat --version 2>/dev/null || echo MISSING)"
+        echo "fd:     $(fd --version 2>/dev/null || fdfind --version 2>/dev/null || echo MISSING)"
+        echo "rg:     $(rg --version 2>/dev/null | head -1 || echo MISSING)"
+        echo "lsd:    $(lsd --version 2>/dev/null || echo MISSING)"
+        echo "zoxide: $(zoxide --version 2>/dev/null || echo MISSING)"
+        echo "fzf:    $(fzf --version 2>/dev/null || echo MISSING)"
+        echo "tldr:   $(tldr --version 2>/dev/null || tealdeer --version 2>/dev/null || echo MISSING)"
+        echo "micro:  $(micro --version 2>/dev/null | head -1 || echo MISSING)"

@@ -7,10 +7,13 @@
 - 📦 **bat** — 替代 `cat`（语法高亮 + 行号 + git 修改标记）
 - 📦 **fd-find** — 替代 `find`（语法直观，默认尊重 .gitignore）
 - 📦 **ripgrep**（命令 `rg`）— 替代 `grep -r`（速度快 5-10 倍）
-- 📦 **eza** — 替代 `ls`（git 状态、tree 模式、彩色）
+- 📦 **lsd** — 替代 `ls`（彩色 + 图标 + tree 模式）
 - 📦 **zoxide**（命令 `z`）— 替代 `cd`（按访问频率智能跳转）
 - 📦 **fzf** — 模糊搜索器（不替代任何东西，但和上面所有工具配合）
 - 📦 **tldr** — 替代 `man`（命令例子优先，不是长篇文档）
+- 📦 **micro** — 现代化终端编辑器（鼠标支持 + 常规快捷键，比 nano 强、比 vim 友好）
+
+> **历史说明**：本组合最早默认装 `exa`，但 exa 在 2021 年停止维护；之后切到活跃 fork `eza`。但 `eza` 在 RHEL/Anolis 系的 EPEL 里覆盖不全（部分镜像源缺包）。考虑到稳定优先，本 Playbook 改用 **`lsd`**（同样 Rust 写、活跃维护、EPEL/Debian/Ubuntu 全覆盖）。
 
 ## 配置文件 / 目录速查
 
@@ -20,7 +23,9 @@
 ├── bat/config                       # bat 全局选项
 ├── fd/                              # fd 默认 ignore 文件
 ├── ripgrep/config                   # rg 默认参数
-└── tealdeer/                        # tldr 缓存（tealdeer 实现）
+├── lsd/config.yaml                  # lsd 主题 / 图标
+├── tealdeer/                        # tldr 缓存（tealdeer 实现）
+└── micro/                           # micro 配置 + 主题 + 插件
 
 # fzf
 ~/.fzf/                              # fzf bindings 安装位置（Ubuntu）
@@ -35,10 +40,11 @@
 | bat | `bat` | `bat` | **Ubuntu 命令名是 `batcat`** |
 | fd | `fd-find` | `fd-find` | **Ubuntu 命令名是 `fdfind`** |
 | ripgrep | `ripgrep` | `ripgrep` | `rg`（一致） |
-| eza | `eza`（24+） | EPEL `eza` | `eza` |
+| lsd | `lsd` | EPEL `lsd` | `lsd` |
 | zoxide | `zoxide` | EPEL `zoxide` | `zoxide`（shell 函数 `z`） |
 | fzf | `fzf` | EPEL `fzf` | `fzf` |
 | tldr | `tldr` | `tealdeer` | `tldr` |
+| micro | `micro` | EPEL `micro` | `micro` |
 
 **Ubuntu 包名陷阱**：因为和 Perl `bat` / 老 `fd` 命令冲突，Ubuntu 把命令名改了。本 Playbook 自动加 alias / symlink：
 
@@ -67,18 +73,24 @@ if command -v fdfind >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
     alias fd='fdfind'
 fi
 
-# ls 用 eza
-if command -v eza >/dev/null 2>&1; then
-    alias ls='eza'
-    alias ll='eza -lah --git --icons=auto'
-    alias la='eza -a'
-    alias lt='eza --tree --level=2'
-    alias l='eza -l'
+# ls 用 lsd
+if command -v lsd >/dev/null 2>&1; then
+    alias ls='lsd'
+    alias ll='lsd -lah --git'
+    alias la='lsd -A'
+    alias lt='lsd --tree --depth 2'
+    alias l='lsd -l'
 fi
 
 # cat 用 bat（保留原 cat 为 \cat）
 if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
     alias cat='bat --paging=never'
+fi
+
+# 默认编辑器用 micro（仅当存在）
+if command -v micro >/dev/null 2>&1; then
+    export EDITOR=micro
+    export VISUAL=micro
 fi
 
 # ===== zoxide（替代 cd）=====
@@ -159,7 +171,33 @@ EOF
 echo 'export RIPGREP_CONFIG_PATH=~/.config/ripgrep/config' >> ~/.bashrc
 ```
 
-### 模板 D — 工作流示例（这些工具一起用）
+### 模板 D — `lsd` 全局配置
+
+```bash
+mkdir -p ~/.config/lsd
+cat > ~/.config/lsd/config.yaml <<'EOF'
+# 是否显示图标（终端要有 nerd font；纯 SSH 想保险就 'never'）
+icons:
+  when: auto
+  theme: fancy
+  separator: " "
+
+# 列布局
+layout: grid
+date: relative          # "2 hours ago" 而不是绝对时间
+sorting:
+  column: name
+  reverse: false
+  dir-grouping: first   # 目录排前面
+
+# 默认参数（不用每次手敲 -l）
+# 等同 ls -lh --color=auto
+EOF
+```
+
+> 没装 nerd font 的远程终端把 `icons.when` 改成 `never`，否则会看到一堆乱码方块。
+
+### 模板 E — 工作流示例（这些工具一起用）
 
 ```bash
 # 1. 用 fzf 选文件用 bat 预览
@@ -175,7 +213,62 @@ fd '\.pdf$' | xargs -I{} pdftotext {} - | rg "搜索词"
 zi                     # zi = zoxide interactive
 
 # 5. 替代 watch
-while true; do clear; eza -la --git; sleep 2; done
+while true; do clear; lsd -la; sleep 2; done
+
+# 6. fzf 选文件直接用 micro 打开
+micro $(fzf --preview 'bat --color=always {}')
+```
+
+### 模板 F — `micro` 编辑器快捷键速查
+
+`micro` 用的是 PC 用户熟悉的快捷键（不是 vim/emacs 的怪门派），打开就能用。
+
+| 快捷键 | 作用 |
+|---|---|
+| **Ctrl+S** | 保存 |
+| **Ctrl+Q** | 退出（未保存会提示） |
+| **Ctrl+W** | 关闭当前 tab |
+| **Ctrl+Z / Ctrl+Y** | 撤销 / 重做 |
+| **Ctrl+C / Ctrl+V / Ctrl+X** | 复制 / 粘贴 / 剪切 |
+| **Ctrl+F / Ctrl+N** | 查找 / 查找下一个 |
+| **Ctrl+E** | 命令面板（输入 `> set ...` 改设置） |
+| **Ctrl+G** | 帮助 |
+| **Ctrl+T** | 新 tab；**Alt+,** / **Alt+.** 切换 tab |
+| **Ctrl+B** | 调出终端面板（split） |
+| **鼠标** | 完全支持点击 / 拖选 / 滚轮 |
+
+#### 常用配置
+
+```bash
+mkdir -p ~/.config/micro
+cat > ~/.config/micro/settings.json <<'EOF'
+{
+    "colorscheme": "monokai",
+    "tabsize": 4,
+    "tabstospaces": true,
+    "autosave": 0,
+    "softwrap": true,
+    "wordwrap": true,
+    "syntax": true,
+    "ruler": true,
+    "savecursor": true,
+    "scrollbar": true,
+    "mouse": true
+}
+EOF
+
+# 主题列表（micro 内运行）
+# Ctrl+E → 输入 set colorscheme <Tab>
+```
+
+#### 装插件
+
+```bash
+micro -plugin install editorconfig    # 项目级 .editorconfig 自动生效
+micro -plugin install go              # Go 集成
+micro -plugin install lsp             # LSP（实验）
+micro -plugin install fzf             # fzf 文件 / 命令选取
+micro -plugin available               # 看全部可用插件
 ```
 
 ## 关键参数调优速查
@@ -215,18 +308,17 @@ fd -d 2                            # 仅深度 2 以内
 fd '\.bak$' -X mv {} {.}.old       # 重命名
 ```
 
-### `eza` 常用 flag
+### `lsd` 常用 flag
 
 ```bash
-eza                                # 简单
-eza -la                            # 全部 + 详细
-eza -la --git                      # 加 git 状态列
-eza -la --icons=auto               # 文件类型图标（终端要有 nerd font）
-eza --tree --level=2               # 树形 + 深度限制
-eza --sort=size --reverse          # 按大小降序
-eza --sort=modified                # 按修改时间
-eza -la --total-size               # 显示目录递归大小
-eza --color-scale=size             # 大文件高亮
+lsd                                # 简单（彩色 + 图标）
+lsd -la                            # 全部 + 详细
+lsd -la --git                      # 加 git 状态列
+lsd --tree --depth 2               # 树形 + 深度限制
+lsd --total-size                   # 显示目录递归大小
+lsd -la --sort=size --reverse      # 按大小降序
+lsd -la --sort=time                # 按修改时间
+lsd --icon=never                   # 终端无 nerd font 时关图标
 ```
 
 ### fzf 高级用法
@@ -255,20 +347,13 @@ ps aux | fzf -m | awk '{print $2}' | xargs kill -9
 | bat | ✅（命令名 batcat） | ✅（命令名 batcat） | ✅（命令名 bat） |
 | fd | ✅（命令名 fdfind） | ✅（命令名 fdfind） | ✅（命令名 fd） |
 | ripgrep | ✅ | ✅ | ✅ |
-| eza | Ubuntu 24+ ✅；Ubuntu 22 走 cargo | Debian 13+ ✅ | EPEL ✅ |
+| lsd | ✅ | ✅ | EPEL ✅ |
 | zoxide | ✅ | ✅ | EPEL ✅ |
 | fzf | ✅ | ✅ | EPEL ✅ |
 | tldr | ✅（命令 tldr） | ✅ | EPEL（包名 `tealdeer`，命令 `tldr`） |
+| micro | ✅ | ✅ | EPEL ✅ |
 
-老版本（Ubuntu 22 / Debian 11）的 eza 不在仓库，走两条路：
-
-```bash
-# 方案 1：用旧名 exa（已停止维护，但还能用）
-sudo apt-get install exa
-
-# 方案 2：cargo install
-cargo install eza
-```
+> RHEL / Anolis：以上工具大多走 EPEL，本 Playbook 已自动启用 EPEL 并把 `tldr` → `tealdeer` 翻译完成，无需手工调整。
 
 EnvForge preflight 自动启用 EPEL，RHEL/Anolis 上以上工具都能装。
 
@@ -278,6 +363,7 @@ EnvForge preflight 自动启用 EPEL，RHEL/Anolis 上以上工具都能装。
 - **`fish-shell`** — fish 自带历史搜索（输入字符直接过滤），fzf 价值变小但仍能用
 - **`neovim-editor`** — Telescope 插件用 ripgrep 做后端，本 Playbook 装好后 Neovim 不用 cargo install ripgrep
 - **`tmux-multiplex`** — fzf 在 tmux 内分屏面板里用得最爽
+- **micro vs nano vs vim** — 本组 `micro` 专门给"不想学 vim 但又嫌 nano 简陋"的用户。如果服务器上要做高强度编辑还是上 `neovim-editor`
 
 ## 排错
 
@@ -301,16 +387,41 @@ alias fd='fdfind'
 sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
 ```
 
-### `eza: command not found`（Ubuntu 22.04）
+### `lsd: command not found`（旧发行版 / EPEL 镜像缺包）
 
-Ubuntu 22.04 默认仓库无 eza。改装 `exa`（旧名）或：
+部分 EPEL 镜像（如阿里云 Anolis 同步源）不打 `lsd` 包；本 Playbook 已自动 fallback 到 GitHub release，但如果你想手工补：
 
 ```bash
-# Ubuntu 24+ 已含 eza
-sudo apt-get install eza
+# Ubuntu / Debian — 上游官方 deb：
+LSD_VER=1.2.0
+ARCH=$(dpkg --print-architecture)        # amd64 / arm64
+curl -fsSLo /tmp/lsd.deb \
+  https://github.com/lsd-rs/lsd/releases/download/v${LSD_VER}/lsd_${LSD_VER}_${ARCH}.deb
+sudo dpkg -i /tmp/lsd.deb && rm -f /tmp/lsd.deb
 
-# Ubuntu 22 — 用 deb：
-wget -qO- https://github.com/eza-community/eza/releases/latest/download/eza_x86_64-unknown-linux-gnu.tar.gz | sudo tar -xz -C /usr/local/bin/
+# RHEL / Anolis — 上游不发 rpm，直接下静态 musl 二进制：
+LSD_VER=1.2.0
+TAR_ARCH=$(uname -m)                     # x86_64 / aarch64
+curl -fsSL \
+  https://github.com/lsd-rs/lsd/releases/download/v${LSD_VER}/lsd-v${LSD_VER}-${TAR_ARCH}-unknown-linux-musl.tar.gz \
+  | tar -xz -C /tmp
+sudo install -m 0755 /tmp/lsd-*/lsd /usr/local/bin/lsd
+lsd --version
+```
+
+> 上游 `lsd-rs` 不打 `.rpm`——这是项目的发布策略，不是临时疏漏。所以 RHEL 系永远走 musl tarball 这条路。
+
+### `lsd` 显示一堆方块 / 问号
+
+终端没有 nerd font。两条路：
+
+```bash
+# 1) 关闭图标（推荐：远程 SSH 时）
+echo 'icons:\n  when: never' >> ~/.config/lsd/config.yaml
+
+# 2) 装 nerd font（本地终端，比如 iTerm2 / Windows Terminal）
+# https://www.nerdfonts.com/font-downloads
+# 装完 → 终端 settings → font 选 "FiraCode Nerd Font" 等
 ```
 
 ### `zoxide` 装好但 `z foo` 不工作
@@ -348,16 +459,21 @@ source /usr/share/fzf/shell/key-bindings.bash
 
 ```bash
 tldr --update
-# 或 tealdeer:
-tldr --update
 ```
 
-国内服务器从 `tldr.sh` CDN 拉缓存可能慢，国内镜像：
+国内服务器从 `tldr.sh` CDN 拉缓存可能慢，但缓存只有几 MB，等一次就行。
+
+### `micro` 在终端里 Ctrl+S 没反应
+
+某些终端 emulator 把 `Ctrl+S` 当作 XOFF（停止流），导致 micro 收不到。修：
 
 ```bash
-echo 'export TLDR_CACHE_DIR=$HOME/.cache/tldr' >> ~/.bashrc
-# tealdeer 不支持自定义镜像，体积小直接慢点也能用
+# 加到 ~/.bashrc
+stty -ixon
+source ~/.bashrc
 ```
+
+或在 micro 里按 `Ctrl+E` 然后输入 `> save`。
 
 ### `rg` 比 `grep` 慢（罕见）
 
@@ -372,15 +488,16 @@ rg -uuu "pattern"              # 三个 -u = 不读任何 ignore，搜所有
 
 ```bash
 # 1. 命令可用
-command -v bat batcat fd fdfind rg eza zoxide fzf tldr
+command -v bat batcat fd fdfind rg lsd zoxide fzf tldr micro
 
 # 2. 简单试用
 echo 'fn main() { println!("hi"); }' | bat -l rust
 fd --version
 rg --version
-eza --version
+lsd --version
 zoxide --version
 fzf --version
+micro --version
 tldr --update && tldr tar | head
 ```
 
@@ -390,7 +507,7 @@ tldr --update && tldr tar | head
 
 ## ⚠️ 敏感性
 
-**safe** — 都是 CLI 工具，只读不写系统。
+**safe** — 都是 CLI 工具，只读不写系统。`micro` 会改文件，但只有用户主动保存时才动。
 
 ## 隐私说明
 
@@ -398,4 +515,5 @@ tldr --update && tldr tar | head
 - `tldr` 第一次运行时从 `tldr.sh` 拉缓存（公开 markdown 文件）
 - `zoxide` 把你访问过的目录路径存在 `~/.local/share/zoxide/db.zo`（本地、不上传）
 - `fzf` history 集成会显示你的 shell history——里面如果有过密码 / token 不会因为本工具增加暴露面
-- `bat` / `eza` 的 git 状态显示需读 `.git/`，不发送到任何地方
+- `bat` / `lsd` 的 git 状态显示需读 `.git/`，不发送到任何地方
+- `micro` 装插件时会从官方插件源（`github.com/micro-editor`）拉脚本，自己审一下再用

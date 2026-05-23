@@ -1,35 +1,69 @@
-# Playbook: 防火墙基线（UFW）
-name: Configure UFW firewall baseline
+# Playbook: 防火墙基线（UFW for Debian/Ubuntu, firewalld for RHEL）
+#
+# UFW 是 Debian/Ubuntu 的默认前端，但 RHEL/CentOS/Anolis 完全没这个包。
+# 配置层面用 firewalld 等价品。
+#
+# 包名审查矩阵 (§7.5.2)：
+#   ufw — Ubuntu/Debian ✅；RHEL ❌（不在任何仓库）
+#         PACKAGE_ALIASES 已映射 ufw → firewalld（RHEL 上自动装 firewalld）
+#   firewalld — Ubuntu/Debian ⚪；RHEL ✅（默认仓库）
+name: Configure firewall baseline (UFW or firewalld)
 hosts: all
 
 tasks:
-  - name: Install ufw
+  # 让 PACKAGE_ALIASES 自动选包：Debian → ufw，RHEL → firewalld
+  - name: Install firewall package (ufw on Debian, firewalld on RHEL via PACKAGE_ALIASES)
     module: package
     args:
       name: ufw
       state: present
 
-  - name: Allow SSH (port 22) before enabling UFW
+  # ── Debian/Ubuntu path: configure ufw ──
+  - name: Configure ufw rules + enable (Debian/Ubuntu)
     module: shell
     args:
-      cmd: "sudo ufw allow 22/tcp"
+      cmd: |
+        if command -v ufw >/dev/null 2>&1; then
+          sudo ufw --force reset
+          sudo ufw default deny incoming
+          sudo ufw default allow outgoing
+          sudo ufw allow 22/tcp
+          sudo ufw allow 80/tcp
+          sudo ufw allow 443/tcp
+          # --force 跳过 y/n 确认
+          sudo ufw --force enable
+          sudo ufw status verbose
+        fi
 
-  - name: Allow HTTP (port 80)
+  # ── RHEL path: configure firewalld ──
+  - name: Configure firewalld services + enable (RHEL/Anolis)
     module: shell
     args:
-      cmd: "sudo ufw allow 80/tcp"
+      cmd: |
+        if command -v firewall-cmd >/dev/null 2>&1; then
+          sudo systemctl enable --now firewalld
+          sudo firewall-cmd --permanent --add-service=ssh
+          sudo firewall-cmd --permanent --add-service=http
+          sudo firewall-cmd --permanent --add-service=https
+          sudo firewall-cmd --reload
+          sudo firewall-cmd --list-all
+        fi
 
-  - name: Allow HTTPS (port 443)
-    module: shell
-    args:
-      cmd: "sudo ufw allow 443/tcp"
+verify:
+  - name: a firewall is active (ufw OR firewalld)
+    cmd: |
+      (sudo ufw status 2>/dev/null | grep -qi 'Status: active') \
+        || (sudo firewall-cmd --state 2>/dev/null | grep -q running)
+    hint: |
+      没有任何防火墙在跑。检查：
+        Debian/Ubuntu:  sudo ufw enable && sudo ufw status verbose
+        RHEL/Anolis:    sudo systemctl enable --now firewalld
 
-  - name: Enable UFW with default deny incoming
-    module: shell
-    args:
-      cmd: "echo 'y' | sudo ufw enable"
-
-  - name: Verify UFW status
-    module: shell
-    args:
-      cmd: "sudo ufw status verbose"
+  - name: ssh is allowed
+    cmd: |
+      (sudo ufw status 2>/dev/null | grep -qE '22/tcp.*ALLOW') \
+        || (sudo firewall-cmd --list-services 2>/dev/null | grep -qw ssh)
+    hint: |
+      SSH 没在防火墙白名单里——再连进来会被掐掉。立刻：
+        ufw:       sudo ufw allow 22/tcp
+        firewalld: sudo firewall-cmd --permanent --add-service=ssh && sudo firewall-cmd --reload

@@ -3,6 +3,11 @@
 # 用 snapd / apt / dnf 装 certbot，根据用户选择的方式（standalone / nginx / webroot）
 # 跑 certbot 命令签发证书，并配置自动续签。
 #
+# 包名审查矩阵 (§7.5.2)：
+#   certbot                — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
+#   python3-certbot-nginx  — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
+#   python3-certbot-apache — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
+#
 # 使用前提：domain 已经有 A/AAAA 记录指向本机公网 IP，且 80 端口可达。
 name: Install Certbot and obtain Let's Encrypt SSL certificates
 hosts: all

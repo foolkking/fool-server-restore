@@ -2,6 +2,10 @@
 #
 # 一组 CLI 工具，用来诊断"是哪个进程在吃带宽 / 是哪个 IP 在打我"等问题。
 # 都是 no-config，装上就能用。
+#
+# 包名审查矩阵 (§7.5.2)：
+#   nethogs / iftop / vnstat — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
+#   tcpdump / nmap           — 两边默认仓库 ✅
 name: Install network bandwidth monitoring tools
 hosts: all
 
@@ -11,6 +15,7 @@ tasks:
     args:
       name: ["nethogs", "iftop", "vnstat", "tcpdump", "nmap"]
       state: present
+      ignore_missing: true
 
   - name: Enable vnstat data collection daemon
     module: service

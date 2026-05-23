@@ -1,4 +1,10 @@
 # Playbook: rsync 备份同步工具
+#
+# 包名审查矩阵 (§7.5.2)：
+#   rsync       — 两边默认仓库 ✅
+#   rclone      — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
+#   borgbackup  — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
+#   restic      — Debian ✅；RHEL 需 EPEL ✅（NEEDS_EPEL 已加）
 name: Install rsync and backup tools
 hosts: all
 
@@ -12,6 +18,7 @@ tasks:
         - borgbackup
         - restic
       state: present
+      ignore_missing: true
 
   - name: Verify rsync
     module: shell

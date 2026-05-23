@@ -292,7 +292,7 @@ curl -s http://127.0.0.1:5173/api/catalog | python3 -c 'import json, sys; d = js
 
 模式 A 跑起来后，公网部署还需要加上 HTTPS + 反代。**绝不要把 5173 端口直接挂公网**——HTTP 明文 + 弱 brute-force 防护。
 
-> 💡 **想偷懒？** 如果你不想手写 nginx + certbot 配置，可以用 EnvForge 自己来配——见 [DEPLOY_SELF.md](./DEPLOY_SELF.md)，6 次 UI 点击替代本节 100 行手工配置。
+> 💡 **想批量复制部署？** 已有一台 EnvForge 后想再装一台 / 多台时，可以用现有的 EnvForge 当部署控制台，跑现成的 catalog Playbook 给新机器配防火墙 / nginx + LE / Docker 等——见 [DEPLOY_SELF.md](./DEPLOY_SELF.md)。
 
 ### 6.1 nginx 反向代理 + Let's Encrypt（推荐）
 
@@ -659,7 +659,7 @@ exit
 ## 十一、参考链接
 
 - [README.md](../README.md) — 项目总览
-- [docs/DEPLOY_SELF.md](./DEPLOY_SELF.md) — 用 EnvForge 自管：用 6 次 UI 点击替代本文第六节 100 行手工配置
+- [docs/DEPLOY_SELF.md](./DEPLOY_SELF.md) — 用现有 EnvForge 部署一台新的 EnvForge 服务器（多实例 / 蓝绿升级）
 - [docs/PRODUCT.md](./PRODUCT.md) — 产品定位 / 信息架构 / 隐私模型
 - [docs/ARCHITECTURE.md](./ARCHITECTURE.md) — 工程架构 / 引擎设计 / 测试
 - [docs/CATALOG.md](./CATALOG.md) — 完整 115 项 catalog 清单

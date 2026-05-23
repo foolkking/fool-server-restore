@@ -2,6 +2,10 @@
 #
 # SQLite 是嵌入式数据库（库不是 server），没有服务、没有端口、没有配置。
 # 此 Playbook 只装 sqlite3 命令行工具 + libsqlite3-dev / sqlite-devel 开发头文件。
+#
+# 包名审查矩阵 (§7.5.2)：
+#   sqlite3 / libsqlite3-dev — Debian/Ubuntu 名；
+#     RHEL → sqlite / sqlite-devel（PACKAGE_ALIASES 已映射）
 name: Install SQLite3 client and dev libraries
 hosts: all
 

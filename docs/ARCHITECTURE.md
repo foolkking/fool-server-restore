@@ -116,7 +116,7 @@ EnvForge/
 │   ├── PRODUCT.md             产品定位与设计
 │   ├── ARCHITECTURE.md        本文（工程架构 / 引擎设计 / 测试）
 │   ├── DEPLOY.md              纯手动 Docker 部署
-│   ├── DEPLOY_SELF.md         用 EnvForge 自管 EnvForge
+│   ├── DEPLOY_SELF.md         用现有 EnvForge 部署一台新 EnvForge 服务器
 │   ├── CATALOG.md             115 项 catalog 完整清单
 │   ├── CATALOG_AUTHORING.md   catalog 项编写规范
 │   ├── CATALOG_EXPAND_PROMPT.md   给 LLM 的扩展 prompt
@@ -320,7 +320,7 @@ docker compose up -d
 > 从零开始的详细步骤（装 Docker、生成 master key、git clone、配 .env、HTTPS 反代、
 > systemd 自启、备份恢复、升级卸载、排错）见 **[docs/DEPLOY.md](./DEPLOY.md)**。
 >
-> 想用 EnvForge 自己来加固 EnvForge 宿主机（6 次 UI 点击替代 100 行手工配置）见
+> 已有一台运行中的 EnvForge，想用它部署一台新的 EnvForge 服务器（多实例 / 蓝绿升级 / 客户复制）见
 > **[docs/DEPLOY_SELF.md](./DEPLOY_SELF.md)**。
 
 ### 沙盒演示（含一台 Ubuntu target VM）
