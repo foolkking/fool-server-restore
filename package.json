@@ -25,6 +25,7 @@
     "preflight": "node scripts/preflight.mjs",
     "audit:catalog": "node scripts/audit-catalog.mjs && node scripts/audit-catalog-packages.mjs",
     "audit:catalog:packages": "node scripts/audit-catalog-packages.mjs",
+    "backup:db": "node scripts/backup-runtime-db.mjs",
     "generate:guides": "node scripts/generate-stub-guides.mjs",
     "dev": "npm run dev:api",
     "dev:api": "npm run build:server && npm run start --workspace @fool/api",
