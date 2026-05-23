@@ -62,7 +62,12 @@ export async function loginUser(input: { email?: string; password?: string }): P
   const password = normalizePassword(input.password);
   const database = await readRuntimeDatabase();
   const user = database.users.find((candidate) => candidate.email === email);
-  if (!user || !(await verifyPassword(password, user.passwordSalt, user.passwordHash))) {
+  // OAuth-only accounts (no local password) cannot use this login path. The
+  // user must instead use the linked OAuth provider, or set a password first.
+  if (!user || !user.passwordHash || !user.passwordSalt) {
+    throw new Error("Email or password is incorrect.");
+  }
+  if (!(await verifyPassword(password, user.passwordSalt, user.passwordHash))) {
     throw new Error("Email or password is incorrect.");
   }
 

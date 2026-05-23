@@ -16,13 +16,75 @@ export interface StoredUser {
   id: string;
   name: string;
   email: string;
-  passwordHash: string;
-  passwordSalt: string;
+  /**
+   * Optional after auth-and-ecosystem spec: OAuth-only accounts have no local
+   * password. P1.2 migration ensures every legacy user with passwordHash gets
+   * a `provider="local"` UserIdentity row.
+   */
+  passwordHash?: string;
+  passwordSalt?: string;
   defaultSshUser?: string;
   /** "user" = 普通用户（默认），"admin" = 系统管理员 */
   role: "user" | "admin";
+
+  // ── Profile fields (added by auth-and-ecosystem spec, populated lazily) ──
+  /** Internal handle for @ mentions and URLs. P1.2 migration generates from email local part. */
+  username?: string;
+  /** Display name shown in UI. Defaults to legacy `name` for old users. */
+  displayName?: string;
+  bio?: string;
+  /** Must be HTTPS. Falls back to Gravatar by email hash when empty. */
+  avatarUrl?: string;
+  /** IANA timezone name, e.g. "Asia/Shanghai" */
+  timezone?: string;
+  /** "zh-CN" / "en-US" / "auto" */
+  locale?: string;
+  /** ISO timestamp; set when user verifies their email via OTP. */
+  emailVerifiedAt?: string;
+
+  // ── Security (TOTP 2FA) ──
+  /** AES-256-GCM ciphertext of the TOTP base32 secret, encrypted with master key. */
+  totpSecretEnc?: string;
+  /** ISO timestamp; set when user successfully confirms enrolment. */
+  totpEnabledAt?: string;
+  /** SHA-256 hashes of unused recovery codes. Used codes are removed from the array. */
+  totpRecoveryCodesHashed?: string[];
+
+  // ── Lifecycle ──
+  /** ISO timestamp; soft-delete marker. Login is rejected when set. */
+  deletedAt?: string;
+
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Multi-provider identity association — added by auth-and-ecosystem spec.
+ * One internal user can have multiple identities (local password + GitHub + Google),
+ * all linked to the same `userId`.
+ *
+ * Uniqueness invariant: (provider, providerUserId) is globally unique.
+ *   - For provider="local", providerUserId == userId (self-reference).
+ *   - For OAuth providers, providerUserId is the immutable upstream id
+ *     (GitHub numeric id / Google `sub`).
+ */
+export interface UserIdentity {
+  id: string;
+  userId: string;
+  provider: "local" | "github" | "google";
+  providerUserId: string;
+  /** Snapshot of the email reported by provider at creation/last-link time. */
+  providerEmail?: string;
+  /** Snapshot of provider-supplied profile fields. Refreshed on each successful login. */
+  providerData?: {
+    avatarUrl?: string;
+    displayName?: string;
+    /** GitHub username / Google handle. */
+    login?: string;
+  };
+  createdAt: string;
+  /** ISO timestamp of most recent successful login through this identity. */
+  lastUsedAt?: string;
 }
 
 export interface StoredSession {
@@ -137,6 +199,12 @@ export interface StoredUserProfile {
 export interface RuntimeDatabase {
   schemaVersion: string;
   users: StoredUser[];
+  /**
+   * Multi-provider identity associations (added by auth-and-ecosystem spec).
+   * One user can have multiple identities (local + github + google).
+   * Empty for databases that haven't run migration 0004 yet.
+   */
+  identities?: UserIdentity[];
   sessions: StoredSession[];
   connections: StoredConnection[];
   userProfiles: StoredUserProfile[];
@@ -355,6 +423,7 @@ function createRuntimeDatabase(): RuntimeDatabase {
   return {
     schemaVersion: "0.3.0",
     users: [],
+    identities: [],
     sessions: [],
     connections: [],
     userProfiles: [],
@@ -367,6 +436,13 @@ function normalizeRuntimeDatabase(database: Partial<RuntimeDatabase>): RuntimeDa
   return {
     schemaVersion: database.schemaVersion ?? "0.3.0",
     users: (database.users ?? []).map((u) => ({ ...u, role: u.role ?? ("user" as const) })),
+    /**
+     * `identities` may be missing on databases that predate the auth-and-ecosystem
+     * spec (schemaVersion < 0.4.0). The P1.2 migration backfills a `provider="local"`
+     * row for every legacy user with a passwordHash. Until that runs, return an
+     * empty array so callers can rely on Array methods.
+     */
+    identities: database.identities ?? [],
     sessions: database.sessions ?? [],
     connections: (database.connections ?? []).map((c) => ({
       ...c,
