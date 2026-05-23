@@ -173,6 +173,10 @@ PUBLIC_BASE_URL=https://envforge.example.com
 
 其它项（SMTP、GitHub OAuth）按需启用，没填的话功能降级但不影响主流程。
 
+> **生产建议**：跑公网部署一定要配 SMTP（否则用户收不到注册验证码 / 密码重置 link）。
+> admin 账号**强制启用** 2FA —— 首次登录会自动跳到设置页要求 enrollment。
+> 详细的 OAuth / SMTP / 2FA 配置见 [docs/AUTH.md](./AUTH.md)。
+
 保存退出。
 
 > 🔒 `.env` 含 master key，**不要 commit 到 git**——`.gitignore` 已默认忽略 `.env`。

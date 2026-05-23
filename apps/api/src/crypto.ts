@@ -98,3 +98,29 @@ export function decryptSecret(value: string): string {
 export function isEncrypted(value: string): boolean {
   return typeof value === "string" && value.startsWith("enc:v1:");
 }
+
+/**
+ * Derive a domain-separated sub-key from the master key using HKDF-SHA256.
+ *
+ * Each subsystem that needs a key for HMAC / signing / etc. should ask for
+ * its own sub-key with a stable purpose string, NEVER use the master key
+ * directly. Compromise of one sub-key (e.g. an OAuth state HMAC leaking)
+ * does not expose any other sub-key or the master.
+ *
+ * Example:
+ *   const oauthKey = deriveSubKey("oauth-state-hmac");
+ *
+ * Stability:
+ *   The output is deterministic — the SAME purpose string always returns
+ *   the SAME sub-key for a given master. Changing the purpose string
+ *   invalidates all data signed/encrypted with the old derivation.
+ */
+export function deriveSubKey(purpose: string, length = 32): Buffer {
+  const master = getMasterKey();
+  // HKDF: extract+expand. We use no salt (info only) since our master is
+  // already cryptographically random; the purpose string acts as `info`
+  // for domain separation.
+  return Buffer.from(
+    crypto.hkdfSync("sha256", master, Buffer.alloc(0), Buffer.from(`envforge:${purpose}`, "utf8"), length)
+  );
+}

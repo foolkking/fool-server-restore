@@ -1,0 +1,25 @@
+Subject: 验证你的 EnvForge 账号 / Verify your EnvForge account
+
+你好 {{ displayName }},
+
+欢迎使用 EnvForge。请输入以下 6 位验证码完成注册：
+
+  {{ code }}
+
+此验证码 10 分钟内有效。
+
+如果你没有发起此请求，请忽略本邮件。
+
+—
+Hello {{ displayName }},
+
+Welcome to EnvForge. Please enter the 6-digit verification code to complete registration:
+
+  {{ code }}
+
+This code expires in 10 minutes.
+
+If you did not request this, please ignore this email.
+
+—
+EnvForge · {{ publicBaseUrl }}

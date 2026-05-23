@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>EnvForge: your account email is being changed</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; max-width: 560px; margin: 32px auto; color: #1f2937; line-height: 1.6;">
+  <h2 style="color: #111827; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">你的 EnvForge 邮箱即将变更</h2>
+  <p>你好 <strong>{{ displayName }}</strong>,</p>
+  <p>我们刚刚收到了把 EnvForge 账号邮箱从 <strong>{{ oldEmail }}</strong> 改为 <strong>{{ newEmail }}</strong> 的请求。</p>
+  <p>新邮箱已收到 6 位验证码；变更只有在那边输入验证码后才会生效。</p>
+  <p style="background: #fee2e2; border-left: 4px solid #dc2626; padding: 12px 16px; font-size: 14px; color: #7f1d1d;">
+    <strong>如果不是你本人发起的更改</strong>，请立即：
+  </p>
+  <ol style="color: #1f2937; padding-left: 20px;">
+    <li>登录 EnvForge 修改密码</li>
+    <li>检查你的安全设置（<a href="{{ publicBaseUrl }}/account/security">{{ publicBaseUrl }}/account/security</a>）</li>
+    <li>如果无法登录，联系管理员</li>
+  </ol>
+  <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 24px 0;">
+  <p>Hello <strong>{{ displayName }}</strong>,</p>
+  <p>We just received a request to change your EnvForge account email from <strong>{{ oldEmail }}</strong> to <strong>{{ newEmail }}</strong>.</p>
+  <p>A 6-digit code was sent to the new address; the change only takes effect once that code is entered.</p>
+  <p style="background: #fee2e2; border-left: 4px solid #dc2626; padding: 12px 16px; font-size: 14px; color: #7f1d1d;">
+    If you did <strong>NOT</strong> initiate this change, please:
+  </p>
+  <ol style="color: #1f2937; padding-left: 20px;">
+    <li>Sign in to EnvForge and change your password</li>
+    <li>Review your security settings (<a href="{{ publicBaseUrl }}/account/security">{{ publicBaseUrl }}/account/security</a>)</li>
+    <li>If you can't sign in, contact your administrator</li>
+  </ol>
+  <p style="color: #9ca3af; font-size: 12px; margin-top: 32px;">EnvForge · <a href="{{ publicBaseUrl }}" style="color: #6b7280;">{{ publicBaseUrl }}</a></p>
+</body>
+</html>

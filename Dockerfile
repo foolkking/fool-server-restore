@@ -69,6 +69,11 @@ COPY --from=builder /app/packages/restorers/dist ./packages/restorers/dist
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/web/dist ./apps/web/dist
 
+# Email templates — copied separately because tsc doesn't emit .txt/.html.
+# The build script copy-email-templates.mjs places them in dist/, which is
+# what we copy above; this line is a safety belt in case the script is skipped.
+COPY apps/api/src/email/templates/ ./apps/api/dist/email/templates/
+
 # Copy catalog assets (Playbook YAMLs, vars schemas, MD guides — needed at runtime)
 COPY configs/ ./configs/
 

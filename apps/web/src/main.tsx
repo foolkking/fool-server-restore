@@ -10,13 +10,12 @@ import {
   fetchCurrentUser,
   fetchMigrationStrategies,
   fetchProfiles,
-  loginAccount,
-  registerAccount,
   reprobeConnection,
   updateConnection,
   updateProfile,
   uploadVmSnapshot,
   fetchSshKeys,
+  confirmPasswordReset,
   type AgentProbeResult,
   type AuthUser,
   type CatalogGuide,
@@ -84,6 +83,9 @@ function App() {
 
   useEffect(() => {
     void load();
+    // Handle OAuth fragments + password-reset token from the URL.
+    // These come from the GitHub callback or a reset-link in an email.
+    void handleAuthLandingFragments();
     // Validate persisted session on startup
     if (authToken) {
       fetch("/api/auth/session", { headers: { Authorization: `Bearer ${authToken}` } })
@@ -99,6 +101,105 @@ function App() {
         .catch(() => { /* offline, keep local state */ });
     }
   }, []);
+
+  /**
+   * Handle URL fragments + query params produced by the GitHub OAuth callback
+   * (P1.7) and the password-reset email link (P1.12).
+   *
+   * GitHub callback redirects:
+   *   /oauth/return#token=...&new=0|1            (regular login success)
+   *   /login/2fa#2fa=1&intermediateToken=...     (TOTP gate)
+   *   /account/security/enroll#enroll=1&token=...  (admin enrollment)
+   *   /login?oauth_error=...                     (any failure / cancellation)
+   *
+   * Password-reset email link:
+   *   /auth/password-reset?token=...             (reset confirm page)
+   *
+   * After processing, we clean up the URL with history.replaceState so a
+   * refresh doesn't replay the action.
+   */
+  async function handleAuthLandingFragments() {
+    const url = new URL(window.location.href);
+    const fragment = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
+    const fragParams = new URLSearchParams(fragment);
+
+    // 1. OAuth callback (regular login)
+    const oauthToken = fragParams.get("token");
+    if (oauthToken && !fragParams.has("2fa") && !fragParams.has("enroll")) {
+      try {
+        const res = await fetch("/api/auth/session", {
+          headers: { Authorization: `Bearer ${oauthToken}` }
+        });
+        if (res.ok) {
+          const body = await res.json() as { user: AuthUser };
+          handleAuthSuccess({ token: oauthToken, user: body.user });
+          history.replaceState(null, "", url.origin + url.pathname);
+          return;
+        }
+      } catch { /* fall through */ }
+    }
+
+    // 2. OAuth callback signaling TOTP gate
+    const intermediate = fragParams.get("intermediateToken");
+    if (fragParams.has("2fa") && intermediate) {
+      // Hand the user back to MePage with the intermediate token in localStorage
+      // under a separate key. MePage's useEffect picks it up and shows the
+      // 2FA input form. Simpler than threading through props.
+      localStorage.setItem("envforge_pending_2fa", intermediate);
+      history.replaceState(null, "", url.origin + url.pathname);
+      setPage("me");
+      return;
+    }
+
+    // 3. OAuth callback for admin-enrollment
+    if (fragParams.has("enroll") && oauthToken) {
+      // For now: treat enrollment token like a regular session — the SPA can
+      // then call /api/me/2fa/enroll. After confirm the response carries a
+      // rotated full session token. Full guided UI lives in a future iteration.
+      localStorage.setItem("envforge_enrollment_token", oauthToken);
+      history.replaceState(null, "", url.origin + url.pathname);
+      // Surface a clear hint via an alert; the dedicated panel comes later.
+      alert(locale === "zh"
+        ? "管理员账号需要先开启 2FA。请前往 设置 → Account 完成。"
+        : "Admin accounts must enable 2FA before continuing.");
+      setPage("settings");
+      return;
+    }
+
+    // 4. OAuth error
+    const oauthError = url.searchParams.get("oauth_error");
+    if (oauthError) {
+      const conflictEmail = url.searchParams.get("email");
+      const msg = oauthError === "email_conflict"
+        ? (locale === "zh"
+          ? `邮箱 ${conflictEmail ?? ""} 已被注册。请先使用密码登录，再到设置里绑定 GitHub。`
+          : `The email ${conflictEmail ?? ""} is already registered. Sign in with your password first, then link GitHub from settings.`)
+        : (locale === "zh"
+          ? `登录未成功（${oauthError}）。`
+          : `Login failed (${oauthError}).`);
+      alert(msg);
+      history.replaceState(null, "", url.origin + url.pathname);
+      return;
+    }
+
+    // 5. Password reset confirm landing
+    const resetToken = url.searchParams.get("token");
+    if (url.pathname.startsWith("/auth/password-reset") && resetToken) {
+      const newPw = window.prompt(locale === "zh"
+        ? "输入新密码（至少 8 位）："
+        : "Enter your new password (at least 8 characters):");
+      if (newPw && newPw.length >= 8) {
+        try {
+          await confirmPasswordReset({ token: resetToken, newPassword: newPw });
+          alert(locale === "zh" ? "密码已重置，请重新登录。" : "Password reset. Please sign in.");
+        } catch (err) {
+          alert(err instanceof Error ? err.message : "Reset failed");
+        }
+      }
+      history.replaceState(null, "", url.origin + "/");
+      return;
+    }
+  }
 
   async function load(token?: string) {
     const [catalogResult, userResult] = await Promise.allSettled([
@@ -403,8 +504,7 @@ function App() {
             authToken={authToken}
             strategies={strategies}
             userProfiles={userProfiles}
-            onLogin={async (input) => handleAuthSuccess(await loginAccount(input))}
-            onRegister={async (input) => handleAuthSuccess(await registerAccount(input))}
+            onAuthSuccess={(result) => handleAuthSuccess(result)}
             onUpdateProfile={async (input) => {
               const user = await updateProfile({ token: authToken, ...input });
               setAuthUser(user);

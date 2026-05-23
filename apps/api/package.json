@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/copy-email-templates.mjs",
     "dev": "npm run build && node --watch dist/server.js",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",

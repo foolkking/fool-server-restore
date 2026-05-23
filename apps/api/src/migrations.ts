@@ -7,6 +7,7 @@
  */
 
 import { readRuntimeDatabase, updateRuntimeDatabase } from "./runtime-store.js";
+import { runMigration0004MultiIdentity } from "./migrations/0004-multi-identity.js";
 
 interface Migration {
   id: string;
@@ -31,6 +32,19 @@ const MIGRATIONS: Migration[] = [
           }
         }
       });
+      return { touched };
+    }
+  },
+  {
+    id: "0004-multi-identity",
+    description:
+      "auth-and-ecosystem spec P1.2: derive a local UserIdentity for every legacy " +
+      "password user, backfill username/displayName, bump schemaVersion 0.3.0 → 0.4.0.",
+    async run() {
+      const r = await runMigration0004MultiIdentity();
+      // Surface a single "touched" count by summing what changed.
+      const touched =
+        r.identitiesCreated + r.usernamesAssigned + r.displayNamesAssigned + (r.schemaVersionBumped ? 1 : 0);
       return { touched };
     }
   }

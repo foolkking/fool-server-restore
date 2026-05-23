@@ -6207,3 +6207,176 @@ button:disabled {
   color: #3b82f6;
   display: inline-block;
 }
+
+
+/* ── Account panel (auth-and-ecosystem spec P1.13) ─────────────────────── */
+
+.account-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.account-panel .settings-section {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-panel .settings-section h3 {
+  font-size: 18px;
+  margin: 0 0 8px 0;
+  color: #111827;
+  border-bottom: 1px solid #f3f4f6;
+  padding-bottom: 8px;
+}
+
+.account-panel .settings-section h4 {
+  font-size: 14px;
+  margin: 0;
+  color: #374151;
+  font-weight: 600;
+}
+
+.account-panel .form-grid label {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  color: #374151;
+}
+
+.account-panel .form-grid label span {
+  font-weight: 500;
+}
+
+.account-panel .form-grid textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.account-panel .form-grid select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.identity-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.identity-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.identity-provider {
+  font-weight: 600;
+  text-transform: capitalize;
+  color: #111827;
+}
+
+.identity-email {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.notification-prefs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notification-prefs label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.activity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.activity-grid > div {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.activity-grid dt {
+  font-size: 12px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.activity-grid dd {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin: 4px 0 0 0;
+}
+
+.settings-danger {
+  border: 2px solid #fecaca !important;
+  background: #fef2f2 !important;
+}
+
+.settings-danger h3 {
+  color: #b91c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  .account-panel .settings-section {
+    background: #1e293b;
+    border-color: #334155;
+  }
+
+  .account-panel .settings-section h3 {
+    color: #f1f5f9;
+    border-bottom-color: #334155;
+  }
+
+  .identity-row {
+    background: #0f172a;
+  }
+
+  .activity-grid > div {
+    background: #0f172a;
+  }
+
+  .activity-grid dd {
+    color: #f1f5f9;
+  }
+
+  .settings-danger {
+    background: #450a0a !important;
+    border-color: #991b1b !important;
+  }
+}
