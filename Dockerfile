@@ -27,6 +27,7 @@ RUN npm ci --ignore-scripts
 # Copy source
 COPY tsconfig.base.json ./
 COPY packages/ ./packages/
+COPY scripts/ ./scripts/
 COPY apps/api/ ./apps/api/
 COPY apps/web/ ./apps/web/
 COPY configs/ ./configs/
