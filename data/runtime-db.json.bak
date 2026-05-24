@@ -379,6 +379,13 @@
       "userId": "user_f4d91981b664410195",
       "createdAt": "2026-05-23T18:17:41.915Z",
       "expiresAt": "2026-05-30T18:17:41.915Z"
+    },
+    {
+      "token": "8X3QF7HBeOcErpIVbsQsmXfenr66tKWiciawsjEuiMM",
+      "userId": "user_debe50f5ea01413492",
+      "createdAt": "2026-05-24T07:21:58.462Z",
+      "expiresAt": "2026-05-24T07:36:58.462Z",
+      "enrollmentRequired": true
     }
   ],
   "connections": [
@@ -7232,19 +7239,19 @@
       "createdAt": "2026-05-23T17:59:28.246Z"
     },
     {
-      "id": "pwreset_45e014614b244a3eba",
-      "userId": "user_f4d91981b664410195",
-      "email": "diudiudiue@outlook.com",
-      "expiresAt": "2026-05-24T06:07:48.734Z",
-      "createdAt": "2026-05-24T05:47:48.734Z"
-    },
-    {
       "id": "pwreset_2577914aad97454589",
       "userId": "user_96b34d457df44a3e98",
       "email": "2518150663@qq.com",
       "expiresAt": "2026-05-24T06:19:11.885Z",
       "createdAt": "2026-05-24T05:59:11.885Z",
       "usedAt": "2026-05-24T05:59:29.688Z"
+    },
+    {
+      "id": "pwreset_47c979f7ad834ce882",
+      "userId": "user_f4d91981b664410195",
+      "email": "diudiudiue@outlook.com",
+      "expiresAt": "2026-05-24T09:24:00.062Z",
+      "createdAt": "2026-05-24T09:04:00.062Z"
     }
   ],
   "emailLog": [
@@ -7325,6 +7332,14 @@
       "email": "2518150663@qq.com",
       "type": "password-reset",
       "sentAt": "2026-05-24T05:59:15.402Z",
+      "success": true
+    },
+    {
+      "id": "email_1062bfa40af049e6a6",
+      "userId": "user_f4d91981b664410195",
+      "email": "diudiudiue@outlook.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T09:04:03.472Z",
       "success": true
     }
   ],
