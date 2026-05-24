@@ -9,6 +9,7 @@ build/
 .kiro/
 
 # Local runtime data
+docker-compose.yml
 .env
 .env.*
 !.env.example

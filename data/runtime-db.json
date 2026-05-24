@@ -7241,12 +7241,11 @@
       "usedAt": "2026-05-24T05:59:29.688Z"
     },
     {
-      "id": "pwreset_47c979f7ad834ce882",
+      "id": "pwreset_ee9e6c32c62744feb1",
       "userId": "user_f4d91981b664410195",
       "email": "diudiudiue@outlook.com",
-      "expiresAt": "2026-05-24T09:24:00.062Z",
-      "createdAt": "2026-05-24T09:04:00.062Z",
-      "usedAt": "2026-05-24T09:04:24.536Z"
+      "expiresAt": "2026-05-24T09:28:13.044Z",
+      "createdAt": "2026-05-24T09:08:13.044Z"
     }
   ],
   "emailLog": [
@@ -7335,6 +7334,22 @@
       "email": "diudiudiue@outlook.com",
       "type": "password-reset",
       "sentAt": "2026-05-24T09:04:03.472Z",
+      "success": true
+    },
+    {
+      "id": "email_102e89e25f84486b9f",
+      "userId": "user_f4d91981b664410195",
+      "email": "diudiudiue@outlook.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T09:06:33.127Z",
+      "success": true
+    },
+    {
+      "id": "email_ce7714dfb93c46cca3",
+      "userId": "user_f4d91981b664410195",
+      "email": "diudiudiue@outlook.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T09:08:16.195Z",
       "success": true
     }
   ],
