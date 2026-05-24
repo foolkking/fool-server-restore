@@ -1,0 +1,262 @@
+{
+  "schemaVersion": "0.1.0",
+  "createdAt": "2026-05-20T16:56:13.361Z",
+  "user": "default",
+  "machine": {
+    "id": "fool-win32-x64",
+    "hostname": "fool",
+    "os": "windows",
+    "platform": "win32",
+    "arch": "x64"
+  },
+  "collectors": {
+    "system-info": {
+      "id": "system-info",
+      "label": "System info",
+      "status": "available",
+      "data": {
+        "hostname": "fool",
+        "platform": "win32",
+        "release": "10.0.19045",
+        "arch": "x64",
+        "cpus": [
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          },
+          {
+            "model": "AMD Ryzen 7 4800H with Radeon Graphics         ",
+            "speed": 2895
+          }
+        ],
+        "totalMemory": 16497119232,
+        "freeMemory": 1040666624,
+        "uptimeSeconds": 299798.89
+      },
+      "issues": []
+    },
+    "node-env": {
+      "id": "node-env",
+      "label": "Node.js environment",
+      "status": "available",
+      "data": {
+        "node": "v20.13.1",
+        "npm": null,
+        "pnpm": null,
+        "yarn": null,
+        "globalPackages": []
+      },
+      "issues": [
+        {
+          "code": "NPM_UNAVAILABLE",
+          "message": "npm is not available: spawn npm ENOENT"
+        },
+        {
+          "code": "PNPM_UNAVAILABLE",
+          "message": "pnpm is not available: spawn pnpm ENOENT"
+        },
+        {
+          "code": "YARN_UNAVAILABLE",
+          "message": "yarn is not available: spawn yarn ENOENT"
+        }
+      ]
+    },
+    "git-config": {
+      "id": "git-config",
+      "label": "Git config",
+      "status": "available",
+      "data": {
+        "version": "git version 2.45.1.windows.1",
+        "globalConfig": {
+          "filter.lfs.clean": "git-lfs clean -- %f",
+          "filter.lfs.smudge": "git-lfs smudge -- %f",
+          "filter.lfs.process": "git-lfs filter-process",
+          "filter.lfs.required": "true",
+          "http.sslverify": "false",
+          "http.sslcainfo": "",
+          "user.name": "fool",
+          "user.email": "2892215600@qq.com",
+          "credential.https://gitee.com.provider": "generic",
+          "credential.https://kkgithub.com.provider": "generic",
+          "safe.directory": "E:/1project/myweb"
+        },
+        "credentialHelper": null
+      },
+      "issues": []
+    },
+    "env-vars": {
+      "id": "env-vars",
+      "label": "Environment variables",
+      "status": "available",
+      "data": {
+        "variables": {
+          "ADSK_CLM_WPAD_PROXY_CHECK": "FALSE",
+          "ALLUSERSPROFILE": "C:\\ProgramData",
+          "AMDRMSDKPATH": "C:\\Program Files\\AMD\\RyzenMasterSDK\\",
+          "APPCODE_VM_OPTIONS": "E:\\PyCharm 2021.3.3\\ja-netfilter-all\\vmoptions\\appcode.vmoptions",
+          "APPDATA": "C:\\Users\\86182\\AppData\\Roaming",
+          "AQUA_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\aqua.vmoptions",
+          "ChocolateyInstall": "C:\\ProgramData\\chocolatey",
+          "ChocolateyLastPathUpdate": "133611012663733788",
+          "CHROME_CRASHPAD_PIPE_NAME": "\\\\.\\pipe\\crashpad_12152_VMYBJXDTIVRZXYEQ",
+          "CLASSPATH": ".,;C:\\Program Files\\Java\\jdk-22\\lib;%JRE_HOME%\\lib",
+          "CLION_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\clion.vmoptions",
+          "CommonProgramFiles": "C:\\Program Files\\Common Files",
+          "CommonProgramFiles(x86)": "C:\\Program Files (x86)\\Common Files",
+          "CommonProgramW6432": "C:\\Program Files\\Common Files",
+          "COMPUTERNAME": "FOOL",
+          "ComSpec": "C:\\WINDOWS\\system32\\cmd.exe",
+          "CUDA_PATH": "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3",
+          "CUDA_PATH_V12_3": "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3",
+          "CYGWIN": "mintty",
+          "DATAGRIP_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\datagrip.vmoptions",
+          "DATASPELL_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\dataspell.vmoptions",
+          "DEVECOSTUDIO_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\devecostudio.vmoptions",
+          "DriverData": "C:\\Windows\\System32\\Drivers\\DriverData",
+          "FOOL_DATA_DIR": "data",
+          "FOOL_RUNTIME_DB": "data/runtime-db.json",
+          "FOOL_SNAPSHOT_DIR": "data/snapshots",
+          "GATEWAY_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\gateway.vmoptions",
+          "GoLand": "E:\\JetBrains.GoLand.PJ\\goland\\GoLand 2025.1.4\\bin;",
+          "GOLAND_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\goland.vmoptions",
+          "HOMEDRIVE": "C:",
+          "HOMEPATH": "\\Users\\86182",
+          "HOST": "0.0.0.0",
+          "IDEA_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\idea.vmoptions",
+          "IntelliJ IDEA": "E:\\Java idea\\IntelliJ IDEA 2022.2.1\\bin;",
+          "JAVA_HOME": "C:\\Program Files\\Java\\jdk-22",
+          "JETBRAINSCLIENT_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\jetbrainsclient.vmoptions",
+          "JETBRAINS_CLIENT_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\jetbrains_client.vmoptions",
+          "JRE_HOME": "C:\\Program Files\\Java\\jdk-22\\jre",
+          "LOCALAPPDATA": "C:\\Users\\86182\\AppData\\Local",
+          "LOGONSERVER": "\\\\FOOL",
+          "NODE_ENV": "production",
+          "NUMBER_OF_PROCESSORS": "16",
+          "OLLAMA_MODELS": "E:\\ollama_modules",
+          "OneDrive": "C:\\Users\\86182\\OneDrive",
+          "OneDriveConsumer": "C:\\Users\\86182\\OneDrive",
+          "OnlineServices": "Online Services",
+          "OS": "Windows_NT",
+          "Path": "C:\\Python312\\Scripts\\;C:\\Python312\\;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3\\bin;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3\\libnvvp;C:\\Program Files\\Common Files\\Oracle\\Java\\javapath;C:\\Program Files (x86)\\VMware\\VMware Workstation\\bin\\;C:\\Program Files\\Microsoft\\jdk-11.0.12.7-hotspot\\bin;C:\\Program Files\\Python310\\Scripts\\;C:\\Program Files\\Python310\\;C:\\windows\\system32;C:\\windows;C:\\windows\\System32\\Wbem;C:\\windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\TortoiseSVN\\bin;C:\\Users\\86182\\Desktop\\EasyShare\\x86\\;C:\\Users\\86182\\Desktop\\EasyShare\\x64\\;E:\\ssh\\bin;E:\\runtime\\win64;E:\\bin;C:\\Program Files\\d;E:\\vivo pc\\pcsuite\\;‪E:\\ollama_modules\\;E:\\ollama_modules;C:\\Program Files\\MySQL\\MySQL Shell 8.0\\bin\\;E:\\anaconda;E:\\anaconda\\Library\\mingw-w64\\bin;E:\\anaconda\\Library\\usr\\bin;E:\\anaconda\\Library\\bin;E:\\anaconda\\Scripts;C:\\Users\\86182\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Program Files\\JetBrains\\PyCharm Community Edition 2021.3.2\\bin;C:\\Users\\86182\\AppData\\Local\\GitHubDesktop\\bin;E:\\PyCharm 2021.3.3\\bin;E:\\Java idea\\IntelliJ IDEA 2022.2.1\\bin;C:\\Users\\86182\\AppData\\Roaming\\npm;C:\\Program Files\\Git\\bin;E:\\node.js;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3\\bin;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3\\libnvvp;E:\\VS Code\\bin;C:\\Users\\86182\\.bun\\bin;‪E:\\ollama_modules;E:\\Dev-Cpp\\MinGW32\\bin;E:\\cmake\\bin;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR;;C:\\Program Files\\Docker\\Docker\\resources\\bin;E:\\xshell\\;C:\\Program Files\\GitHub CLI\\;C:\\Users\\86182\\.local\\bin;C:\\Program Files\\MySQL\\MySQL Shell 8.0\\bin\\;E:\\anaconda;E:\\anaconda\\Library\\mingw-w64\\bin;E:\\anaconda\\Library\\usr\\bin;E:\\anaconda\\Library\\bin;E:\\anaconda\\Scripts;C:\\Users\\86182\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Program Files\\JetBrains\\PyCharm Community Edition 2021.3.2\\bin;C:\\Users\\86182\\AppData\\Local\\GitHubDesktop\\bin;E:\\PyCharm 2021.3.3\\bin;;E:\\Java idea\\IntelliJ IDEA 2022.2.1\\bin;;C:\\Users\\86182\\AppData\\Roaming\\npm;C:\\Program Files\\Git\\bin;E:\\node.js;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3\\bin;C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3\\libnvvp;E:\\VS Code\\bin;C:\\Users\\86182\\.bun\\bin;‪E:\\ollama_modules;E:\\JetBrains.GoLand.PJ\\goland\\GoLand 2025.1.4\\bin;;E:\\Kiro\\bin",
+          "PATHEXT": ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW;.CPL",
+          "PHPSTORM_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\phpstorm.vmoptions",
+          "platformcode": "KV",
+          "PORT": "5173",
+          "PROCESSOR_ARCHITECTURE": "AMD64",
+          "PROCESSOR_IDENTIFIER": "AMD64 Family 23 Model 96 Stepping 1, AuthenticAMD",
+          "PROCESSOR_LEVEL": "23",
+          "PROCESSOR_REVISION": "6001",
+          "ProgramData": "C:\\ProgramData",
+          "ProgramFiles": "C:\\Program Files",
+          "ProgramFiles(x86)": "C:\\Program Files (x86)",
+          "ProgramW6432": "C:\\Program Files",
+          "PSModulePath": "C:\\Users\\86182\\Documents\\WindowsPowerShell\\Modules;C:\\Program Files\\WindowsPowerShell\\Modules;C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules",
+          "PT8HOME": "E:\\Cisco Packet Tracer 8.0",
+          "PUBLIC": "C:\\Users\\Public",
+          "PUBLIC_BASE_URL": "http://127.0.0.1:5173",
+          "PyCharm": "E:\\PyCharm 2021.3.3\\bin;",
+          "PyCharm Community Edition": "C:\\Program Files\\JetBrains\\PyCharm Community Edition 2021.3.2\\bin;",
+          "PYCHARM_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\pycharm.vmoptions",
+          "QT_DEVICE_PIXEL_RATIO": "auto",
+          "RegionCode": "APJ",
+          "RIDER_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\rider.vmoptions",
+          "RUBYMINE_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\rubymine.vmoptions",
+          "RUSTROVER_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\rustrover.vmoptions",
+          "SERVE_WEB": "1",
+          "SESSIONNAME": "Console",
+          "SESSION_TTL_HOURS": "168",
+          "STUDIO_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\studio.vmoptions",
+          "SystemDrive": "C:",
+          "SystemRoot": "C:\\WINDOWS",
+          "TEMP": "C:\\Users\\86182\\AppData\\Local\\Temp",
+          "TMP": "C:\\Users\\86182\\AppData\\Local\\Temp",
+          "USERDOMAIN": "FOOL",
+          "USERDOMAIN_ROAMINGPROFILE": "FOOL",
+          "USERNAME": "fool",
+          "USERPROFILE": "C:\\Users\\86182",
+          "VBOX_HWVIRTEX_IGNORE_SVM_IN_USE": "1",
+          "VBOX_MSI_INSTALL_PATH": "E:\\virtual box\\",
+          "VS160PROCOMNTOOLS": "E:\\visual studio\\Common7\\Tools\\",
+          "WEBIDE_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\webide.vmoptions",
+          "WEBSTORM_VM_OPTIONS": "E:\\JetBrains.GoLand.PJ\\JetBrains-2026-po-jie-bao\\jetbra\\vmoptions\\webstorm.vmoptions",
+          "WEB_DIST_DIR": "apps/web/dist",
+          "windir": "C:\\WINDOWS",
+          "TERM_PROGRAM": "kiro",
+          "TERM_PROGRAM_VERSION": "0.12.200",
+          "LANG": "zh_CN.UTF-8",
+          "COLORTERM": "truecolor",
+          "GIT_ASKPASS": "e:\\Kiro\\resources\\app\\extensions\\git\\dist\\askpass.sh",
+          "VSCODE_GIT_ASKPASS_NODE": "E:\\Kiro\\Kiro.exe",
+          "VSCODE_GIT_ASKPASS_EXTRA_ARGS": "",
+          "VSCODE_GIT_ASKPASS_MAIN": "e:\\Kiro\\resources\\app\\extensions\\git\\dist\\askpass-main.js",
+          "VSCODE_GIT_IPC_HANDLE": "\\\\.\\pipe\\vscode-git-eb311ff389-sock",
+          "VSCODE_INJECTION": "1",
+          "VSCODE_NONCE": "dd42e1b8-ccf6-46df-933f-35ba8be98f66",
+          "VSCODE_A11Y_MODE": "0",
+          "VSCODE_STABLE": "1"
+        }
+      },
+      "issues": [],
+      "redactions": []
+    }
+  },
+  "files": [],
+  "redactions": [],
+  "restoreHints": []
+}

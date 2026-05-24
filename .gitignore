@@ -12,7 +12,6 @@ build/
 .env
 .env.*
 !.env.example
-data/
 logs/
 *.log
 configs/snapshots/
