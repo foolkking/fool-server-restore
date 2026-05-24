@@ -54,6 +54,11 @@ function App() {
   const [catalogKind, setCatalogKind] = useState<"software" | "combo">("software");
   const [connected, setConnected] = useState(false);
   const [method, setMethod] = useState<ConnectionMethod>("ssh-password");
+  
+  // 新增：用于控制密码重置弹窗的状态
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
     try {
       const saved = localStorage.getItem("envforge_user");
@@ -83,15 +88,11 @@ function App() {
 
   useEffect(() => {
     void load();
-    // Handle OAuth fragments + password-reset token from the URL.
-    // These come from the GitHub callback or a reset-link in an email.
     void handleAuthLandingFragments();
-    // Validate persisted session on startup
     if (authToken) {
       fetch("/api/auth/session", { headers: { Authorization: `Bearer ${authToken}` } })
         .then((res) => {
           if (!res.ok) {
-            // Token expired or invalid — clear session
             setAuthToken("");
             setAuthUser(null);
             localStorage.removeItem("envforge_token");
@@ -102,22 +103,6 @@ function App() {
     }
   }, []);
 
-  /**
-   * Handle URL fragments + query params produced by the GitHub OAuth callback
-   * (P1.7) and the password-reset email link (P1.12).
-   *
-   * GitHub callback redirects:
-   *   /oauth/return#token=...&new=0|1            (regular login success)
-   *   /login/2fa#2fa=1&intermediateToken=...     (TOTP gate)
-   *   /account/security/enroll#enroll=1&token=...  (admin enrollment)
-   *   /login?oauth_error=...                     (any failure / cancellation)
-   *
-   * Password-reset email link:
-   *   /auth/password-reset?token=...             (reset confirm page)
-   *
-   * After processing, we clean up the URL with history.replaceState so a
-   * refresh doesn't replay the action.
-   */
   async function handleAuthLandingFragments() {
     const url = new URL(window.location.href);
     const fragment = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
@@ -142,9 +127,6 @@ function App() {
     // 2. OAuth callback signaling TOTP gate
     const intermediate = fragParams.get("intermediateToken");
     if (fragParams.has("2fa") && intermediate) {
-      // Hand the user back to MePage with the intermediate token in localStorage
-      // under a separate key. MePage's useEffect picks it up and shows the
-      // 2FA input form. Simpler than threading through props.
       localStorage.setItem("envforge_pending_2fa", intermediate);
       history.replaceState(null, "", url.origin + url.pathname);
       setPage("me");
@@ -153,12 +135,8 @@ function App() {
 
     // 3. OAuth callback for admin-enrollment
     if (fragParams.has("enroll") && oauthToken) {
-      // For now: treat enrollment token like a regular session — the SPA can
-      // then call /api/me/2fa/enroll. After confirm the response carries a
-      // rotated full session token. Full guided UI lives in a future iteration.
       localStorage.setItem("envforge_enrollment_token", oauthToken);
       history.replaceState(null, "", url.origin + url.pathname);
-      // Surface a clear hint via an alert; the dedicated panel comes later.
       alert(locale === "zh"
         ? "管理员账号需要先开启 2FA。请前往 设置 → Account 完成。"
         : "Admin accounts must enable 2FA before continuing.");
@@ -182,21 +160,11 @@ function App() {
       return;
     }
 
-    // 5. Password reset confirm landing
-    const resetToken = url.searchParams.get("token");
-    if (url.pathname.startsWith("/auth/password-reset") && resetToken) {
-      const newPw = window.prompt(locale === "zh"
-        ? "输入新密码（至少 8 位）："
-        : "Enter your new password (at least 8 characters):");
-      if (newPw && newPw.length >= 8) {
-        try {
-          await confirmPasswordReset({ token: resetToken, newPassword: newPw });
-          alert(locale === "zh" ? "密码已重置，请重新登录。" : "Password reset. Please sign in.");
-        } catch (err) {
-          alert(err instanceof Error ? err.message : "Reset failed");
-        }
-      }
-      history.replaceState(null, "", url.origin + "/");
+    // 5. Password reset confirm landing (修改点：使用状态控制弹窗，而不是 window.prompt)
+    const urlResetToken = url.searchParams.get("token");
+    if (url.pathname.startsWith("/auth/password-reset") && urlResetToken) {
+      setResetToken(urlResetToken); // 激活弹窗
+      history.replaceState(null, "", url.origin + "/"); // 抹掉 URL 参数防止刷新重复弹窗
       return;
     }
   }
@@ -224,12 +192,10 @@ function App() {
       setConnections(conns);
       setUserProfiles(profs);
       setSshKeys(keys);
-      // Don't auto-connect — user should manually select which connection to activate
     }
   }
 
   async function handleScan() {
-    // "扫描虚拟机" = reprobe the active connection to get fresh data
     if (!authToken || !activeConnectionId) return;
     pushLog("cmd", `ssh reprobe → ${activeConnectionId}`);
     pushLog("info", locale === "zh" ? "正在通过 SSH 重新采集系统信息…" : "Re-collecting system info via SSH…");
@@ -452,7 +418,6 @@ function App() {
                   ? `已选择连接：${conn.label} (${conn.fields.host})`
                   : `Selected: ${conn.label} (${conn.fields.host})`);
               } else {
-                // Connection exists but no probe data — need to reprobe
                 setConnected(true);
                 setProbeResult(null);
                 pushLog("info", locale === "zh"
@@ -559,6 +524,60 @@ function App() {
           onClose={() => setActiveTask(null)}
         />
       ) : null}
+
+      {/* 新增：自定义的密码重置模态框，替代 window.prompt */}
+      {resetToken ? (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div className="modal-content" style={{ background: '#fff', padding: '24px', borderRadius: '8px', minWidth: '320px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '16px', fontSize: '18px' }}>
+              {locale === "zh" ? "输入新密码" : "Enter new password"}
+            </h3>
+            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '12px' }}>
+              {locale === "zh" ? "至少 8 位字符" : "At least 8 characters"}
+            </p>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder={locale === "zh" ? "新密码..." : "New password..."}
+              style={{ width: '100%', padding: '10px', marginBottom: '20px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="ghost-action"
+                onClick={() => {
+                  setResetToken(null);
+                  setNewPassword("");
+                }}
+              >
+                {locale === "zh" ? "取消" : "Cancel"}
+              </button>
+              <button
+                type="button"
+                className="primary-action"
+                onClick={async () => {
+                  if (newPassword.length >= 8) {
+                    try {
+                      await confirmPasswordReset({ token: resetToken, newPassword });
+                      alert(locale === "zh" ? "密码已重置，请重新登录。" : "Password reset. Please sign in.");
+                      setResetToken(null);
+                      setNewPassword("");
+                    } catch (err) {
+                      alert(err instanceof Error ? err.message : "Reset failed");
+                    }
+                  } else {
+                    alert(locale === "zh" ? "密码至少需要 8 位！" : "Password must be at least 8 characters!");
+                  }
+                }}
+              >
+                {locale === "zh" ? "确认重置" : "Confirm Reset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </main>
   );
 }
