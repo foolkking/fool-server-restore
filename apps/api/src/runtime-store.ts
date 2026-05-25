@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getConfig } from "./config.js";
 import { SafeJsonStore } from "./db-store.js";
+import { getSqliteDb, initializeDatabase } from "./db-sqlite.js";
 
 // Singleton store instance (reused across requests for cache efficiency)
 let _store: SafeJsonStore<RuntimeDatabase> | null = null;
@@ -726,3 +727,569 @@ function normalizeRuntimeDatabase(database: Partial<RuntimeDatabase>): RuntimeDa
     playbooks: database.playbooks ?? []
   };
 }
+
+// ── HTML Entity Encoder Helper ──
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// ── Comments, Likes, and Reports Relational Data Layer ──
+
+export async function addComment(
+  catalogId: string,
+  userId: string,
+  content: string
+): Promise<any> {
+  const db = await initializeDatabase();
+  
+  // Fetch user profile from memory/store
+  const userStore = await readRuntimeDatabase();
+  const user = userStore.users.find((u) => u.id === userId);
+  if (!user) throw new Error("User not found");
+
+  const commentId = createId("comment");
+  const now = new Date().toISOString();
+  const escapedContent = escapeHtml(content.trim());
+
+  await db.exec("BEGIN IMMEDIATE;");
+  try {
+    // 1. Insert comment
+    await db.run(
+      `INSERT INTO catalog_comments (id, catalog_id, user_id, username, display_name, avatar_url, content, visibility, is_deleted, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'public', 0, 'active', ?)`,
+      commentId,
+      catalogId,
+      userId,
+      user.username ?? "",
+      user.displayName || user.name || "",
+      user.avatarUrl || null,
+      escapedContent,
+      now
+    );
+
+    // 2. Insert into FTS Sync Queue
+    const syncId = createId("ftssync");
+    await db.run(
+      `INSERT INTO fts_sync_queue (id, comment_id, status, attempts, next_retry_at, created_at)
+       VALUES (?, ?, 'pending', 0, ?, ?)`,
+      syncId,
+      commentId,
+      now,
+      now
+    );
+
+    await db.exec("COMMIT;");
+  } catch (err) {
+    await db.exec("ROLLBACK;");
+    throw err;
+  }
+
+  return {
+    id: commentId,
+    catalogId,
+    userId,
+    username: user.username || "",
+    displayName: user.displayName || user.name || "",
+    avatarUrl: user.avatarUrl || null,
+    content: escapedContent,
+    visibility: "public",
+    createdAt: now
+  };
+}
+
+export async function getComments(
+  catalogId: string,
+  requestingUserId?: string,
+  limit = 20,
+  cursorCreatedAt?: string,
+  cursorId?: string
+): Promise<any> {
+  const db = await initializeDatabase();
+  
+  let query = `
+    SELECT c.*,
+      (SELECT COUNT(*) FROM comment_likes l WHERE l.comment_id = c.id) as likesCount,
+      (SELECT COUNT(*) FROM comment_likes l WHERE l.comment_id = c.id AND l.user_id = ?) as likedByMe
+    FROM catalog_comments c
+    WHERE c.catalog_id = ? AND c.visibility = 'public' AND c.is_deleted = 0
+  `;
+  const params: any[] = [requestingUserId || null, catalogId];
+
+  if (cursorCreatedAt && cursorId) {
+    query += ` AND (c.created_at < ? OR (c.created_at = ? AND c.id < ?)) `;
+    params.push(cursorCreatedAt, cursorCreatedAt, cursorId);
+  }
+
+  query += ` ORDER BY c.created_at DESC, c.id DESC LIMIT ? `;
+  params.push(limit);
+
+  const comments = await db.all(query, ...params);
+
+  // Normalize returned fields (camelCase)
+  const formattedComments = comments.map((c) => ({
+    id: c.id,
+    catalogId: c.catalog_id,
+    userId: c.user_id,
+    username: c.username,
+    displayName: c.display_name,
+    avatarUrl: c.avatar_url || null,
+    content: c.content,
+    visibility: c.visibility,
+    createdAt: c.created_at,
+    likesCount: c.likesCount,
+    likedByMe: c.likedByMe > 0
+  }));
+
+  const nextCursor =
+    comments.length === limit
+      ? {
+          createdAt: comments[comments.length - 1].created_at,
+          id: comments[comments.length - 1].id
+        }
+      : undefined;
+
+  return {
+    comments: formattedComments,
+    nextCursor
+  };
+}
+
+export async function toggleCommentLike(
+  commentId: string,
+  userId: string
+): Promise<{ liked: boolean; likesCount: number }> {
+  const db = await initializeDatabase();
+  
+  const comment = await db.get("SELECT 1 FROM catalog_comments WHERE id = ? AND is_deleted = 0", commentId);
+  if (!comment) throw new Error("Comment not found or deleted");
+
+  await db.exec("BEGIN IMMEDIATE;");
+  try {
+    const existing = await db.get("SELECT 1 FROM comment_likes WHERE user_id = ? AND comment_id = ?", userId, commentId);
+    let liked = false;
+
+    if (existing) {
+      await db.run("DELETE FROM comment_likes WHERE user_id = ? AND comment_id = ?", userId, commentId);
+    } else {
+      await db.run(
+        "INSERT INTO comment_likes (user_id, comment_id, created_at) VALUES (?, ?, ?)",
+        userId,
+        commentId,
+        new Date().toISOString()
+      );
+      liked = true;
+    }
+
+    await db.exec("COMMIT;");
+    const row = await db.get("SELECT COUNT(*) as count FROM comment_likes WHERE comment_id = ?", commentId);
+    
+    return { liked, likesCount: row?.count || 0 };
+  } catch (err) {
+    await db.exec("ROLLBACK;");
+    throw err;
+  }
+}
+
+export async function reportComment(
+  commentId: string,
+  userId: string,
+  reason: string
+): Promise<void> {
+  const db = await initializeDatabase();
+
+  const comment = await db.get("SELECT 1 FROM catalog_comments WHERE id = ? AND is_deleted = 0", commentId);
+  if (!comment) throw new Error("Comment not found or deleted");
+
+  await db.exec("BEGIN IMMEDIATE;");
+  try {
+    const now = new Date().toISOString();
+    const reportId = createId("report");
+    
+    await db.run(
+      `INSERT OR IGNORE INTO comment_reports (id, comment_id, user_id, reason, status, created_at)
+       VALUES (?, ?, ?, ?, 'pending', ?)`,
+      reportId,
+      commentId,
+      userId,
+      reason,
+      now
+    );
+
+    // Dynamic escalation check
+    const reportsCountRow = await db.get(
+      "SELECT COUNT(*) as count FROM comment_reports WHERE comment_id = ? AND status = 'pending'",
+      commentId
+    );
+    const reportsCount = reportsCountRow?.count || 0;
+
+    if (reportsCount > 5) {
+      await db.run(
+        "UPDATE catalog_comments SET visibility = 'hidden_pending_review', status = 'flagged' WHERE id = ?",
+        commentId
+      );
+    }
+
+    await db.exec("COMMIT;");
+  } catch (err) {
+    await db.exec("ROLLBACK;");
+    throw err;
+  }
+}
+
+export async function getAdminReports(limit = 20, offset = 0): Promise<any[]> {
+  const db = await initializeDatabase();
+  
+  const reports = await db.all(
+    `SELECT r.*, c.content as commentContent, c.username as commentUsername, c.display_name as commentDisplayName
+     FROM comment_reports r
+     JOIN catalog_comments c ON r.comment_id = c.id
+     ORDER BY r.created_at DESC
+     LIMIT ? OFFSET ?`,
+    limit,
+    offset
+  );
+
+  return reports.map((r) => ({
+    id: r.id,
+    commentId: r.comment_id,
+    userId: r.user_id,
+    reason: r.reason,
+    status: r.status,
+    createdAt: r.created_at,
+    commentContent: r.commentContent,
+    commentUsername: r.commentUsername,
+    commentDisplayName: r.commentDisplayName
+  }));
+}
+
+export async function resolveReport(
+  reportId: string,
+  action: "keep" | "delete",
+  adminId: string
+): Promise<void> {
+  const db = await initializeDatabase();
+
+  await db.exec("BEGIN IMMEDIATE;");
+  try {
+    const report = await db.get("SELECT * FROM comment_reports WHERE id = ?", reportId);
+    if (!report) throw new Error("Report not found");
+
+    const resolvedStatus = action === "delete" ? "resolved_deleted" : "resolved_keep";
+    await db.run("UPDATE comment_reports SET status = ? WHERE id = ?", resolvedStatus, reportId);
+
+    if (action === "delete") {
+      await db.run(
+        "UPDATE catalog_comments SET visibility = 'deleted', is_deleted = 1, status = 'hidden' WHERE id = ?",
+        report.comment_id
+      );
+      // Clean FTS record
+      await db.run("DELETE FROM catalog_comments_fts WHERE comment_id = ?", report.comment_id);
+    } else {
+      await db.run(
+        "UPDATE catalog_comments SET visibility = 'public', status = 'active' WHERE id = ?",
+        report.comment_id
+      );
+      // Queue FTS update to restore it
+      const syncId = createId("ftssync");
+      const now = new Date().toISOString();
+      await db.run(
+        `INSERT OR IGNORE INTO fts_sync_queue (id, comment_id, status, attempts, next_retry_at, created_at)
+         VALUES (?, ?, 'pending', 0, ?, ?)`,
+        syncId,
+        report.comment_id,
+        now,
+        now
+      );
+    }
+
+    await db.exec("COMMIT;");
+  } catch (err) {
+    await db.exec("ROLLBACK;");
+    throw err;
+  }
+}
+
+// ── Asynchronous FTS Queue Worker State-Machine ──
+
+export async function syncCommentsFts(): Promise<void> {
+  const db = await initializeDatabase();
+  const now = new Date().toISOString();
+
+  // Find pending or retriable sync tasks
+  const tasks = await db.all(
+    `SELECT * FROM fts_sync_queue
+     WHERE status IN ('pending', 'retry') AND next_retry_at <= ?
+     LIMIT 50`,
+    now
+  );
+
+  for (const t of tasks) {
+    await db.exec("BEGIN IMMEDIATE;");
+    try {
+      const comment = await db.get("SELECT * FROM catalog_comments WHERE id = ?", t.comment_id);
+      
+      if (!comment || comment.is_deleted === 1 || comment.visibility !== "public") {
+        // Comment is deleted or hidden, remove from FTS search index
+        await db.run("DELETE FROM catalog_comments_fts WHERE comment_id = ?", t.comment_id);
+      } else {
+        // Active public comment, index or update it in FTS
+        await db.run(
+          "INSERT OR REPLACE INTO catalog_comments_fts (comment_id, content) VALUES (?, ?)",
+          t.comment_id,
+          comment.content
+        );
+      }
+
+      // Mark as successfully synced
+      await db.run("UPDATE fts_sync_queue SET status = 'synced' WHERE id = ?", t.id);
+      await db.exec("COMMIT;");
+    } catch (err) {
+      await db.exec("ROLLBACK;");
+      
+      const attempts = t.attempts + 1;
+      const lastError = err instanceof Error ? err.message : String(err);
+      
+      if (attempts >= 5) {
+        // Dead-Letter Queue (DLQ) threshold reached
+        await db.run(
+          "UPDATE fts_sync_queue SET status = 'dead_letter', attempts = ?, last_error = ? WHERE id = ?",
+          attempts,
+          lastError,
+          t.id
+        );
+      } else {
+        // Retry with exponential backoff: 5s, 25s, 125s...
+        const backoffSeconds = Math.pow(5, attempts);
+        const nextRetry = new Date(Date.now() + backoffSeconds * 1000).toISOString();
+        await db.run(
+          "UPDATE fts_sync_queue SET status = 'retry', attempts = ?, next_retry_at = ?, last_error = ? WHERE id = ?",
+          attempts,
+          nextRetry,
+          lastError,
+          t.id
+        );
+      }
+    }
+  }
+}
+
+// ── Subsystem Operations (Stage 3 Queue, Inbox, and Audit Logs) ─────────────────
+
+export interface NotificationItem {
+  id: string;
+  userId: string;
+  type: string;
+  payload: string;
+  status: 'pending' | 'retry' | 'sent' | 'dead_letter';
+  attempts: number;
+  nextRetryAt: string;
+  lastError: string | null;
+  createdAt: string;
+}
+
+export interface NotificationQueueProvider {
+  enqueue(userId: string, type: string, payload: Record<string, any>): Promise<string>;
+  processNextBatch(batchSize: number, senderFn: (item: NotificationItem) => Promise<void>): Promise<void>;
+}
+
+export class SQLiteQueueProvider implements NotificationQueueProvider {
+  async enqueue(userId: string, type: string, payload: Record<string, any>): Promise<string> {
+    const db = await initializeDatabase();
+    const id = createId("notif");
+    const now = new Date().toISOString();
+    await db.run(
+      `INSERT INTO notification_queue (id, user_id, type, payload, status, attempts, next_retry_at, created_at)
+       VALUES (?, ?, ?, ?, 'pending', 0, ?, ?)`,
+      id,
+      userId,
+      type,
+      JSON.stringify(payload),
+      now,
+      now
+    );
+    return id;
+  }
+
+  async processNextBatch(batchSize = 20, senderFn: (item: NotificationItem) => Promise<void>): Promise<void> {
+    const db = await initializeDatabase();
+    const now = new Date().toISOString();
+
+    const rows = await db.all(
+      `SELECT * FROM notification_queue
+       WHERE status IN ('pending', 'retry') AND next_retry_at <= ?
+       LIMIT ?`,
+      now,
+      batchSize
+    );
+
+    for (const r of rows) {
+      const item: NotificationItem = {
+        id: r.id,
+        userId: r.user_id,
+        type: r.type,
+        payload: r.payload,
+        status: r.status as any,
+        attempts: r.attempts,
+        nextRetryAt: r.next_retry_at,
+        lastError: r.last_error || null,
+        createdAt: r.created_at
+      };
+
+      await db.exec("BEGIN IMMEDIATE;");
+      try {
+        await senderFn(item);
+
+        await db.run(
+          "UPDATE notification_queue SET status = 'sent', next_retry_at = ? WHERE id = ?",
+          new Date().toISOString(),
+          item.id
+        );
+        await db.exec("COMMIT;");
+      } catch (err) {
+        await db.exec("ROLLBACK;");
+
+        const attempts = item.attempts + 1;
+        const lastError = err instanceof Error ? err.message : String(err);
+
+        if (attempts >= 5) {
+          await db.run(
+            "UPDATE notification_queue SET status = 'dead_letter', attempts = ?, last_error = ? WHERE id = ?",
+            attempts,
+            lastError,
+            item.id
+          );
+        } else {
+          const backoffSeconds = Math.pow(5, attempts);
+          const nextRetry = new Date(Date.now() + backoffSeconds * 1000).toISOString();
+          await db.run(
+            "UPDATE notification_queue SET status = 'retry', attempts = ?, next_retry_at = ?, last_error = ? WHERE id = ?",
+            attempts,
+            nextRetry,
+            lastError,
+            item.id
+          );
+        }
+      }
+    }
+  }
+}
+
+export interface InboxMessage {
+  id: string;
+  userId: string;
+  title: string;
+  content: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export async function addInboxMessage(
+  userId: string,
+  title: string,
+  content: string
+): Promise<InboxMessage> {
+  const db = await initializeDatabase();
+  const id = createId("msg");
+  const now = new Date().toISOString();
+  await db.run(
+    `INSERT INTO inbox_messages (id, user_id, title, content, is_read, created_at)
+     VALUES (?, ?, ?, ?, 0, ?)`,
+    id,
+    userId,
+    title,
+    content,
+    now
+  );
+  return { id, userId, title, content, isRead: false, createdAt: now };
+}
+
+export async function getInboxMessages(
+  userId: string,
+  limit = 20,
+  cursorCreatedAt?: string,
+  cursorId?: string
+): Promise<{ messages: InboxMessage[]; nextCursor?: { createdAt: string; id: string } }> {
+  const db = await initializeDatabase();
+  let query = `
+    SELECT * FROM inbox_messages
+    WHERE user_id = ?
+  `;
+  const params: any[] = [userId];
+
+  if (cursorCreatedAt && cursorId) {
+    query += ` AND (created_at < ? OR (created_at = ? AND id < ?)) `;
+    params.push(cursorCreatedAt, cursorCreatedAt, cursorId);
+  }
+
+  query += ` ORDER BY created_at DESC, id DESC LIMIT ? `;
+  params.push(limit);
+
+  const rows = await db.all(query, ...params);
+  const messages = rows.map((r) => ({
+    id: r.id,
+    userId: r.user_id,
+    title: r.title,
+    content: r.content,
+    isRead: r.is_read > 0,
+    createdAt: r.created_at
+  }));
+
+  const nextCursor =
+    rows.length === limit
+      ? {
+          createdAt: rows[rows.length - 1].created_at,
+          id: rows[rows.length - 1].id
+        }
+      : undefined;
+
+  return { messages, nextCursor };
+}
+
+export async function markInboxMessageAsRead(id: string, userId: string): Promise<void> {
+  const db = await initializeDatabase();
+  await db.run(
+    "UPDATE inbox_messages SET is_read = 1 WHERE id = ? AND user_id = ?",
+    id,
+    userId
+  );
+}
+
+export async function deleteInboxMessage(id: string, userId: string): Promise<void> {
+  const db = await initializeDatabase();
+  await db.run(
+    "DELETE FROM inbox_messages WHERE id = ? AND user_id = ?",
+    id,
+    userId
+  );
+}
+
+export async function writeAdminAuditLog(
+  adminId: string,
+  action: string,
+  targetId: string,
+  oldValue: string | null,
+  newValue: string | null,
+  feedback: string | null
+): Promise<void> {
+  const db = await initializeDatabase();
+  const id = createId("audit");
+  const now = new Date().toISOString();
+  await db.run(
+    `INSERT INTO admin_audit_logs (id, admin_id, action, target_id, old_value, new_value, feedback, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    id,
+    adminId,
+    action,
+    targetId,
+    oldValue,
+    newValue,
+    feedback,
+    now
+  );
+}
+

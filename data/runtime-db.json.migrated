@@ -1,0 +1,6648 @@
+{
+  "schemaVersion": "0.4.0",
+  "users": [
+    {
+      "id": "user_e0aa937db64c4e8ba8",
+      "name": "neuer",
+      "email": "diudiudiue@outlook.com",
+      "passwordHash": "88058039a8a84458edb4e767529ba9887bfde42e3f0390ab9086dc48e8d8eaf334a8cff9fc4b3c1b45dbb07cd5a8379d8aa564732891b6090f2ef0869391862c",
+      "passwordSalt": "e0f2e97d18da84f9b2556f944ca69982",
+      "defaultSshUser": "ubuntu",
+      "role": "admin",
+      "emailVerifiedAt": "2026-05-24T05:38:11.105Z",
+      "createdAt": "2026-05-24T05:38:11.105Z",
+      "updatedAt": "2026-05-24T09:33:52.551Z",
+      "totpSecretEnc": "enc:v1:AcadJEA9nrWF2jXA5jdNbt95TBNq/KBjJ57xHgI8iij8LCMzadEJU6USeaFUvAWVJit9uTT5hzn9KiV/bg==",
+      "totpEnabledAt": "2026-05-24T09:33:52.551Z",
+      "totpRecoveryCodesHashed": [
+        "1be2f1ab1e15dedafc258c35f756f9aea714ff3306b57c770df5df40d4194eac",
+        "01c2f2a2c7007a48dc97d2d52059e9f6bd61eacca67b46af48ab69d85dbb9e5f",
+        "5f5ac0ff10c16a1ecd1dd7a5ef1c20ad00138bfc0d3c6d17845c6b01553466f1",
+        "8f40a5bc37da9e0d9004876ddb08232c1e90ec732b6bd5ad848f71a23e098e08",
+        "a3774c0f00071894cd94563e72cd5e72346a8c0b4bf2799e71778e6af8ea1de6",
+        "68f95abe375e9c37e8188c633822b761fb037720d1c1b90da13b54df15b700f0",
+        "4137b5815cba6ec44a00b90229719eeb7e9d24ce34922c8b8bd27938bda8d1ed",
+        "18211d08113e302e324758288d539424d9deb6db33c1e243240a8c60a9e7697b"
+      ]
+    },
+    {
+      "id": "user_f471fdaa422f48f385",
+      "name": "king",
+      "email": "2518150663@qq.com",
+      "passwordHash": "ae4b3ea5d71b84a987e772f3b6e255e168c99477acc8aff3af96c881aeafb3a3b320da9578859b08fc7bd2c08b0d873531dc552fed5e9be0aa5129ce4babf679",
+      "passwordSalt": "75d63d8e7f679c6ce9fe82525e0e9ba0",
+      "defaultSshUser": "ubuntu",
+      "role": "user",
+      "emailVerifiedAt": "2026-05-24T06:00:50.064Z",
+      "createdAt": "2026-05-24T06:00:50.064Z",
+      "updatedAt": "2026-05-25T07:16:09.332Z"
+    },
+    {
+      "id": "user_d1f26311f40b4fc497",
+      "name": "fool",
+      "email": "2892215600@qq.com",
+      "passwordHash": "32797e01f0468741dd08e0394e8d4428537071d8ef5d0f1a11c01e5e58611627df282a2e4dfd877663204e32945b0b32a1c82ecd4d28eea2b91158c132943258",
+      "passwordSalt": "a920129b540788510eaefd7894593af3",
+      "defaultSshUser": "ubuntu",
+      "role": "admin",
+      "emailVerifiedAt": "2026-05-24T11:24:25.315Z",
+      "createdAt": "2026-05-24T11:24:25.315Z",
+      "updatedAt": "2026-05-24T11:25:44.380Z",
+      "totpSecretEnc": "enc:v1:AcdZlDhegyEdxZAW55KjfagXxGQ0wbZvG8F4WHrl3tDiNsJxdQtx5zlCqIS3xI9fjb57glAX3Lq++pgeQQ==",
+      "totpEnabledAt": "2026-05-24T11:25:44.380Z",
+      "totpRecoveryCodesHashed": [
+        "cb1f3fa9cdf6e6c9b155bebad986535eaa669e9b00521ab30f1e3f21a6115955",
+        "4266f335f734274b6b9cffd016fbf8c19f9394d3fd62d01ddc2cb572c6f115f2",
+        "2ffee6ee3bbf98531740604729fa67ef66f2b1ffd88f1fbd8ed0d63d201d97c7",
+        "14e148b87ef03c2d5dc47444ef7a85511db2a1125bc1594c24e4c6c9e0443e11",
+        "1008cfd971682badbe08bb475e4a5973d7334fcaa9bf9bc8e478c56c05c69241",
+        "24c5984c9dcf29ac8b2a634171e1eabf5b5b2db857a7f5e200ef95ac78b7fb6a",
+        "de787761af082751d1dd6a009700be6f2847fd0a604a2c733718e3bef8c82029",
+        "4c3f3ffadb380f786f4052dd10056581b5bdf28807934771d3947f8638d269e8"
+      ]
+    }
+  ],
+  "sessions": [
+    {
+      "token": "Uql50NsldXDmlrXduRZ6FGCSLap6NJBlj5HHnWGMP8g",
+      "userId": "user_f471fdaa422f48f385",
+      "createdAt": "2026-05-24T06:00:50.064Z",
+      "expiresAt": "2026-05-31T06:00:50.064Z"
+    },
+    {
+      "token": "GCAa7aojFrxkZFvKopmF2yBwptfztdw9KTQVaR28H7A",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "createdAt": "2026-05-24T09:32:15.987Z",
+      "expiresAt": "2026-05-31T09:32:15.987Z"
+    },
+    {
+      "token": "4jo6QSuR2YzeRm-pAvo9TqZ7kC1j1EWYPK9R8Tqq14I",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "createdAt": "2026-05-24T09:34:20.819Z",
+      "expiresAt": "2026-05-31T09:34:20.818Z"
+    },
+    {
+      "token": "pmT1UBAbpPxUk4qx66385uJAnL9hAgqVSzE5omdSdcI",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "createdAt": "2026-05-24T09:38:37.498Z",
+      "expiresAt": "2026-05-31T09:38:37.498Z"
+    },
+    {
+      "token": "CqKt6VVuR2VY8-Lrllu0LayJZhAo36RdrHYLBxsKaEI",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "createdAt": "2026-05-24T09:56:09.250Z",
+      "expiresAt": "2026-05-31T09:56:09.249Z"
+    },
+    {
+      "token": "QrYJ2VKqDXJw-w4BSAwgtuP7KwrEsT1qlEO_5B0Ious",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "createdAt": "2026-05-24T11:03:09.784Z",
+      "expiresAt": "2026-05-31T11:03:09.784Z"
+    },
+    {
+      "token": "TUwjTtIU4Qzbai5iBm-A8kTAXKljA7_pUpLbrjPo8f8",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "createdAt": "2026-05-24T11:14:12.911Z",
+      "expiresAt": "2026-05-31T11:14:12.910Z"
+    },
+    {
+      "token": "-dJGG7DiQQ5zNx0JpZUt9bftX0Kd2AklFSErKH7dAqk",
+      "userId": "user_e97230443f5843e5b3",
+      "createdAt": "2026-05-24T11:17:51.608Z",
+      "expiresAt": "2026-05-31T11:17:51.608Z"
+    },
+    {
+      "token": "-daCbQCpqFszYhNpjPnEpHDAPLfWTFEysfva0gyWzsc",
+      "userId": "user_d1f26311f40b4fc497",
+      "createdAt": "2026-05-24T11:24:25.315Z",
+      "expiresAt": "2026-05-31T11:24:25.315Z"
+    },
+    {
+      "token": "dq8HClN3IZi7DY2zHXytF5VQVADQDn6_8V3w2NhX99s",
+      "userId": "user_d1f26311f40b4fc497",
+      "createdAt": "2026-05-24T11:28:13.005Z",
+      "expiresAt": "2026-05-31T11:28:13.004Z"
+    },
+    {
+      "token": "Ac0NC34ypb-25mM-duZ4QcyYkytfVwYsMNfgQO9jvkY",
+      "userId": "user_d1f26311f40b4fc497",
+      "createdAt": "2026-05-24T11:28:41.287Z",
+      "expiresAt": "2026-05-31T11:28:41.286Z"
+    },
+    {
+      "token": "eOlffZJYzqDSFEjFdOO-eRM5tvan5oAb4EXCKIIc7ug",
+      "userId": "user_d1f26311f40b4fc497",
+      "createdAt": "2026-05-24T11:43:20.166Z",
+      "expiresAt": "2026-05-31T11:43:20.166Z"
+    },
+    {
+      "token": "ye2FfwUehrijCcsHXu7XiXjrpIkliPXEjuQbQ0Jcp-c",
+      "userId": "user_d1f26311f40b4fc497",
+      "createdAt": "2026-05-24T11:45:09.429Z",
+      "expiresAt": "2026-05-31T11:45:09.429Z"
+    },
+    {
+      "token": "iImJWgxbLxG3MkkmOrRpCtOX-lwcLT1APPzyTJdKNJw",
+      "userId": "user_d1f26311f40b4fc497",
+      "createdAt": "2026-05-25T07:15:50.598Z",
+      "expiresAt": "2026-06-01T07:15:50.597Z"
+    },
+    {
+      "token": "AErjs6mo_DsQHgjwJ2jAuNRTkXDHdmT4fxrXnQKytQQ",
+      "userId": "user_d1f26311f40b4fc497",
+      "createdAt": "2026-05-25T08:42:41.946Z",
+      "expiresAt": "2026-06-01T08:42:41.945Z"
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn_aa001146881a4bc6ad",
+      "userId": "user_d1f26311f40b4fc497",
+      "method": "ssh-key",
+      "label": "20.89.235.19",
+      "status": "probed",
+      "fields": {
+        "port": "22",
+        "host": "20.89.235.19",
+        "username": "fool",
+        "passphrase": "********",
+        "_keyId": "e8aa70b977de449f"
+      },
+      "maskedSecrets": [
+        "passphrase"
+      ],
+      "realConnection": false,
+      "probeSnapshot": {
+        "agentId": "ssh:20.89.235.19",
+        "collectedAt": "2026-05-24T11:51:06.532Z",
+        "system": {
+          "hostname": "fool",
+          "platform": "linux",
+          "arch": "x86_64",
+          "release": "6.8.0-1052-azure",
+          "uptime": 0,
+          "osPretty": "Ubuntu 22.04.5 LTS",
+          "cpu": {
+            "model": "AMD EPYC 7763 64-Core Processor",
+            "cores": 2,
+            "speedMhz": 0
+          },
+          "memory": {
+            "totalBytes": 937652224,
+            "freeBytes": 83046400,
+            "usedBytes": 854605824,
+            "totalGb": "0.9",
+            "freeGb": "0.1"
+          },
+          "disk": {
+            "total": "62G",
+            "used": "7.9G",
+            "available": "55G",
+            "usePercent": "13%"
+          },
+          "uptimeText": "up 2 weeks, 5 days, 8 hours, 5 minutes"
+        },
+        "software": [
+          {
+            "name": "bat",
+            "version": "$0.19.0-1ubuntu0.1",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "btop",
+            "version": "$1.2.3-2",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "caddy",
+            "version": "$2.11.2",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "certbot",
+            "version": "$1.21.0-1build1",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit",
+            "version": "$264-1ubuntu0.22.04.1",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "fail2ban",
+            "version": "$0.11.2-6",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "fd-find",
+            "version": "$8.3.1-1ubuntu0.1",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "fzf",
+            "version": "$0.29.0-1ubuntu0.1",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "git",
+            "version": "$1:2.34.1-1ubuntu1.17",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "git-lfs",
+            "version": "$3.0.2-1ubuntu0.3",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "micro",
+            "version": "$2.0.9-1ubuntu0.22.04.3",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "nginx",
+            "version": "$1.18.0-6ubuntu14.11",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "redis-server",
+            "version": "$5:6.0.16-1ubuntu1.1",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "ripgrep",
+            "version": "$13.0.0-2ubuntu0.1",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "tldr",
+            "version": "$0.6.4-1build6.3",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "zoxide",
+            "version": "$0.4.3-2",
+            "source": "apt",
+            "status": "installed"
+          },
+          {
+            "name": "lsd",
+            "version": "0.16.0",
+            "source": "snap",
+            "status": "installed"
+          },
+          {
+            "name": "tree",
+            "version": "2.1.3+pkg-5852",
+            "source": "snap",
+            "status": "installed"
+          },
+          {
+            "name": "filebrowser",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "micro",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "x-ui",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "codex",
+            "version": "binary",
+            "source": "user-bin",
+            "status": "installed"
+          },
+          {
+            "name": "kiro",
+            "version": "binary",
+            "source": "user-bin",
+            "status": "installed"
+          },
+          {
+            "name": "kiro-cli",
+            "version": "binary",
+            "source": "user-bin",
+            "status": "installed"
+          },
+          {
+            "name": "kiro-cli-chat",
+            "version": "binary",
+            "source": "user-bin",
+            "status": "installed"
+          },
+          {
+            "name": "kiro-cli-term",
+            "version": "binary",
+            "source": "user-bin",
+            "status": "installed"
+          },
+          {
+            "name": "certbot",
+            "version": "cron",
+            "source": "cron",
+            "status": "installed"
+          },
+          {
+            "name": "certbot",
+            "version": "timer",
+            "source": "systemd-timer",
+            "status": "installed"
+          },
+          {
+            "name": "chronyd",
+            "version": "service",
+            "source": "systemd",
+            "status": "installed"
+          },
+          {
+            "name": "redis",
+            "version": "service",
+            "source": "systemd",
+            "status": "installed"
+          }
+        ],
+        "configChecklist": [
+          {
+            "id": "ssh-root",
+            "label": "⚠ Root 登录未禁用",
+            "category": "security",
+            "status": "warning",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "ssh-password",
+            "label": "密码认证已启用",
+            "category": "security",
+            "status": "warning",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "firewall",
+            "label": "UFW 防火墙已启用",
+            "category": "security",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "fail2ban",
+            "label": "Fail2Ban 入侵防护已启用",
+            "category": "security",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "auto-updates",
+            "label": "自动安全更新已启用",
+            "category": "security",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "open-ports",
+            "label": "开放端口: ff02::3 ip6-allhosts",
+            "category": "network",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "disk",
+            "label": "磁盘: 7.9G / 62G (13%)",
+            "category": "service",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "uptime",
+            "label": "运行时间: up 2 weeks, 5 days, 8 hours, 5 minutes",
+            "category": "service",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "services",
+            "label": "服务: 31 运行中 / 65 已启用",
+            "category": "service",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          }
+        ],
+        "counts": {
+          "apt": 16,
+          "rpm": 0,
+          "snap": 2,
+          "flatpak": 0,
+          "npm": 0,
+          "pip": 0,
+          "gem": 0,
+          "cargo": 0,
+          "localBin": 2,
+          "opt": 0,
+          "userBin": 5,
+          "nvm": 0,
+          "pyenv": 0,
+          "docker": 0,
+          "enabledServices": 65,
+          "runningServices": 31,
+          "total": 28
+        }
+      },
+      "lastProbeAt": "2026-05-24T11:50:56.952Z",
+      "createdAt": "2026-05-24T11:50:56.952Z",
+      "updatedAt": "2026-05-24T11:50:56.952Z",
+      "tags": []
+    },
+    {
+      "id": "conn_9cfe832878af4bb2ba",
+      "userId": "user_d1f26311f40b4fc497",
+      "method": "ssh-key",
+      "label": "47.251.100.201",
+      "status": "probed",
+      "fields": {
+        "port": "22",
+        "host": "47.251.100.201",
+        "username": "root",
+        "passphrase": "********",
+        "_rawPassphrase": "enc:v1:AfYne4wwBevOX4jK0BB+GiZDn3BgpVvlRKlNZgI+CR6+",
+        "_keyId": "5b003122ba364a8e"
+      },
+      "maskedSecrets": [
+        "passphrase"
+      ],
+      "realConnection": false,
+      "probeSnapshot": {
+        "agentId": "ssh:47.251.100.201",
+        "collectedAt": "2026-05-24T11:46:23.676Z",
+        "system": {
+          "hostname": "iZrj95nzjei1rvplk7h56vZ",
+          "platform": "linux",
+          "arch": "x86_64",
+          "release": "5.10.134-19.1.al8.x86_64",
+          "uptime": 0,
+          "osPretty": "Alibaba Cloud Linux 3.2104 U12 (OpenAnolis Edition)",
+          "cpu": {
+            "model": "Intel(R) Xeon(R) Platinum",
+            "cores": 2,
+            "speedMhz": 0
+          },
+          "memory": {
+            "totalBytes": 1961881600,
+            "freeBytes": 993918976,
+            "usedBytes": 967962624,
+            "totalGb": "1.8",
+            "freeGb": "0.9"
+          },
+          "disk": {
+            "total": "40G",
+            "used": "14G",
+            "available": "25G",
+            "usePercent": "36%"
+          },
+          "uptimeText": "up 2 days, 6 hours, 2 minutes"
+        },
+        "software": [
+          {
+            "name": "hwdata",
+            "version": "0.314",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "efi-filesystem",
+            "version": "3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "xkeyboard-config",
+            "version": "2.28",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pkgconf-m4",
+            "version": "1.4.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gmp",
+            "version": "6.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "lua-libs",
+            "version": "5.3.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nss-util",
+            "version": "3.101.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mpfr",
+            "version": "3.1.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gdbm-libs",
+            "version": "1.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre2",
+            "version": "10.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "chkconfig",
+            "version": "1.19.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "file-libs",
+            "version": "5.33",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "file",
+            "version": "5.33",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "efivar-libs",
+            "version": "37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "jansson",
+            "version": "2.14",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "psmisc",
+            "version": "23.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nettle",
+            "version": "3.4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre",
+            "version": "8.42",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "groff-base",
+            "version": "1.22.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gdbm",
+            "version": "1.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "brotli",
+            "version": "1.0.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dmidecode",
+            "version": "3.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "keyutils-libs",
+            "version": "1.5.10",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "numactl-libs",
+            "version": "2.0.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "lzo",
+            "version": "2.08",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "squashfs-tools",
+            "version": "4.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "acl",
+            "version": "2.2.53",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bubblewrap",
+            "version": "0.4.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "hardlink",
+            "version": "1.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nss-softokn-freebl",
+            "version": "3.101.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nss-softokn",
+            "version": "3.101.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ipset-libs",
+            "version": "7.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-pc-modules",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "isl",
+            "version": "0.16.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "e2fsprogs-libs",
+            "version": "1.46.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mozjs60",
+            "version": "60.9.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gpm-libs",
+            "version": "1.20.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ipcalc",
+            "version": "0.2.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "lm_sensors-libs",
+            "version": "3.6.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "memstrack",
+            "version": "0.2.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "npth",
+            "version": "1.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sg3_utils-libs",
+            "version": "1.44",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "kbd-legacy",
+            "version": "2.0.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cyrus-sasl-lib",
+            "version": "2.1.27",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "platform-python-pip",
+            "version": "9.0.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-tools-minimal",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grubby",
+            "version": "8.40",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "procps-ng",
+            "version": "3.3.15",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gettext-libs",
+            "version": "0.19.8.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "kmod",
+            "version": "25",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cryptsetup-libs",
+            "version": "2.3.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "trousers-lib",
+            "version": "0.3.15",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dracut",
+            "version": "049",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "os-prober",
+            "version": "1.74",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "trousers",
+            "version": "0.3.15",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "polkit",
+            "version": "0.115",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "crontabs",
+            "version": "1.11",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "policycoreutils",
+            "version": "2.9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python2",
+            "version": "2.7.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "binutils-gold",
+            "version": "2.35",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "timedatex",
+            "version": "0.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "authselect-libs",
+            "version": "1.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "initscripts",
+            "version": "10.00.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "oddjob",
+            "version": "0.34.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "oddjob-mkhomedir",
+            "version": "0.34.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "authselect",
+            "version": "1.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "virt-what",
+            "version": "1.25",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mokutil",
+            "version": "0.3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ima-evm-utils",
+            "version": "1.3.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dhcp-libs",
+            "version": "4.3.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "plymouth-core-libs",
+            "version": "0.9.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "plymouth-scripts",
+            "version": "0.9.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "plymouth",
+            "version": "0.9.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nss-sysinit",
+            "version": "3.101.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "teamd",
+            "version": "1.31",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gobject-introspection",
+            "version": "1.68.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-tools-extra",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "json-glib",
+            "version": "1.4.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pinentry",
+            "version": "1.1.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "volume_key-libs",
+            "version": "0.3.11",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fwupd",
+            "version": "1.7.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python36",
+            "version": "3.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "rhn-client-tools",
+            "version": "2.8.16",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dejavu-fonts-common",
+            "version": "2.35",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dejavu-sans-fonts",
+            "version": "2.35",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "langpacks-core-font-en",
+            "version": "3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "langpacks-core-en",
+            "version": "3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dhcp-common",
+            "version": "4.3.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dhcp-client",
+            "version": "4.3.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "langpacks-en",
+            "version": "3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-efi-x64",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-pc",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "authselect-compat",
+            "version": "1.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "audit",
+            "version": "3.1.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "perf",
+            "version": "5.10.134",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "rng-tools",
+            "version": "6.16",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-base-setup",
+            "version": "3.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "net-tools",
+            "version": "2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sysstat",
+            "version": "11.7.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-tools-efi",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "prefixdevname",
+            "version": "0.1.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "man-db",
+            "version": "2.7.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sg3_utils",
+            "version": "1.44",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "biosdevname",
+            "version": "0.7.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "efibootmgr",
+            "version": "16",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "efivar",
+            "version": "37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bpftool",
+            "version": "5.10.134",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "lshw",
+            "version": "B.02.19.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iprutils",
+            "version": "2.4.19",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "telnet",
+            "version": "0.17",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "strace",
+            "version": "5.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "avahi-libs",
+            "version": "0.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "time",
+            "version": "1.9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "system-lsb-submod-security",
+            "version": "4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "spax",
+            "version": "1.5.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "make",
+            "version": "4.2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "m4",
+            "version": "1.4.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "at",
+            "version": "3.1.20",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "patch",
+            "version": "2.7.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mailx",
+            "version": "12.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ed",
+            "version": "1.14.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bc",
+            "version": "1.07.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tcpdump",
+            "version": "4.9.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cloud-utils-growpart",
+            "version": "0.33",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "rpcbind",
+            "version": "1.2.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "quota-nls",
+            "version": "4.09",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "quota",
+            "version": "4.09",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gssproxy",
+            "version": "0.8.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "keyutils",
+            "version": "1.5.10",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pigz",
+            "version": "2.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "drpm",
+            "version": "0.4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pciutils",
+            "version": "3.8.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bash-completion",
+            "version": "2.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sshpass",
+            "version": "1.09",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "container-selinux",
+            "version": "2.229.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python-srpm-macros",
+            "version": "3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python-rpm-macros",
+            "version": "3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python36-devel",
+            "version": "3.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "aliyun_assist",
+            "version": "2.2.4.941",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-base-setup-aliyun",
+            "version": "3.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "autoconf",
+            "version": "2.69",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "automake",
+            "version": "1.16.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "update-motd",
+            "version": "1.1.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "keentuned",
+            "version": "3.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "keentune-target",
+            "version": "3.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "epel-aliyuncs-release",
+            "version": "8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "zlib-devel",
+            "version": "1.2.11",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre2-utf32",
+            "version": "10.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre2-utf16",
+            "version": "10.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre2-devel",
+            "version": "10.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "keyutils-libs-devel",
+            "version": "1.5.10",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "xz-devel",
+            "version": "5.4.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cmake-filesystem",
+            "version": "3.26.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sysprof-capture-devel",
+            "version": "3.40.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pixman",
+            "version": "0.40.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre-utf32",
+            "version": "8.42",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre-utf16",
+            "version": "8.42",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre-cpp",
+            "version": "8.42",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre-devel",
+            "version": "8.42",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cairo",
+            "version": "1.17.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "harfbuzz-icu",
+            "version": "2.7.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "graphite2-devel",
+            "version": "1.3.14",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "brotli-devel",
+            "version": "1.0.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "freetype-devel",
+            "version": "2.10.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "harfbuzz-devel",
+            "version": "2.7.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "lsof",
+            "version": "4.93.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "icu",
+            "version": "60.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "c-ares",
+            "version": "1.13.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sqlite-libs",
+            "version": "3.26.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sqlite",
+            "version": "3.26.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sqlite-devel",
+            "version": "3.26.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "readline-devel",
+            "version": "7.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "xorg-x11-proto-devel",
+            "version": "2024.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tcl",
+            "version": "8.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tcl-devel",
+            "version": "8.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tk",
+            "version": "8.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tk-devel",
+            "version": "8.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gdbm-devel",
+            "version": "1.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "qrencode-libs",
+            "version": "3.4.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "qrencode",
+            "version": "3.4.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mariadb-connector-c-config",
+            "version": "3.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mariadb-common",
+            "version": "10.5.27",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mariadb-connector-c",
+            "version": "3.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mariadb",
+            "version": "10.5.27",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "qt5-srpm-macros",
+            "version": "5.15.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "go-srpm-macros",
+            "version": "2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "efi-srpm-macros",
+            "version": "3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dwz",
+            "version": "0.14",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "annobin",
+            "version": "11.13",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "rust-srpm-macros",
+            "version": "5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "openblas-srpm-macros",
+            "version": "2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ocaml-srpm-macros",
+            "version": "5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ghc-srpm-macros",
+            "version": "1.4.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "system-rpm-config",
+            "version": "129",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "vim-filesystem",
+            "version": "8.0.1763",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tzdata",
+            "version": "2025b",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "glibc",
+            "version": "2.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bzip2-libs",
+            "version": "1.0.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "platform-python-setuptools",
+            "version": "39.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "platform-python",
+            "version": "3.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "openssh",
+            "version": "8.0p1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gnutls",
+            "version": "3.6.16",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "glib2",
+            "version": "2.68.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "systemd",
+            "version": "239",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "NetworkManager",
+            "version": "1.40.16",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "unbound-libs",
+            "version": "1.16.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cups-libs",
+            "version": "2.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse-common",
+            "version": "3.3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-release",
+            "version": "3.2104.12",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-repos",
+            "version": "3.2104.12",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse",
+            "version": "2.9.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "vim-enhanced",
+            "version": "8.0.1763",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cups-client",
+            "version": "2.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "udisks2",
+            "version": "2.9.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "kpartx",
+            "version": "0.8.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nfs-utils",
+            "version": "2.3.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "kexec-tools",
+            "version": "2.0.26",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nscd",
+            "version": "2.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sssd-client",
+            "version": "2.9.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "platform-python-devel",
+            "version": "3.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "expat-devel",
+            "version": "2.2.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bind-export-libs",
+            "version": "9.11.36",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bzip2-devel",
+            "version": "1.0.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse-libs",
+            "version": "2.9.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "socat",
+            "version": "1.7.4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tpm2-tss",
+            "version": "2.4.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sysak",
+            "version": "3.8.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl7260-firmware",
+            "version": "25.30.13.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl6050-firmware",
+            "version": "41.28.5.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl6000g2a-firmware",
+            "version": "18.168.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl6000-firmware",
+            "version": "9.221.4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl5150-firmware",
+            "version": "8.24.2.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl5000-firmware",
+            "version": "8.83.5.1_1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl4965-firmware",
+            "version": "228.61.2.24",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl3945-firmware",
+            "version": "15.32.2.9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl3160-firmware",
+            "version": "25.30.13.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl2030-firmware",
+            "version": "18.168.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl2000-firmware",
+            "version": "18.168.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl135-firmware",
+            "version": "18.168.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl105-firmware",
+            "version": "18.168.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl1000-firmware",
+            "version": "39.31.5.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl100-firmware",
+            "version": "39.31.5.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "emacs-filesystem",
+            "version": "27.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cmake-rpm-macros",
+            "version": "3.26.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cmake-data",
+            "version": "3.26.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cmake",
+            "version": "3.26.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "flex",
+            "version": "2.6.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bison",
+            "version": "3.7.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "jbigkit-libs",
+            "version": "2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gd",
+            "version": "2.2.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gd-devel",
+            "version": "2.2.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "e2fsprogs-devel",
+            "version": "1.46.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gettext-common-devel",
+            "version": "0.19.8.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gettext-devel",
+            "version": "0.19.8.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gmp-c++",
+            "version": "6.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gmp-devel",
+            "version": "6.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "c-ares-devel",
+            "version": "1.13.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pixman-devel",
+            "version": "0.40.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cairo-devel",
+            "version": "1.17.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bison-devel",
+            "version": "3.7.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "systemtap-sdt-devel",
+            "version": "4.9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "perl",
+            "version": "5.26.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "oniguruma",
+            "version": "6.8.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "oniguruma-devel",
+            "version": "6.8.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mysql-common",
+            "version": "8.0.43",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mysql-libs",
+            "version": "8.0.43",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cpp",
+            "version": "10.2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gcc",
+            "version": "10.2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gcc-c++",
+            "version": "10.2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "docker-compose-plugin",
+            "version": "2.27.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse3-libs",
+            "version": "3.3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse3",
+            "version": "3.3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse-overlayfs",
+            "version": "1.13",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "docker-buildx-plugin",
+            "version": "0.14.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "docker-ce-cli",
+            "version": "26.1.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "containerd.io",
+            "version": "1.6.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "slirp4netns",
+            "version": "1.2.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "docker-ce",
+            "version": "26.1.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "docker-ce-rootless-extras",
+            "version": "26.1.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bat",
+            "version": "0.24.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "hicolor-icon-theme",
+            "version": "0.17",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "btop",
+            "version": "1.2.13",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-logos-httpd",
+            "version": "82.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "caddy",
+            "version": "2.6.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python-josepy-doc",
+            "version": "1.9.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "certbot",
+            "version": "1.22.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "userspace-rcu",
+            "version": "0.10.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gdk-pixbuf2",
+            "version": "2.42.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "jose",
+            "version": "10",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tracer-common",
+            "version": "1.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tpm2-tools",
+            "version": "4.1.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sscg",
+            "version": "3.0.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "luksmeta",
+            "version": "9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "udisks2-lvm2",
+            "version": "2.9.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "jq",
+            "version": "1.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "clevis",
+            "version": "20",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cryptsetup",
+            "version": "2.3.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "clevis-luks",
+            "version": "20",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cairo-gobject",
+            "version": "1.17.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-logos",
+            "version": "82.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "adobe-source-code-pro-fonts",
+            "version": "2.030.1.050",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "abattis-cantarell-fonts",
+            "version": "0.301",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gsettings-desktop-schemas",
+            "version": "40.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sos",
+            "version": "4.10.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "glib-networking",
+            "version": "2.56.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit-bridge",
+            "version": "310.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit-ws",
+            "version": "310.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "PackageKit",
+            "version": "1.1.12",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit-packagekit",
+            "version": "310.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "isns-utils-libs",
+            "version": "0.99",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iscsi-initiator-utils-iscsiuio",
+            "version": "6.2.1.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "udisks2-iscsi",
+            "version": "2.9.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "setroubleshoot-plugins",
+            "version": "3.3.14",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "setroubleshoot-server",
+            "version": "3.3.26",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit-system",
+            "version": "310.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit-storaged",
+            "version": "310.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit",
+            "version": "310.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fd-find",
+            "version": "8.7.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "git-core",
+            "version": "2.43.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "git-core-doc",
+            "version": "2.43.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "git",
+            "version": "2.43.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "git-lfs",
+            "version": "3.4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "redis",
+            "version": "6.2.20",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ripgrep",
+            "version": "14.1.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fzf",
+            "version": "0.58.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "zoxide",
+            "version": "0.9.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nginx-filesystem",
+            "version": "1.23.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "openssl3-libs",
+            "version": "3.5.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nginx-core",
+            "version": "1.23.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nginx",
+            "version": "1.23.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tldr",
+            "version": "1.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pkcs11-helper",
+            "version": "1.22",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "openvpn",
+            "version": "2.4.12",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "easy-rsa",
+            "version": "3.2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nmap-ncat",
+            "version": "7.92",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nmap",
+            "version": "7.92",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "vnstat",
+            "version": "2.9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nethogs",
+            "version": "0.8.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iftop",
+            "version": "1.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gnupg2-smime",
+            "version": "2.2.20",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "apr",
+            "version": "1.7.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "apr-util-bdb",
+            "version": "1.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "apr-util-openssl",
+            "version": "1.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "apr-util",
+            "version": "1.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "httpd-filesystem",
+            "version": "2.4.37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "httpd-tools",
+            "version": "2.4.37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "augeas-libs",
+            "version": "1.14.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mailcap",
+            "version": "2.1.48",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mod_http2",
+            "version": "1.15.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "httpd",
+            "version": "2.4.37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mod_ssl",
+            "version": "2.4.37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "micro",
+            "version": "2.0.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "protobuf",
+            "version": "3.5.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mosh",
+            "version": "1.4.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "acme",
+            "version": "1.22.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "argcomplete",
+            "version": "1.9.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "asn1crypto",
+            "version": "0.24.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "Babel",
+            "version": "2.5.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "certbot",
+            "version": "1.22.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "certbot-apache",
+            "version": "1.22.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "certbot-nginx",
+            "version": "1.22.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "cffi",
+            "version": "1.11.5",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "chardet",
+            "version": "3.0.4",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "cloud-init",
+            "version": "23.2.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "colorama",
+            "version": "0.4.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "ConfigArgParse",
+            "version": "0.14.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "configobj",
+            "version": "5.0.6",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "cryptography",
+            "version": "3.2.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "dbus-python",
+            "version": "1.2.4",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "decorator",
+            "version": "4.2.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "distro",
+            "version": "1.4.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "file-magic",
+            "version": "0.3.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "gpg",
+            "version": "1.13.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "idna",
+            "version": "2.5",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "Jinja2",
+            "version": "2.10.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "josepy",
+            "version": "1.9.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "jsonpatch",
+            "version": "1.21",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "jsonpointer",
+            "version": "1.10",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "jsonschema",
+            "version": "2.6.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "keentune-target",
+            "version": "3.2.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "libcomps",
+            "version": "0.1.18",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "MarkupSafe",
+            "version": "0.23",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "netifaces",
+            "version": "0.10.6",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "nftables",
+            "version": "0.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "oauthlib",
+            "version": "2.1.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "parsedatetime",
+            "version": "2.5",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pciutils",
+            "version": "2.3.6",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "perf",
+            "version": "0.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pexpect",
+            "version": "4.3.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pip",
+            "version": "9.0.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "ply",
+            "version": "3.9",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "psutil",
+            "version": "5.4.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "ptyprocess",
+            "version": "0.5.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pycairo",
+            "version": "1.16.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pycparser",
+            "version": "2.14",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pycurl",
+            "version": "7.43.0.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pydbus",
+            "version": "0.6.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "PyGObject",
+            "version": "3.40.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "PyJWT",
+            "version": "1.6.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pyOpenSSL",
+            "version": "19.0.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pyparsing",
+            "version": "2.1.10",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pyRFC3339",
+            "version": "1.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pyserial",
+            "version": "3.1.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "PySocks",
+            "version": "1.6.8",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "python-augeas",
+            "version": "0.5.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "python-dateutil",
+            "version": "2.6.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "python-dmidecode",
+            "version": "3.12.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "python-linux-procfs",
+            "version": "0.7.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pytz",
+            "version": "2017.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pyudev",
+            "version": "0.21.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "PyYAML",
+            "version": "3.12",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "requests",
+            "version": "2.20.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "requests-toolbelt",
+            "version": "0.9.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "rhnlib",
+            "version": "2.8.6",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "rpm",
+            "version": "4.14.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "schedutils",
+            "version": "0.6",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "selinux",
+            "version": "2.9",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "sepolicy",
+            "version": "1.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "setools",
+            "version": "4.3.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "setroubleshoot",
+            "version": "1.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "setuptools",
+            "version": "39.2.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "six",
+            "version": "1.11.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "slip",
+            "version": "0.6.4",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "slip.dbus",
+            "version": "0.6.4",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "sos",
+            "version": "4.10.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "systemd-python",
+            "version": "234",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "termcolor",
+            "version": "1.1.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "tldr",
+            "version": "1.2.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "tornado",
+            "version": "6.0.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "urllib3",
+            "version": "1.24.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "zope.component",
+            "version": "4.3.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "zope.event",
+            "version": "4.2.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "zope.interface",
+            "version": "4.6.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "aliyun",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "jemalloc-config",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "jemalloc.sh",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "jeprof",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "libmcrypt-config",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "lsd",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "luajit",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "luajit-2.1.0-beta3",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "mcrypt",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "mdecrypt",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "aegis",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "btgojdk",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "btjdk",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "bttomcat",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "cloudmonitor",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "curl",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "libiconv",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "nginx",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "openssl",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "sysak",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "x-ui",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "containerd",
+            "version": "directory",
+            "source": "opt",
+            "status": "installed"
+          },
+          {
+            "name": "envforge",
+            "version": "directory",
+            "source": "opt",
+            "status": "installed"
+          },
+          {
+            "name": "envforge",
+            "version": "latest",
+            "source": "docker",
+            "status": "installed"
+          },
+          {
+            "name": "hello-world",
+            "version": "latest",
+            "source": "docker",
+            "status": "installed"
+          },
+          {
+            "name": "0hourly",
+            "version": "cron",
+            "source": "cron",
+            "status": "installed"
+          },
+          {
+            "name": "raid-check",
+            "version": "cron",
+            "source": "cron",
+            "status": "installed"
+          },
+          {
+            "name": "update-motd",
+            "version": "cron",
+            "source": "cron",
+            "status": "installed"
+          },
+          {
+            "name": "17 0 * * * \"/root/.acme.sh\"/acme.sh --cron --home \"/root/.acme.sh\" > /dev/null",
+            "version": "cron",
+            "source": "cron",
+            "status": "installed"
+          },
+          {
+            "name": "certbot-renew",
+            "version": "timer",
+            "source": "systemd-timer",
+            "status": "installed"
+          },
+          {
+            "name": "dnf-makecache",
+            "version": "timer",
+            "source": "systemd-timer",
+            "status": "installed"
+          },
+          {
+            "name": "AssistDaemon",
+            "version": "service",
+            "source": "systemd",
+            "status": "installed"
+          },
+          {
+            "name": "site_total",
+            "version": "service",
+            "source": "systemd",
+            "status": "installed"
+          },
+          {
+            "name": "vnstatd",
+            "version": "service",
+            "source": "systemd",
+            "status": "installed"
+          }
+        ],
+        "configChecklist": [
+          {
+            "id": "ssh-root",
+            "label": "⚠ Root 登录未禁用",
+            "category": "security",
+            "status": "warning",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "ssh-password",
+            "label": "密码认证已禁用（仅密钥）",
+            "category": "security",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "firewall",
+            "label": "⚠ 防火墙未启用",
+            "category": "security",
+            "status": "warning",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "fail2ban",
+            "label": "Fail2Ban 未运行",
+            "category": "security",
+            "status": "warning",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "auto-updates",
+            "label": "自动更新未配置",
+            "category": "security",
+            "status": "warning",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "open-ports",
+            "label": "开放端口: ---",
+            "category": "network",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "disk",
+            "label": "磁盘: 14G / 40G (36%)",
+            "category": "service",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "uptime",
+            "label": "运行时间: up 2 days, 6 hours, 2 minutes",
+            "category": "service",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          },
+          {
+            "id": "services",
+            "label": "服务: 26 运行中 / 36 已启用",
+            "category": "service",
+            "status": "healthy",
+            "lastChanged": "2026-05-24"
+          }
+        ],
+        "counts": {
+          "apt": 0,
+          "rpm": 354,
+          "snap": 0,
+          "flatpak": 0,
+          "npm": 0,
+          "pip": 79,
+          "gem": 0,
+          "cargo": 0,
+          "localBin": 10,
+          "opt": 2,
+          "userBin": 0,
+          "nvm": 0,
+          "pyenv": 0,
+          "docker": 2,
+          "enabledServices": 36,
+          "runningServices": 26,
+          "total": 464
+        }
+      },
+      "lastProbeAt": "2026-05-24T11:46:19.167Z",
+      "createdAt": "2026-05-24T11:46:19.167Z",
+      "updatedAt": "2026-05-24T11:46:19.167Z",
+      "tags": []
+    },
+    {
+      "id": "conn_985c3cbfb53c467f86",
+      "userId": "user_9742118c1c1e4630b1",
+      "method": "ssh-key",
+      "label": "47.251.100.201",
+      "status": "probed",
+      "fields": {
+        "port": "22",
+        "host": "47.251.100.201",
+        "username": "root",
+        "password": "********",
+        "_keyId": "3338a7f88d864a04"
+      },
+      "maskedSecrets": [
+        "password"
+      ],
+      "realConnection": false,
+      "probeSnapshot": {
+        "agentId": "ssh:47.251.100.201",
+        "collectedAt": "2026-05-23T08:54:08.287Z",
+        "system": {
+          "hostname": "iZrj95nzjei1rvplk7h56vZ",
+          "platform": "linux",
+          "arch": "x86_64",
+          "release": "5.10.134-19.1.al8.x86_64",
+          "uptime": 0,
+          "osPretty": "Alibaba Cloud Linux 3.2104 U12 (OpenAnolis Edition)",
+          "cpu": {
+            "model": "Intel(R) Xeon(R) Platinum",
+            "cores": 2,
+            "speedMhz": 0
+          },
+          "memory": {
+            "totalBytes": 1961881600,
+            "freeBytes": 442789888,
+            "usedBytes": 1519091712,
+            "totalGb": "1.8",
+            "freeGb": "0.4"
+          },
+          "disk": {
+            "total": "40G",
+            "used": "11G",
+            "available": "28G",
+            "usePercent": "27%"
+          },
+          "uptimeText": "up 1 day, 3 hours, 9 minutes"
+        },
+        "software": [
+          {
+            "name": "hwdata",
+            "version": "0.314",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "efi-filesystem",
+            "version": "3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "xkeyboard-config",
+            "version": "2.28",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pkgconf-m4",
+            "version": "1.4.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gmp",
+            "version": "6.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "lua-libs",
+            "version": "5.3.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nss-util",
+            "version": "3.101.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mpfr",
+            "version": "3.1.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gdbm-libs",
+            "version": "1.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre2",
+            "version": "10.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "chkconfig",
+            "version": "1.19.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "file-libs",
+            "version": "5.33",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "file",
+            "version": "5.33",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "efivar-libs",
+            "version": "37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "jansson",
+            "version": "2.14",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "psmisc",
+            "version": "23.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nettle",
+            "version": "3.4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre",
+            "version": "8.42",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "groff-base",
+            "version": "1.22.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gdbm",
+            "version": "1.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "brotli",
+            "version": "1.0.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dmidecode",
+            "version": "3.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "keyutils-libs",
+            "version": "1.5.10",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "numactl-libs",
+            "version": "2.0.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "lzo",
+            "version": "2.08",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "squashfs-tools",
+            "version": "4.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "acl",
+            "version": "2.2.53",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bubblewrap",
+            "version": "0.4.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "hardlink",
+            "version": "1.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nss-softokn-freebl",
+            "version": "3.101.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nss-softokn",
+            "version": "3.101.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ipset-libs",
+            "version": "7.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-pc-modules",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "isl",
+            "version": "0.16.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "e2fsprogs-libs",
+            "version": "1.46.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mozjs60",
+            "version": "60.9.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gpm-libs",
+            "version": "1.20.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ipcalc",
+            "version": "0.2.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "lm_sensors-libs",
+            "version": "3.6.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "memstrack",
+            "version": "0.2.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "npth",
+            "version": "1.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sg3_utils-libs",
+            "version": "1.44",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "kbd-legacy",
+            "version": "2.0.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cyrus-sasl-lib",
+            "version": "2.1.27",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "platform-python-pip",
+            "version": "9.0.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-tools-minimal",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grubby",
+            "version": "8.40",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "procps-ng",
+            "version": "3.3.15",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gettext-libs",
+            "version": "0.19.8.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "kmod",
+            "version": "25",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cryptsetup-libs",
+            "version": "2.3.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "trousers-lib",
+            "version": "0.3.15",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dracut",
+            "version": "049",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "os-prober",
+            "version": "1.74",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "trousers",
+            "version": "0.3.15",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "polkit",
+            "version": "0.115",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "crontabs",
+            "version": "1.11",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "policycoreutils",
+            "version": "2.9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python2",
+            "version": "2.7.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "binutils-gold",
+            "version": "2.35",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "timedatex",
+            "version": "0.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "authselect-libs",
+            "version": "1.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "initscripts",
+            "version": "10.00.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "oddjob",
+            "version": "0.34.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "oddjob-mkhomedir",
+            "version": "0.34.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "authselect",
+            "version": "1.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "virt-what",
+            "version": "1.25",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mokutil",
+            "version": "0.3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ima-evm-utils",
+            "version": "1.3.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dhcp-libs",
+            "version": "4.3.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "plymouth-core-libs",
+            "version": "0.9.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "plymouth-scripts",
+            "version": "0.9.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "plymouth",
+            "version": "0.9.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nss-sysinit",
+            "version": "3.101.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "teamd",
+            "version": "1.31",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gobject-introspection",
+            "version": "1.68.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-tools-extra",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "json-glib",
+            "version": "1.4.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pinentry",
+            "version": "1.1.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "volume_key-libs",
+            "version": "0.3.11",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fwupd",
+            "version": "1.7.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python36",
+            "version": "3.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "rhn-client-tools",
+            "version": "2.8.16",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dejavu-fonts-common",
+            "version": "2.35",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dejavu-sans-fonts",
+            "version": "2.35",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "langpacks-core-font-en",
+            "version": "3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "langpacks-core-en",
+            "version": "3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dhcp-common",
+            "version": "4.3.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dhcp-client",
+            "version": "4.3.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "langpacks-en",
+            "version": "3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-efi-x64",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-pc",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "authselect-compat",
+            "version": "1.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "audit",
+            "version": "3.1.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "perf",
+            "version": "5.10.134",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "rng-tools",
+            "version": "6.16",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-base-setup",
+            "version": "3.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "net-tools",
+            "version": "2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sysstat",
+            "version": "11.7.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "grub2-tools-efi",
+            "version": "2.02",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "prefixdevname",
+            "version": "0.1.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "man-db",
+            "version": "2.7.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sg3_utils",
+            "version": "1.44",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "biosdevname",
+            "version": "0.7.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "efibootmgr",
+            "version": "16",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "efivar",
+            "version": "37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bpftool",
+            "version": "5.10.134",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "lshw",
+            "version": "B.02.19.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iprutils",
+            "version": "2.4.19",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "telnet",
+            "version": "0.17",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "strace",
+            "version": "5.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "avahi-libs",
+            "version": "0.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "time",
+            "version": "1.9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "system-lsb-submod-security",
+            "version": "4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "spax",
+            "version": "1.5.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "make",
+            "version": "4.2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "m4",
+            "version": "1.4.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "at",
+            "version": "3.1.20",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "patch",
+            "version": "2.7.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mailx",
+            "version": "12.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ed",
+            "version": "1.14.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bc",
+            "version": "1.07.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tcpdump",
+            "version": "4.9.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cloud-utils-growpart",
+            "version": "0.33",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "rpcbind",
+            "version": "1.2.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "quota-nls",
+            "version": "4.09",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "quota",
+            "version": "4.09",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gssproxy",
+            "version": "0.8.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "keyutils",
+            "version": "1.5.10",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pigz",
+            "version": "2.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "drpm",
+            "version": "0.4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pciutils",
+            "version": "3.8.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bash-completion",
+            "version": "2.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sshpass",
+            "version": "1.09",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "container-selinux",
+            "version": "2.229.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python-srpm-macros",
+            "version": "3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python-rpm-macros",
+            "version": "3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python36-devel",
+            "version": "3.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "aliyun_assist",
+            "version": "2.2.4.941",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-base-setup-aliyun",
+            "version": "3.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "autoconf",
+            "version": "2.69",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "automake",
+            "version": "1.16.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "update-motd",
+            "version": "1.1.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "keentuned",
+            "version": "3.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "keentune-target",
+            "version": "3.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "epel-aliyuncs-release",
+            "version": "8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "zlib-devel",
+            "version": "1.2.11",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre2-utf32",
+            "version": "10.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre2-utf16",
+            "version": "10.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre2-devel",
+            "version": "10.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "keyutils-libs-devel",
+            "version": "1.5.10",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "xz-devel",
+            "version": "5.4.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cmake-filesystem",
+            "version": "3.26.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sysprof-capture-devel",
+            "version": "3.40.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pixman",
+            "version": "0.40.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre-utf32",
+            "version": "8.42",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre-utf16",
+            "version": "8.42",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre-cpp",
+            "version": "8.42",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pcre-devel",
+            "version": "8.42",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cairo",
+            "version": "1.17.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "harfbuzz-icu",
+            "version": "2.7.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "graphite2-devel",
+            "version": "1.3.14",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "brotli-devel",
+            "version": "1.0.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "freetype-devel",
+            "version": "2.10.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "harfbuzz-devel",
+            "version": "2.7.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "lsof",
+            "version": "4.93.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "icu",
+            "version": "60.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "c-ares",
+            "version": "1.13.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sqlite-libs",
+            "version": "3.26.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sqlite",
+            "version": "3.26.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sqlite-devel",
+            "version": "3.26.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "readline-devel",
+            "version": "7.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "xorg-x11-proto-devel",
+            "version": "2024.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tcl",
+            "version": "8.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tcl-devel",
+            "version": "8.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tk",
+            "version": "8.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tk-devel",
+            "version": "8.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gdbm-devel",
+            "version": "1.18",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "qrencode-libs",
+            "version": "3.4.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "qrencode",
+            "version": "3.4.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mariadb-connector-c-config",
+            "version": "3.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mariadb-common",
+            "version": "10.5.27",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mariadb-connector-c",
+            "version": "3.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mariadb",
+            "version": "10.5.27",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "qt5-srpm-macros",
+            "version": "5.15.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "go-srpm-macros",
+            "version": "2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "efi-srpm-macros",
+            "version": "3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "dwz",
+            "version": "0.14",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "annobin",
+            "version": "11.13",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "rust-srpm-macros",
+            "version": "5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "openblas-srpm-macros",
+            "version": "2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ocaml-srpm-macros",
+            "version": "5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ghc-srpm-macros",
+            "version": "1.4.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "system-rpm-config",
+            "version": "129",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "vim-filesystem",
+            "version": "8.0.1763",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tzdata",
+            "version": "2025b",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "glibc",
+            "version": "2.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bzip2-libs",
+            "version": "1.0.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "platform-python-setuptools",
+            "version": "39.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "platform-python",
+            "version": "3.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "openssh",
+            "version": "8.0p1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gnutls",
+            "version": "3.6.16",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "glib2",
+            "version": "2.68.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "systemd",
+            "version": "239",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "NetworkManager",
+            "version": "1.40.16",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "unbound-libs",
+            "version": "1.16.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cups-libs",
+            "version": "2.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse-common",
+            "version": "3.3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-release",
+            "version": "3.2104.12",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-repos",
+            "version": "3.2104.12",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse",
+            "version": "2.9.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "vim-enhanced",
+            "version": "8.0.1763",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cups-client",
+            "version": "2.2.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "udisks2",
+            "version": "2.9.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "kpartx",
+            "version": "0.8.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nfs-utils",
+            "version": "2.3.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "kexec-tools",
+            "version": "2.0.26",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nscd",
+            "version": "2.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sssd-client",
+            "version": "2.9.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "platform-python-devel",
+            "version": "3.6.8",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "expat-devel",
+            "version": "2.2.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bind-export-libs",
+            "version": "9.11.36",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bzip2-devel",
+            "version": "1.0.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse-libs",
+            "version": "2.9.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "socat",
+            "version": "1.7.4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tpm2-tss",
+            "version": "2.4.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sysak",
+            "version": "3.8.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl7260-firmware",
+            "version": "25.30.13.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl6050-firmware",
+            "version": "41.28.5.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl6000g2a-firmware",
+            "version": "18.168.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl6000-firmware",
+            "version": "9.221.4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl5150-firmware",
+            "version": "8.24.2.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl5000-firmware",
+            "version": "8.83.5.1_1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl4965-firmware",
+            "version": "228.61.2.24",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl3945-firmware",
+            "version": "15.32.2.9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl3160-firmware",
+            "version": "25.30.13.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl2030-firmware",
+            "version": "18.168.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl2000-firmware",
+            "version": "18.168.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl135-firmware",
+            "version": "18.168.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl105-firmware",
+            "version": "18.168.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl1000-firmware",
+            "version": "39.31.5.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iwl100-firmware",
+            "version": "39.31.5.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "emacs-filesystem",
+            "version": "27.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cmake-rpm-macros",
+            "version": "3.26.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cmake-data",
+            "version": "3.26.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cmake",
+            "version": "3.26.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "flex",
+            "version": "2.6.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bison",
+            "version": "3.7.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "jbigkit-libs",
+            "version": "2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gd",
+            "version": "2.2.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gd-devel",
+            "version": "2.2.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "e2fsprogs-devel",
+            "version": "1.46.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gettext-common-devel",
+            "version": "0.19.8.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gettext-devel",
+            "version": "0.19.8.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gmp-c++",
+            "version": "6.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gmp-devel",
+            "version": "6.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "c-ares-devel",
+            "version": "1.13.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pixman-devel",
+            "version": "0.40.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cairo-devel",
+            "version": "1.17.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bison-devel",
+            "version": "3.7.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "systemtap-sdt-devel",
+            "version": "4.9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "perl",
+            "version": "5.26.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "oniguruma",
+            "version": "6.8.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "oniguruma-devel",
+            "version": "6.8.2",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mysql-common",
+            "version": "8.0.43",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mysql-libs",
+            "version": "8.0.43",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cpp",
+            "version": "10.2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gcc",
+            "version": "10.2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gcc-c++",
+            "version": "10.2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "docker-compose-plugin",
+            "version": "2.27.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse3-libs",
+            "version": "3.3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse3",
+            "version": "3.3.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fuse-overlayfs",
+            "version": "1.13",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "docker-buildx-plugin",
+            "version": "0.14.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "docker-ce-cli",
+            "version": "26.1.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "containerd.io",
+            "version": "1.6.32",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "slirp4netns",
+            "version": "1.2.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "docker-ce",
+            "version": "26.1.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "docker-ce-rootless-extras",
+            "version": "26.1.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "bat",
+            "version": "0.24.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "hicolor-icon-theme",
+            "version": "0.17",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "btop",
+            "version": "1.2.13",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-logos-httpd",
+            "version": "82.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "caddy",
+            "version": "2.6.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "python-josepy-doc",
+            "version": "1.9.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "certbot",
+            "version": "1.22.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "userspace-rcu",
+            "version": "0.10.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gdk-pixbuf2",
+            "version": "2.42.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "jose",
+            "version": "10",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tracer-common",
+            "version": "1.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tpm2-tools",
+            "version": "4.1.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sscg",
+            "version": "3.0.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "luksmeta",
+            "version": "9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "udisks2-lvm2",
+            "version": "2.9.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "jq",
+            "version": "1.6",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "clevis",
+            "version": "20",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cryptsetup",
+            "version": "2.3.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "clevis-luks",
+            "version": "20",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cairo-gobject",
+            "version": "1.17.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "alinux-logos",
+            "version": "82.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "adobe-source-code-pro-fonts",
+            "version": "2.030.1.050",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "abattis-cantarell-fonts",
+            "version": "0.301",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gsettings-desktop-schemas",
+            "version": "40.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "sos",
+            "version": "4.10.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "glib-networking",
+            "version": "2.56.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit-bridge",
+            "version": "310.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit-ws",
+            "version": "310.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "PackageKit",
+            "version": "1.1.12",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit-packagekit",
+            "version": "310.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "isns-utils-libs",
+            "version": "0.99",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iscsi-initiator-utils-iscsiuio",
+            "version": "6.2.1.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "udisks2-iscsi",
+            "version": "2.9.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "setroubleshoot-plugins",
+            "version": "3.3.14",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "setroubleshoot-server",
+            "version": "3.3.26",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit-system",
+            "version": "310.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit-storaged",
+            "version": "310.3",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "cockpit",
+            "version": "310.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fd-find",
+            "version": "8.7.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "git-core",
+            "version": "2.43.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "git-core-doc",
+            "version": "2.43.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "git",
+            "version": "2.43.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "git-lfs",
+            "version": "3.4.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "redis",
+            "version": "6.2.20",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "ripgrep",
+            "version": "14.1.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "fzf",
+            "version": "0.58.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "zoxide",
+            "version": "0.9.4",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nginx-filesystem",
+            "version": "1.23.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "openssl3-libs",
+            "version": "3.5.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nginx-core",
+            "version": "1.23.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nginx",
+            "version": "1.23.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "tldr",
+            "version": "1.2.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "pkcs11-helper",
+            "version": "1.22",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "openvpn",
+            "version": "2.4.12",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "easy-rsa",
+            "version": "3.2.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nmap-ncat",
+            "version": "7.92",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nmap",
+            "version": "7.92",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "vnstat",
+            "version": "2.9",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "nethogs",
+            "version": "0.8.5",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "iftop",
+            "version": "1.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "gnupg2-smime",
+            "version": "2.2.20",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "apr",
+            "version": "1.7.0",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "apr-util-bdb",
+            "version": "1.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "apr-util-openssl",
+            "version": "1.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "apr-util",
+            "version": "1.6.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "httpd-filesystem",
+            "version": "2.4.37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "httpd-tools",
+            "version": "2.4.37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "augeas-libs",
+            "version": "1.14.1",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mailcap",
+            "version": "2.1.48",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mod_http2",
+            "version": "1.15.7",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "httpd",
+            "version": "2.4.37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "mod_ssl",
+            "version": "2.4.37",
+            "source": "rpm",
+            "status": "installed"
+          },
+          {
+            "name": "acme",
+            "version": "1.22.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "argcomplete",
+            "version": "1.9.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "asn1crypto",
+            "version": "0.24.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "Babel",
+            "version": "2.5.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "certbot",
+            "version": "1.22.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "certbot-apache",
+            "version": "1.22.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "certbot-nginx",
+            "version": "1.22.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "cffi",
+            "version": "1.11.5",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "chardet",
+            "version": "3.0.4",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "cloud-init",
+            "version": "23.2.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "colorama",
+            "version": "0.4.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "ConfigArgParse",
+            "version": "0.14.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "configobj",
+            "version": "5.0.6",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "cryptography",
+            "version": "3.2.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "dbus-python",
+            "version": "1.2.4",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "decorator",
+            "version": "4.2.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "distro",
+            "version": "1.4.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "file-magic",
+            "version": "0.3.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "gpg",
+            "version": "1.13.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "idna",
+            "version": "2.5",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "Jinja2",
+            "version": "2.10.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "josepy",
+            "version": "1.9.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "jsonpatch",
+            "version": "1.21",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "jsonpointer",
+            "version": "1.10",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "jsonschema",
+            "version": "2.6.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "keentune-target",
+            "version": "3.2.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "libcomps",
+            "version": "0.1.18",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "MarkupSafe",
+            "version": "0.23",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "netifaces",
+            "version": "0.10.6",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "nftables",
+            "version": "0.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "oauthlib",
+            "version": "2.1.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "parsedatetime",
+            "version": "2.5",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pciutils",
+            "version": "2.3.6",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "perf",
+            "version": "0.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pexpect",
+            "version": "4.3.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pip",
+            "version": "9.0.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "ply",
+            "version": "3.9",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "psutil",
+            "version": "5.4.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "ptyprocess",
+            "version": "0.5.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pycairo",
+            "version": "1.16.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pycparser",
+            "version": "2.14",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pycurl",
+            "version": "7.43.0.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pydbus",
+            "version": "0.6.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "PyGObject",
+            "version": "3.40.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "PyJWT",
+            "version": "1.6.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pyOpenSSL",
+            "version": "19.0.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pyparsing",
+            "version": "2.1.10",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pyRFC3339",
+            "version": "1.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pyserial",
+            "version": "3.1.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "PySocks",
+            "version": "1.6.8",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "python-augeas",
+            "version": "0.5.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "python-dateutil",
+            "version": "2.6.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "python-dmidecode",
+            "version": "3.12.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "python-linux-procfs",
+            "version": "0.7.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pytz",
+            "version": "2017.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "pyudev",
+            "version": "0.21.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "PyYAML",
+            "version": "3.12",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "requests",
+            "version": "2.20.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "requests-toolbelt",
+            "version": "0.9.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "rhnlib",
+            "version": "2.8.6",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "rpm",
+            "version": "4.14.3",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "schedutils",
+            "version": "0.6",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "selinux",
+            "version": "2.9",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "sepolicy",
+            "version": "1.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "setools",
+            "version": "4.3.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "setroubleshoot",
+            "version": "1.1",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "setuptools",
+            "version": "39.2.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "six",
+            "version": "1.11.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "slip",
+            "version": "0.6.4",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "slip.dbus",
+            "version": "0.6.4",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "sos",
+            "version": "4.10.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "systemd-python",
+            "version": "234",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "termcolor",
+            "version": "1.1.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "tldr",
+            "version": "1.2.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "tornado",
+            "version": "6.0.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "urllib3",
+            "version": "1.24.2",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "zope.component",
+            "version": "4.3.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "zope.event",
+            "version": "4.2.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "zope.interface",
+            "version": "4.6.0",
+            "source": "pip",
+            "status": "installed"
+          },
+          {
+            "name": "aliyun",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "jemalloc-config",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "jemalloc.sh",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "jeprof",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "libmcrypt-config",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "luajit",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "luajit-2.1.0-beta3",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "mcrypt",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "mdecrypt",
+            "version": "binary",
+            "source": "local-bin",
+            "status": "installed"
+          },
+          {
+            "name": "aegis",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "btgojdk",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "btjdk",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "bttomcat",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "cloudmonitor",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "curl",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "libiconv",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "nginx",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "openssl",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "sysak",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "x-ui",
+            "version": "app",
+            "source": "local-app",
+            "status": "installed"
+          },
+          {
+            "name": "containerd",
+            "version": "directory",
+            "source": "opt",
+            "status": "installed"
+          },
+          {
+            "name": "envforge",
+            "version": "directory",
+            "source": "opt",
+            "status": "installed"
+          },
+          {
+            "name": "envforge",
+            "version": "latest",
+            "source": "docker",
+            "status": "installed"
+          },
+          {
+            "name": "hello-world",
+            "version": "latest",
+            "source": "docker",
+            "status": "installed"
+          },
+          {
+            "name": "0hourly",
+            "version": "cron",
+            "source": "cron",
+            "status": "installed"
+          },
+          {
+            "name": "raid-check",
+            "version": "cron",
+            "source": "cron",
+            "status": "installed"
+          },
+          {
+            "name": "update-motd",
+            "version": "cron",
+            "source": "cron",
+            "status": "installed"
+          },
+          {
+            "name": "17 0 * * * \"/root/.acme.sh\"/acme.sh --cron --home \"/root/.acme.sh\" > /dev/null",
+            "version": "cron",
+            "source": "cron",
+            "status": "installed"
+          },
+          {
+            "name": "certbot-renew",
+            "version": "timer",
+            "source": "systemd-timer",
+            "status": "installed"
+          },
+          {
+            "name": "dnf-makecache",
+            "version": "timer",
+            "source": "systemd-timer",
+            "status": "installed"
+          },
+          {
+            "name": "AssistDaemon",
+            "version": "service",
+            "source": "systemd",
+            "status": "installed"
+          },
+          {
+            "name": "site_total",
+            "version": "service",
+            "source": "systemd",
+            "status": "installed"
+          },
+          {
+            "name": "vnstatd",
+            "version": "service",
+            "source": "systemd",
+            "status": "installed"
+          }
+        ],
+        "configChecklist": [
+          {
+            "id": "ssh-root",
+            "label": "⚠ Root 登录未禁用",
+            "category": "security",
+            "status": "warning",
+            "lastChanged": "2026-05-23"
+          },
+          {
+            "id": "ssh-password",
+            "label": "密码认证已禁用（仅密钥）",
+            "category": "security",
+            "status": "healthy",
+            "lastChanged": "2026-05-23"
+          },
+          {
+            "id": "firewall",
+            "label": "⚠ 防火墙未启用",
+            "category": "security",
+            "status": "warning",
+            "lastChanged": "2026-05-23"
+          },
+          {
+            "id": "fail2ban",
+            "label": "Fail2Ban 未运行",
+            "category": "security",
+            "status": "warning",
+            "lastChanged": "2026-05-23"
+          },
+          {
+            "id": "auto-updates",
+            "label": "自动更新未配置",
+            "category": "security",
+            "status": "warning",
+            "lastChanged": "2026-05-23"
+          },
+          {
+            "id": "open-ports",
+            "label": "开放端口: ---",
+            "category": "network",
+            "status": "healthy",
+            "lastChanged": "2026-05-23"
+          },
+          {
+            "id": "disk",
+            "label": "磁盘: 11G / 40G (27%)",
+            "category": "service",
+            "status": "healthy",
+            "lastChanged": "2026-05-23"
+          },
+          {
+            "id": "uptime",
+            "label": "运行时间: up 1 day, 3 hours, 9 minutes",
+            "category": "service",
+            "status": "healthy",
+            "lastChanged": "2026-05-23"
+          },
+          {
+            "id": "services",
+            "label": "服务: 26 运行中 / 36 已启用",
+            "category": "service",
+            "status": "healthy",
+            "lastChanged": "2026-05-23"
+          }
+        ],
+        "counts": {
+          "apt": 0,
+          "rpm": 351,
+          "snap": 0,
+          "flatpak": 0,
+          "npm": 0,
+          "pip": 79,
+          "gem": 0,
+          "cargo": 0,
+          "localBin": 9,
+          "opt": 2,
+          "userBin": 0,
+          "nvm": 0,
+          "pyenv": 0,
+          "docker": 2,
+          "enabledServices": 36,
+          "runningServices": 26,
+          "total": 460
+        }
+      },
+      "lastProbeAt": "2026-05-23T08:54:04.869Z",
+      "createdAt": "2026-05-23T08:53:50.052Z",
+      "updatedAt": "2026-05-23T08:54:04.869Z",
+      "tags": []
+    }
+  ],
+  "userProfiles": [],
+  "tasks": [
+    {
+      "id": "task_ae1cb06e93444dcea3",
+      "userId": "user_d1f26311f40b4fc497",
+      "connectionId": "conn_9cfe832878af4bb2ba",
+      "source": "vaultwarden",
+      "sourceKind": "catalog",
+      "status": "failed",
+      "dryRun": false,
+      "steps": [
+        {
+          "name": "检查 Docker 已安装（前置）",
+          "module": "command -v docker && docker info >/dev/null 2>&1",
+          "status": "ok",
+          "durationMs": 393,
+          "msg": "/usr/bin/docker\n"
+        },
+        {
+          "name": "验证 Docker 可用",
+          "module": "if ! command -v docker >/dev/null 2>&1; then\n  echo \"ERROR: Docker not installed. Run docker-host-profile playbook first.\" >&2\n  exit 1\nfi\n",
+          "status": "ok",
+          "durationMs": 39,
+          "msg": "Command executed"
+        },
+        {
+          "name": "创建数据目录",
+          "module": "file: /opt/vaultwarden/data (directory)",
+          "status": "ok",
+          "durationMs": 261,
+          "msg": "Created directory /opt/vaultwarden/data"
+        },
+        {
+          "name": "端口预检（{{ vw_port }} 是否被占用）",
+          "module": "if ss -tlnp 2>/dev/null | grep -q \":8086 \"; then\n  echo \"WARN: Port 8086 already in use:\"\n  ss -tlnp | grep \":8086 \"\n  # 不直接 fail，可能是已有的 vaultwarden\nfi\n",
+          "status": "ok",
+          "durationMs": 78,
+          "msg": "Command executed"
+        },
+        {
+          "name": "生成 admin token（若用户未填）",
+          "module": "if [ -z \"i,am,xjq\" ]; then\n  openssl rand -base64 48 | tr -d '\\n'\nelse\n  echo \"i,am,xjq\"\nfi\n",
+          "status": "ok",
+          "durationMs": 28,
+          "msg": "i,am,xjq\n"
+        },
+        {
+          "name": "备份旧 docker-compose.yml（如存在）",
+          "module": "if [ -f /opt/vaultwarden/docker-compose.yml ]; then\n  cp /opt/vaultwarden/docker-compose.yml /opt/vaultwarden/docker-compose.yml.envforge.bak.$(date +%s)\nfi\n",
+          "status": "ok",
+          "durationMs": 73,
+          "msg": "Command executed"
+        },
+        {
+          "name": "写入 docker-compose.yml",
+          "module": "copy: → /opt/vaultwarden/docker-compose.yml",
+          "status": "ok",
+          "durationMs": 254,
+          "msg": "Wrote 991 bytes to /opt/vaultwarden/docker-compose.yml"
+        },
+        {
+          "name": "启动 Vaultwarden 容器",
+          "module": "cd /opt/vaultwarden\ndocker compose pull\ndocker compose up -d\n",
+          "status": "ok",
+          "durationMs": 8492,
+          "msg": "Command executed"
+        },
+        {
+          "name": "等待容器健康",
+          "module": "for i in $(seq 1 30); do\n  STATUS=$(docker inspect --format='{{ \"{{\" }}.State.Health.Status{{ \"}}\" }}' vaultwarden 2>/dev/null || echo none)\n  if [ \"$STATUS\" = \"healthy\" ]; then\n    echo \"OK: container healthy\"\n    exit 0\n  fi\n  sleep 2\ndone\necho \"ERROR: container not healthy after 60s\"\ndocker logs --tail 50 vaultwarden\nexit 1\n",
+          "status": "failed",
+          "durationMs": 60052,
+          "msg": "Command failed (exit -1)"
+        }
+      ],
+      "startedAt": "2026-05-24T12:07:35.052Z",
+      "completedAt": "2026-05-24T12:08:44.861Z",
+      "error": "1 of 1 items failed"
+    },
+    {
+      "id": "task_0af5b89647fc4ccf92",
+      "userId": "user_9742118c1c1e4630b1",
+      "connectionId": "conn_985c3cbfb53c467f86",
+      "source": "rust-cli-tools",
+      "sourceKind": "catalog",
+      "status": "failed",
+      "dryRun": false,
+      "steps": [
+        {
+          "name": "Install via apt (where available)",
+          "module": "package: bat, fd-find, ripgrep, exa, zoxide, fzf, tldr",
+          "status": "failed",
+          "durationMs": 8914,
+          "msg": "Last metadata expiration check: 0:00:03 ago on Sat 23 May 2026 05:23:04 PM CST.\nNo match for argument: exa\n"
+        }
+      ],
+      "startedAt": "2026-05-23T09:23:01.593Z",
+      "completedAt": "2026-05-23T09:23:10.626Z",
+      "error": "1 of 1 items failed"
+    }
+  ],
+  "playbooks": [],
+  "identities": [
+    {
+      "id": "ident_4a84d55745504190ac",
+      "userId": "user_9742118c1c1e4630b1",
+      "provider": "local",
+      "providerUserId": "user_9742118c1c1e4630b1",
+      "providerEmail": "2892215600@qq.com",
+      "createdAt": "2026-05-23T08:48:53.007Z"
+    },
+    {
+      "id": "ident_577586da6cac4eb191",
+      "userId": "user_e97230443f5843e5b3",
+      "provider": "github",
+      "providerUserId": "103723849",
+      "providerEmail": "2892215600@qq.com",
+      "providerData": {
+        "avatarUrl": "https://avatars.githubusercontent.com/u/103723849?v=4",
+        "displayName": "JiaQi Xiao",
+        "login": "foolkking"
+      },
+      "createdAt": "2026-05-24T11:15:32.913Z",
+      "lastUsedAt": "2026-05-24T11:21:42.220Z"
+    }
+  ],
+  "passwordResetRequests": [
+    {
+      "id": "pwreset_ff4458fe4fe849f6a7",
+      "userId": "user_f471fdaa422f48f385",
+      "email": "2518150663@qq.com",
+      "expiresAt": "2026-05-24T06:27:36.682Z",
+      "createdAt": "2026-05-24T06:07:36.682Z"
+    },
+    {
+      "id": "pwreset_5e3a709ce86845e280",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "email": "diudiudiue@outlook.com",
+      "expiresAt": "2026-05-24T09:49:59.727Z",
+      "createdAt": "2026-05-24T09:29:59.727Z",
+      "usedAt": "2026-05-24T09:30:32.801Z"
+    },
+    {
+      "id": "pwreset_e6fe3c520c384f18a3",
+      "userId": "user_9742118c1c1e4630b1",
+      "email": "2892215600@qq.com",
+      "expiresAt": "2026-05-24T11:21:35.702Z",
+      "createdAt": "2026-05-24T11:01:35.702Z",
+      "usedAt": "2026-05-24T11:02:23.820Z"
+    }
+  ],
+  "emailLog": [
+    {
+      "id": "email_93267f67ad1a40e4bf",
+      "userId": "user_9742118c1c1e4630b1",
+      "email": "2892215600@qq.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T04:54:51.899Z",
+      "success": true,
+      "errorMessage": "stdout-fallback (no SMTP configured)"
+    },
+    {
+      "id": "email_694d4ff0baf2455fba",
+      "userId": "user_9742118c1c1e4630b1",
+      "email": "2892215600@qq.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T05:06:38.156Z",
+      "success": true,
+      "errorMessage": "stdout-fallback (no SMTP configured)"
+    },
+    {
+      "id": "email_bd2bf936e227447ebb",
+      "userId": "user_9742118c1c1e4630b1",
+      "email": "2892215600@qq.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T05:33:14.798Z",
+      "success": true
+    },
+    {
+      "id": "email_e75ca7634f14415bbd",
+      "email": "diudiudiue@outlook.com",
+      "type": "verify-register",
+      "sentAt": "2026-05-24T05:37:38.155Z",
+      "success": true
+    },
+    {
+      "id": "email_a2b2686018dc4285a6",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "email": "diudiudiue@outlook.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T05:45:26.354Z",
+      "success": true
+    },
+    {
+      "id": "email_c3c88d0987914439b8",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "email": "diudiudiue@outlook.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T05:46:41.244Z",
+      "success": true
+    },
+    {
+      "id": "email_1211a1ef8638412b8d",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "email": "diudiudiue@outlook.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T05:52:59.302Z",
+      "success": true
+    },
+    {
+      "id": "email_aedd19f940084dc892",
+      "email": "2518150663@qq.com",
+      "type": "verify-register",
+      "sentAt": "2026-05-24T06:00:38.954Z",
+      "success": true
+    },
+    {
+      "id": "email_c703ac93f98d4d98a5",
+      "userId": "user_f471fdaa422f48f385",
+      "email": "2518150663@qq.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T06:01:11.102Z",
+      "success": true
+    },
+    {
+      "id": "email_99dcf00432564a99ba",
+      "userId": "user_f471fdaa422f48f385",
+      "email": "2518150663@qq.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T06:07:39.396Z",
+      "success": true
+    },
+    {
+      "id": "email_121380e1f4ce45f484",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "email": "diudiudiue@outlook.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T09:00:37.666Z",
+      "success": true
+    },
+    {
+      "id": "email_819799425a324e9da2",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "email": "diudiudiue@outlook.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T09:09:18.701Z",
+      "success": true
+    },
+    {
+      "id": "email_719fe3ad6baa43d6b9",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "email": "diudiudiue@outlook.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T09:19:05.675Z",
+      "success": true
+    },
+    {
+      "id": "email_ac0b982e2c3a4f7980",
+      "userId": "user_e0aa937db64c4e8ba8",
+      "email": "diudiudiue@outlook.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T09:30:01.488Z",
+      "success": true
+    },
+    {
+      "id": "email_38c2fa1c17e1407ab6",
+      "userId": "user_9742118c1c1e4630b1",
+      "email": "2892215600@qq.com",
+      "type": "password-reset",
+      "sentAt": "2026-05-24T11:01:41.475Z",
+      "success": true
+    },
+    {
+      "id": "email_5dd660d4dedd4d8aa0",
+      "email": "2892215600@qq.com",
+      "type": "verify-register",
+      "sentAt": "2026-05-24T11:24:09.246Z",
+      "success": true
+    }
+  ],
+  "emailVerifCodes": [
+    {
+      "id": "vcode_fe5a4f148ed6430aaa",
+      "email": "diudiudiue@outlook.com",
+      "codeHash": "cb368c6e930e782ecd7a4f4b6cfde3033f490d067864b045cecfe2c52e675b30",
+      "purpose": "register",
+      "attempts": 1,
+      "expiresAt": "2026-05-24T05:47:36.805Z",
+      "usedAt": "2026-05-24T05:38:11.102Z"
+    },
+    {
+      "id": "vcode_f281b26256a049109c",
+      "email": "2518150663@qq.com",
+      "codeHash": "e0cce1a1ff98865b764f136a70b3ca9013866562e7c32a08576c652565a0a57f",
+      "purpose": "register",
+      "attempts": 0,
+      "expiresAt": "2026-05-24T06:10:36.387Z",
+      "usedAt": "2026-05-24T06:00:50.061Z"
+    },
+    {
+      "id": "vcode_bbedc508aa8a4b4eb4",
+      "email": "2892215600@qq.com",
+      "codeHash": "4224e633cf4e95618105c08a805328b0675bae00311b94663ac883ba7c4e59c7",
+      "purpose": "register",
+      "attempts": 0,
+      "expiresAt": "2026-05-24T11:34:06.401Z",
+      "usedAt": "2026-05-24T11:24:25.312Z"
+    }
+  ],
+  "pendingRegistrations": [],
+  "pendingTotpEnrollments": []
+}

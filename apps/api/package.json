@@ -14,6 +14,7 @@
     "@fool/collectors": "0.1.0",
     "@fool/core": "0.1.0",
     "@fool/restorers": "0.1.0",
+    "@types/sqlite3": "^5.1.0",
     "dompurify": "^3.2.4",
     "fastify": "^4.28.1",
     "jsdom": "^25.0.1",
@@ -21,6 +22,8 @@
     "nodemailer": "^6.9.16",
     "otpauth": "^9.3.6",
     "qrcode": "^1.5.4",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1",
     "ssh2": "^1.17.0",
     "yaml": "^2.9.0"
   },

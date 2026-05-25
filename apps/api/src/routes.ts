@@ -51,7 +51,7 @@ import { createUserProfile, listUserProfiles, getUserProfile, updateUserProfile 
 import { buildInstallTask, buildSnapshotDeployTask, executeTask, getTask, subscribeTask } from "./executor.js";
 import { listCatalogFromDatabase, listMigrationStrategies, readCatalogGuide } from "./database.js";
 import { runReadinessChecks } from "./readiness.js";
-import { readRuntimeDatabase, updateRuntimeDatabase, createId } from "./runtime-store.js";
+import { readRuntimeDatabase, updateRuntimeDatabase, createId, addComment, getComments, toggleCommentLike, reportComment, getAdminReports, resolveReport, syncCommentsFts } from "./runtime-store.js";
 import { listSnapshots, persistSnapshot } from "./snapshot-store.js";
 import { probeAgent, pingAgent } from "./probe.js";
 import { listConfigFiles, readConfigFile, writeConfigFile, readConfigFileWithBackup } from "./config-files.js";
@@ -2931,6 +2931,269 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     await deleteOverrideMarkdown(id);
     await deleteOverrideSchema(id);
     return { ok: true };
+  });
+
+  // ── Community Comments, Likes, Reports and FTS (Stage 2) ──────────────────────────
+
+  /**
+   * GET /api/catalog/:catalogId/comments
+   * Returns keyset paginated comments list for a catalog item.
+   */
+  app.get("/api/catalog/:catalogId/comments", async (request) => {
+    const { catalogId } = request.params as { catalogId: string };
+    const query = (request.query ?? {}) as {
+      limit?: string;
+      cursorCreatedAt?: string;
+      cursorId?: string;
+    };
+    const limit = Math.min(parseInt(query.limit || "20", 10) || 20, 100);
+
+    let requestingUserId: string | undefined;
+    try {
+      const token = readBearerToken(request.headers.authorization);
+      if (token) {
+        const user = await getUserByToken(token);
+        if (user) requestingUserId = user.id;
+      }
+    } catch {}
+
+    return await getComments(
+      catalogId,
+      requestingUserId,
+      limit,
+      query.cursorCreatedAt,
+      query.cursorId
+    );
+  });
+
+  /**
+   * POST /api/catalog/:catalogId/comments [Requires Rate Limiting] [Requires DB Transaction]
+   * Adds a new comment to a catalog item. Standard HTML character entities are escaped.
+   */
+  app.post("/api/catalog/:catalogId/comments", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      reply.code(401);
+      return { error: "Login required to post comments." };
+    }
+
+    const { catalogId } = request.params as { catalogId: string };
+    const body = (request.body ?? {}) as { content?: string };
+    const content = (body.content || "").trim();
+
+    if (!content) {
+      reply.code(400);
+      return { error: "Comment content cannot be empty." };
+    }
+
+    if (content.length > 1000) {
+      reply.code(400);
+      return { error: "Comment content cannot exceed 1000 characters." };
+    }
+
+    // [Requires Rate Limiting]: 5 comments per minute database-backed check
+    const { getSqliteDb } = await import("./db-sqlite.js");
+    const db = await getSqliteDb();
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    const recentComments = await db.get(
+      "SELECT COUNT(*) as count FROM catalog_comments WHERE user_id = ? AND created_at > ?",
+      user.id,
+      oneMinuteAgo
+    );
+    if (recentComments && recentComments.count >= 5) {
+      reply.code(429);
+      return { error: "Rate limit exceeded. You can post up to 5 comments per minute." };
+    }
+
+    // [Requires DB Transaction] handled inside addComment
+    return await addComment(catalogId, user.id, content);
+  });
+
+  /**
+   * POST /api/catalog/comments/:id/like [Requires DB Transaction]
+   * Toggles like state for a comment.
+   */
+  app.post("/api/catalog/comments/:id/like", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      reply.code(401);
+      return { error: "Login required to like comments." };
+    }
+
+    const { id } = request.params as { id: string };
+    try {
+      // [Requires DB Transaction] handled inside toggleCommentLike
+      return await toggleCommentLike(id, user.id);
+    } catch (error) {
+      reply.code(404);
+      return { error: error instanceof Error ? error.message : "Comment not found" };
+    }
+  });
+
+  /**
+   * POST /api/catalog/comments/:id/report [Requires Rate Limiting] [Requires DB Transaction]
+   * Submits a report for a comment.
+   */
+  app.post("/api/catalog/comments/:id/report", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      reply.code(401);
+      return { error: "Login required to report comments." };
+    }
+
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { reason?: string };
+    const reason = (body.reason || "").trim();
+
+    if (!reason) {
+      reply.code(400);
+      return { error: "Report reason cannot be empty." };
+    }
+
+    // [Requires Rate Limiting]: check if user reported this comment in the last 10 seconds
+    const { getSqliteDb } = await import("./db-sqlite.js");
+    const db = await getSqliteDb();
+    const tenSecondsAgo = new Date(Date.now() - 10 * 1000).toISOString();
+    const recentReports = await db.get(
+      "SELECT COUNT(*) as count FROM comment_reports WHERE user_id = ? AND created_at > ?",
+      user.id,
+      tenSecondsAgo
+    );
+    if (recentReports && recentReports.count >= 1) {
+      reply.code(429);
+      return { error: "Please wait before submitting another report." };
+    }
+
+    try {
+      // [Requires DB Transaction] handled inside reportComment
+      await reportComment(id, user.id, reason);
+      return { success: true };
+    } catch (error) {
+      reply.code(404);
+      return { error: error instanceof Error ? error.message : "Comment not found" };
+    }
+  });
+
+  /**
+   * GET /api/admin/reports (admin only)
+   * Pulls the list of reported comments for moderation.
+   */
+  app.get("/api/admin/reports", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") {
+      reply.code(403);
+      return { error: "Admin role required." };
+    }
+
+    const query = (request.query ?? {}) as { limit?: string; offset?: string };
+    const limit = Math.min(parseInt(query.limit || "20", 10) || 20, 100);
+    const offset = Math.max(parseInt(query.offset || "0", 10) || 0, 0);
+
+    const reports = await getAdminReports(limit, offset);
+    return { reports };
+  });
+
+  /**
+   * POST /api/admin/reports/:id/resolve (admin only) [Requires DB Transaction]
+   * Resolves a comment report by either keeping or deleting the comment.
+   */
+  app.post("/api/admin/reports/:id/resolve", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") {
+      reply.code(403);
+      return { error: "Admin role required." };
+    }
+
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { action?: "keep" | "delete" };
+    const action = body.action;
+
+    if (action !== "keep" && action !== "delete") {
+      reply.code(400);
+      return { error: "Invalid action. Must be 'keep' or 'delete'." };
+    }
+
+    try {
+      // [Requires DB Transaction] handled inside resolveReport
+      await resolveReport(id, action, user.id);
+      return { success: true };
+    } catch (error) {
+      reply.code(404);
+      return { error: error instanceof Error ? error.message : "Report not found" };
+    }
+  });
+
+  /**
+   * POST /api/admin/comments/sync-fts (admin only)
+   * Manually triggers full-text search index synchronization.
+   */
+  app.post("/api/admin/comments/sync-fts", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") {
+      reply.code(403);
+      return { error: "Admin role required." };
+    }
+
+    await syncCommentsFts();
+    return { success: true };
+  });
+
+  // ── Subsystem Operations Inbox (Stage 3) ──────────────────────────────────────────
+
+  /**
+   * GET /api/me/inbox
+   * Returns paginated inbox messages for the current user.
+   */
+  app.get("/api/me/inbox", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      reply.code(401);
+      return { error: "Login required." };
+    }
+
+    const query = (request.query ?? {}) as {
+      limit?: string;
+      cursorCreatedAt?: string;
+      cursorId?: string;
+    };
+    const limit = Math.min(parseInt(query.limit || "20", 10) || 20, 100);
+
+    const { getInboxMessages } = await import("./runtime-store.js");
+    return await getInboxMessages(user.id, limit, query.cursorCreatedAt, query.cursorId);
+  });
+
+  /**
+   * POST /api/me/inbox/:id/read
+   * Marks a specific inbox message as read.
+   */
+  app.post("/api/me/inbox/:id/read", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      reply.code(401);
+      return { error: "Login required." };
+    }
+
+    const { id } = request.params as { id: string };
+    const { markInboxMessageAsRead } = await import("./runtime-store.js");
+    await markInboxMessageAsRead(id, user.id);
+    return { success: true };
+  });
+
+  /**
+   * DELETE /api/me/inbox/:id
+   * Deletes a specific inbox message.
+   */
+  app.delete("/api/me/inbox/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      reply.code(401);
+      return { error: "Login required." };
+    }
+
+    const { id } = request.params as { id: string };
+    const { deleteInboxMessage } = await import("./runtime-store.js");
+    await deleteInboxMessage(id, user.id);
+    return { success: true };
   });
 }
 

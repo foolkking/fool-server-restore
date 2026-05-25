@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes.js";
 import { registerStaticWeb } from "./static-web.js";
 import { startScheduler } from "./scheduler.js";
 import { runMigrations } from "./migrations.js";
+import { initializeDatabase } from "./db-sqlite.js";
 
 const config = getConfig();
 
@@ -17,6 +18,8 @@ app.addHook("onRequest", async (_request, reply) => {
   reply.header("Referrer-Policy", "no-referrer");
   reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 });
+
+await initializeDatabase();
 
 await registerRoutes(app);
 if (config.serveWeb) {

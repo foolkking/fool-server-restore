@@ -18,7 +18,11 @@ import { readRuntimeDatabase, updateRuntimeDatabase, type StoredSchedule } from 
 import { fireWebhooks } from "./webhooks.js";
 
 const TICK_INTERVAL_MS = 30_000;
+const WORKER_INTERVAL_MS = 5_000;
 let tickerHandle: NodeJS.Timeout | null = null;
+let workerHandle: NodeJS.Timeout | null = null;
+
+import { initializeDatabase } from "./db-sqlite.js";
 
 /** Start the scheduler. Idempotent. */
 export function startScheduler(): void {
@@ -26,8 +30,10 @@ export function startScheduler(): void {
   // Initialize nextRunAt for any schedule that doesn't have one
   void initializeNextRunTimes();
   tickerHandle = setInterval(() => { void tick(); }, TICK_INTERVAL_MS);
-  // Fire one tick on startup so a missed schedule from before-restart catches up
+  workerHandle = setInterval(() => { void runWorkersTick(); }, WORKER_INTERVAL_MS);
+  // Fire ticks on startup
   void tick();
+  void runWorkersTick();
 }
 
 export function stopScheduler(): void {
@@ -35,6 +41,68 @@ export function stopScheduler(): void {
     clearInterval(tickerHandle);
     tickerHandle = null;
   }
+  if (workerHandle) {
+    clearInterval(workerHandle);
+    workerHandle = null;
+  }
+}
+
+async function runBackgroundTaskTelemetry(name: string, fn: () => Promise<void>): Promise<void> {
+  const db = await initializeDatabase();
+  const now = new Date().toISOString();
+  const startTime = Date.now();
+
+  try {
+    await db.run(
+      `INSERT OR REPLACE INTO background_tasks (name, status, last_run_at, last_success_at, duration_ms, last_error)
+       VALUES (?, 'running', ?, NULL, NULL, NULL)`,
+      name,
+      now
+    );
+
+    await fn();
+
+    const duration = Date.now() - startTime;
+    await db.run(
+      `UPDATE background_tasks
+       SET status = 'success', last_success_at = ?, duration_ms = ?
+       WHERE name = ?`,
+      new Date().toISOString(),
+      duration,
+      name
+    );
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    const errorStr = err instanceof Error ? err.message : String(err);
+    await db.run(
+      `UPDATE background_tasks
+       SET status = 'failed', duration_ms = ?, last_error = ?
+       WHERE name = ?`,
+      duration,
+      errorStr,
+      name
+    );
+  }
+}
+
+export async function runWorkersTick(): Promise<void> {
+  // 1. Process FTS Sync
+  const { syncCommentsFts } = await import("./runtime-store.js");
+  await runBackgroundTaskTelemetry("fts_sync", async () => {
+    await syncCommentsFts();
+  });
+
+  // 2. Process Notifications
+  const { SQLiteQueueProvider } = await import("./runtime-store.js");
+  const queue = new SQLiteQueueProvider();
+  await runBackgroundTaskTelemetry("notifications_worker", async () => {
+    await queue.processNextBatch(20, async (item) => {
+      // Simulation: if payload contains 'fail_me', throw error to trigger backoff
+      if (item.payload.includes("fail_me")) {
+        throw new Error("SMTP server is down (simulated failure)");
+      }
+    });
+  });
 }
 
 async function initializeNextRunTimes(): Promise<void> {
