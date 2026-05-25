@@ -614,7 +614,7 @@ export interface StoredTaskHistory {
   /** Playbook 来源标识：catalog id 或 user profile id */
   source: string;
   sourceKind: "catalog" | "user-profile" | "captured";
-  status: "running" | "succeeded" | "failed" | "cancelled";
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   dryRun: boolean;
   /** 任务步骤简要日志 */
   steps: Array<{
@@ -628,6 +628,23 @@ export interface StoredTaskHistory {
   completedAt?: string;
   error?: string;
 }
+
+class Mutex {
+  private queue: Promise<void> = Promise.resolve();
+
+  async acquire(): Promise<() => void> {
+    let release: () => void = () => {};
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const current = this.queue;
+    this.queue = current.then(() => next);
+    await current;
+    return release;
+  }
+}
+
+const dbMutex = new Mutex();
 
 export async function readRuntimeDatabase(): Promise<RuntimeDatabase> {
   const store = getStore();
@@ -644,12 +661,18 @@ export async function writeRuntimeDatabase(database: RuntimeDatabase): Promise<v
   await getStore().write(database);
 }
 
-export async function updateRuntimeDatabase<T>(mutate: (database: RuntimeDatabase) => T): Promise<T> {
-  const database = await readRuntimeDatabase();
-  const result = mutate(database);
-  await writeRuntimeDatabase(database);
-  return result;
+export async function updateRuntimeDatabase<T>(mutate: (database: RuntimeDatabase) => T | Promise<T>): Promise<T> {
+  const release = await dbMutex.acquire();
+  try {
+    const database = await readRuntimeDatabase();
+    const result = await mutate(database);
+    await writeRuntimeDatabase(database);
+    return result;
+  } finally {
+    release();
+  }
 }
+
 
 export function createId(prefix: string): string {
   return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 18)}`;

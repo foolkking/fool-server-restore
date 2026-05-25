@@ -39,57 +39,8 @@ function isPathSafe(path: string): boolean {
   return true;
 }
 
-/**
- * Jinja2-lite renderer — supports {{ var }}, {# comment #},
- * {% if %}/{% endif %}, {% for %}/{% endfor %}
- */
-export function renderTemplate(template: string, vars: Record<string, unknown>): string {
-  let result = template;
+import { renderTemplate } from "../template-parser.js";
 
-  // Remove comments
-  result = result.replace(/\{#.*?#\}/gs, "");
-
-  // Process for loops: {% for item in list %}...{% endfor %}
-  result = result.replace(
-    /\{%\s*for\s+(\w+)\s+in\s+(\w+(?:\.\w+)*)\s*%\}([\s\S]*?)\{%\s*endfor\s*%\}/g,
-    (_match, varName, listExpr, body) => {
-      const list = resolveVar(listExpr, vars);
-      if (!Array.isArray(list)) return "";
-      return list.map((item) => {
-        const loopVars = { ...vars, [varName]: item };
-        return renderTemplate(body, loopVars);
-      }).join("");
-    }
-  );
-
-  // Process if blocks: {% if condition %}...{% endif %}
-  result = result.replace(
-    /\{%\s*if\s+(.+?)\s*%\}([\s\S]*?)\{%\s*endif\s*%\}/g,
-    (_match, condition, body) => {
-      const val = resolveVar(condition.trim(), vars);
-      const truthy = val !== false && val !== null && val !== undefined && val !== "" && val !== 0;
-      return truthy ? renderTemplate(body, vars) : "";
-    }
-  );
-
-  // Variable substitution: {{ var }}
-  result = result.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, expr) => {
-    const val = resolveVar(expr.trim(), vars);
-    return val == null ? "" : String(val);
-  });
-
-  return result;
-}
-
-function resolveVar(expr: string, vars: Record<string, unknown>): unknown {
-  const parts = expr.split(".");
-  let val: unknown = vars;
-  for (const part of parts) {
-    if (val == null || typeof val !== "object") return undefined;
-    val = (val as Record<string, unknown>)[part];
-  }
-  return val;
-}
 
 function sha256(s: string): string {
   return crypto.createHash("sha256").update(s, "utf8").digest("hex");

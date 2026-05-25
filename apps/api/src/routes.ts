@@ -7,6 +7,9 @@ import {
   getAuthorizeUrl as getGitHubAuthorizeUrl,
   exchangeCodeForToken as exchangeGitHubCode,
   fetchProfile as fetchGitHubProfile,
+  getGoogleAuthorizeUrl,
+  exchangeGoogleCode,
+  fetchGoogleProfile,
   verifyState,
   findOrCreateFromOAuth,
   linkIdentityToUser,
@@ -763,6 +766,157 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     reply.redirect(`${cfg.publicBaseUrl}${redirectTo ?? "/oauth/return"}${fragment}`);
   });
 
+  // ── Google OAuth ──────────────────────────────────────────
+  app.get("/api/auth/google", async (request, reply) => {
+    const cfg = getConfig();
+    if (!cfg.google.clientId || !cfg.google.redirectUri) {
+      reply.code(503);
+      return { error: "Google OAuth is not configured on this server." };
+    }
+    const url = getGoogleAuthorizeUrl({ purpose: "login" });
+    reply.redirect(url);
+  });
+
+  app.get("/auth/google/callback", async (request, reply) => {
+    const query = request.query as { code?: string; state?: string; error?: string };
+    const cfg = getConfig();
+
+    if (query.error || !query.code || !query.state) {
+      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=cancelled`);
+      return;
+    }
+
+    const stateResult = verifyState(query.state);
+    if (!stateResult.ok) {
+      request.log.warn({ reason: stateResult.reason }, "OAuth state verification failed");
+      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=invalid_state`);
+      return;
+    }
+    const { purpose, userId: linkUserId, redirectTo } = stateResult.payload;
+
+    let profile: Awaited<ReturnType<typeof fetchGoogleProfile>>;
+    try {
+      const accessToken = await exchangeGoogleCode(query.code);
+      profile = await fetchGoogleProfile(accessToken);
+    } catch (err) {
+      request.log.warn({ err: err instanceof Error ? err.message : err }, "Google OAuth exchange/fetch failed");
+      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=provider_error`);
+      return;
+    }
+
+    if (purpose === "link") {
+      if (!linkUserId) {
+        reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=invalid_state`);
+        return;
+      }
+      try {
+        await linkIdentityToUser(linkUserId, {
+          provider: "google",
+          providerUserId: profile.id,
+          email: profile.email,
+          profile: {
+            avatarUrl: profile.avatarUrl,
+            displayName: profile.displayName,
+            login: profile.displayName || profile.email?.split("@")[0]
+          }
+        });
+        reply.redirect(`${cfg.publicBaseUrl}${redirectTo ?? "/account/identities"}?oauth=linked`);
+        return;
+      } catch (err) {
+        if (err instanceof IdentityAlreadyLinkedError) {
+          reply.redirect(`${cfg.publicBaseUrl}/account/identities?oauth_error=already_linked`);
+          return;
+        }
+        request.log.error({ err: err instanceof Error ? err.message : err }, "OAuth link failed");
+        reply.redirect(`${cfg.publicBaseUrl}/account/identities?oauth_error=link_failed`);
+        return;
+      }
+    }
+
+    // Login flow
+    let result: { user: { id: string; email: string }; created: boolean };
+    try {
+      result = await findOrCreateFromOAuth({
+        provider: "google",
+        providerUserId: profile.id,
+        email: profile.email,
+        profile: {
+          avatarUrl: profile.avatarUrl,
+          displayName: profile.displayName,
+          login: profile.displayName || profile.email?.split("@")[0]
+        }
+      });
+    } catch (err) {
+      if (err instanceof EmailConflictError) {
+        const emailHint = encodeURIComponent(err.email);
+        reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=email_conflict&email=${emailHint}`);
+        return;
+      }
+      request.log.error({ err: err instanceof Error ? err.message : err }, "OAuth login failed");
+      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=login_failed`);
+      return;
+    }
+
+    const dbForSession = await readRuntimeDatabase();
+    const userRow = dbForSession.users.find((u) => u.id === result.user.id);
+    if (!userRow) {
+      request.log.error({ userId: result.user.id }, "OAuth: user vanished between create and session-issue");
+      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=login_failed`);
+      return;
+    }
+
+    const totpEnabled = !!userRow.totpEnabledAt;
+    const adminNeedsEnrollment = userRow.role === "admin" && !totpEnabled;
+
+    const now = new Date().toISOString();
+    const token = createSessionToken();
+
+    if (totpEnabled) {
+      const expiresAt = new Date(Date.now() + TWOFA_PENDING_TTL_MS).toISOString();
+      await updateRuntimeDatabase((db) => {
+        db.sessions = db.sessions.filter((s) => new Date(s.expiresAt).getTime() > Date.now());
+        db.sessions.push({
+          token,
+          userId: userRow.id,
+          createdAt: now,
+          expiresAt,
+          twofaPending: true
+        });
+      });
+      const fragment = `#2fa=1&intermediateToken=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
+      reply.redirect(`${cfg.publicBaseUrl}/login/2fa${fragment}`);
+      return;
+    }
+
+    if (adminNeedsEnrollment) {
+      const expiresAt = new Date(Date.now() + ENROLLMENT_REQUIRED_TTL_MS).toISOString();
+      await updateRuntimeDatabase((db) => {
+        db.sessions = db.sessions.filter((s) => new Date(s.expiresAt).getTime() > Date.now());
+        db.sessions.push({
+          token,
+          userId: userRow.id,
+          createdAt: now,
+          expiresAt,
+          enrollmentRequired: true
+        });
+      });
+      const fragment = `#enroll=1&token=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
+      reply.redirect(`${cfg.publicBaseUrl}/account/security/enroll${fragment}`);
+      return;
+    }
+
+    // Regular full-access session.
+    const expiresAt = new Date(Date.now() + getSessionTtlMs()).toISOString();
+    await updateRuntimeDatabase((db) => {
+      db.sessions = db.sessions.filter((s) => new Date(s.expiresAt).getTime() > Date.now());
+      db.sessions.push({ token, userId: result.user.id, createdAt: now, expiresAt });
+    });
+
+    const fragment = `#token=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
+    reply.redirect(`${cfg.publicBaseUrl}${redirectTo ?? "/oauth/return"}${fragment}`);
+  });
+
+
   app.post("/api/auth/login", async (request, reply) => {
     try {
       return await loginUser(request.body as { email?: string; password?: string });
@@ -888,7 +1042,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const cfg = getConfig();
     return {
       github: Boolean(cfg.github.clientId && cfg.github.redirectUri),
-      google: false // P1.7 stub — wired in P4.1 (or later)
+      google: Boolean(cfg.google.clientId && cfg.google.redirectUri)
     };
   });
 
@@ -963,6 +1117,25 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     // a new account.
     const body = (request.body ?? {}) as { redirectTo?: string };
     const url = getGitHubAuthorizeUrl({
+      purpose: "link",
+      userId: user.id,
+      redirectTo: body.redirectTo
+    });
+    return { authorizeUrl: url };
+  });
+
+  app.post("/api/me/identities/google/connect", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+
+    const cfg = getConfig();
+    if (!cfg.google.clientId || !cfg.google.redirectUri) {
+      reply.code(503);
+      return { error: "Google OAuth is not configured on this server." };
+    }
+
+    const body = (request.body ?? {}) as { redirectTo?: string };
+    const url = getGoogleAuthorizeUrl({
       purpose: "link",
       userId: user.id,
       redirectTo: body.redirectTo
@@ -1601,6 +1774,114 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
     const { getQueueSnapshot } = await import("./task-queue.js");
     return { queues: getQueueSnapshot() };
+  });
+
+  app.get("/api/admin/queue", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { getQueueSnapshot } = await import("./task-queue.js");
+    return { queues: getQueueSnapshot() };
+  });
+
+  // GET /api/admin/users — admin only
+  app.get("/api/admin/users", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const db = await readRuntimeDatabase();
+    const users = db.users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      createdAt: u.createdAt,
+      deletedAt: u.deletedAt
+    }));
+    return { users };
+  });
+
+  // PUT /api/admin/users/:id/role — admin only
+  app.put("/api/admin/users/:id/role", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { id } = request.params as { id: string };
+    const { role } = request.body as { role: string };
+    if (role !== "user" && role !== "admin") {
+      reply.code(400);
+      return { error: "Invalid role. Must be 'user' or 'admin'." };
+    }
+
+    // Don't let the only remaining admin demote themselves
+    if (id === user.id && role === "user") {
+      const db = await readRuntimeDatabase();
+      const otherAdmins = db.users.filter((u) => u.id !== user.id && u.role === "admin" && !u.deletedAt);
+      if (otherAdmins.length === 0) {
+        reply.code(400);
+        return { error: "Cannot demote the only remaining admin." };
+      }
+    }
+
+    const updatedUser = await updateRuntimeDatabase((db) => {
+      const u = db.users.find((x) => x.id === id);
+      if (!u) return null;
+      u.role = role as "user" | "admin";
+      u.updatedAt = new Date().toISOString();
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        createdAt: u.createdAt,
+        deletedAt: u.deletedAt
+      };
+    });
+
+    if (!updatedUser) {
+      reply.code(404);
+      return { error: "User not found." };
+    }
+    return { user: updatedUser };
+  });
+
+  // POST /api/admin/users/:id/toggle-lock — admin only
+  app.post("/api/admin/users/:id/toggle-lock", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") { reply.code(403); return { error: "Admin only." }; }
+    const { id } = request.params as { id: string };
+
+    // Don't let the only remaining admin lock/delete themselves
+    if (id === user.id) {
+      const db = await readRuntimeDatabase();
+      const otherAdmins = db.users.filter((u) => u.id !== user.id && u.role === "admin" && !u.deletedAt);
+      if (otherAdmins.length === 0) {
+        reply.code(400);
+        return { error: "Cannot lock the only remaining admin account." };
+      }
+    }
+
+    const updatedUser = await updateRuntimeDatabase((db) => {
+      const u = db.users.find((x) => x.id === id);
+      if (!u) return null;
+      if (u.deletedAt) {
+        delete u.deletedAt; // unlock
+      } else {
+        u.deletedAt = new Date().toISOString(); // lock
+      }
+      u.updatedAt = new Date().toISOString();
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        createdAt: u.createdAt,
+        deletedAt: u.deletedAt
+      };
+    });
+
+    if (!updatedUser) {
+      reply.code(404);
+      return { error: "User not found." };
+    }
+    return { user: updatedUser };
   });
 
   // (SSE stream moved to bottom with query token auth support)

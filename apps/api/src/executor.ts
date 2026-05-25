@@ -103,6 +103,7 @@ export async function executeBatchCatalogTask(
       task.queuePosition = undefined;
       task.startedAt = new Date().toISOString();
       notifySubscribers(task.id, task);
+      void persistTaskToHistory(task);
     },
     run: async () => {
       try {
@@ -163,6 +164,8 @@ export async function executeBatchCatalogTask(
     notifySubscribers(task.id, task);
   }
 
+  void persistTaskToHistory(task);
+
   return task;
 }
 
@@ -207,6 +210,7 @@ export async function executePlaybookTask(
       task.queuePosition = undefined;
       task.startedAt = new Date().toISOString();
       notifySubscribers(task.id, task);
+      void persistTaskToHistory(task);
     },
     run: async () => {
       try {
@@ -256,6 +260,8 @@ export async function executePlaybookTask(
     task.queuePosition = positionAhead;
     notifySubscribers(task.id, task);
   }
+
+  void persistTaskToHistory(task);
 
   return task;
 }
@@ -336,25 +342,33 @@ async function persistTaskToHistory(task: ExecutionTask): Promise<void> {
   try {
     await updateRuntimeDatabase((db) => {
       if (!db.tasks) db.tasks = [];
-      db.tasks.unshift({
+      const idx = db.tasks.findIndex((t) => t.id === task.id);
+      const dbEntry = {
         id: task.id,
         userId: task.userId,
         connectionId: task.connectionId,
         source: task.profileId,
-        sourceKind: "catalog",
-        status: task.status as "running" | "succeeded" | "failed" | "cancelled",
+        sourceKind: task.kind === "deploy-snapshot" ? ("captured" as const) : ("catalog" as const),
+        status: task.status as any,
         dryRun: task.dryRun,
         steps: task.steps.map((s) => ({
           name: s.label,
           module: s.command,
-          status: s.status === "succeeded" ? "ok" as const : s.status === "failed" ? "failed" as const : s.status === "skipped" ? "skipped" as const : "ok" as const,
+          status: s.status === "succeeded" ? "ok" as const : s.status === "failed" ? "failed" as const : s.status === "skipped" ? "skipped" as const : s.status === "running" ? "running" as const : "ok" as const,
           durationMs: s.durationMs,
           msg: s.stdout?.slice(0, 200) || undefined
         })),
         startedAt: task.startedAt ?? task.createdAt,
         completedAt: task.completedAt,
         error: task.error
-      });
+      };
+
+      if (idx >= 0) {
+        db.tasks[idx] = dbEntry;
+      } else {
+        db.tasks.unshift(dbEntry);
+      }
+
       // Keep only last 200 tasks
       if (db.tasks.length > 200) db.tasks = db.tasks.slice(0, 200);
 
@@ -393,3 +407,28 @@ async function persistTaskToHistory(task: ExecutionTask): Promise<void> {
     }
   } catch { /* webhooks are best-effort */ }
 }
+
+export async function healTaskStates(): Promise<void> {
+  try {
+    await updateRuntimeDatabase((db) => {
+      if (!db.tasks) return;
+      let healedCount = 0;
+      for (const t of db.tasks) {
+        if (t.status === "running" || t.status === "queued") {
+          t.status = "failed";
+          t.completedAt = new Date().toISOString();
+          t.error = "服务重启：任务已意外中断 / Service restarted: Task was interrupted.";
+          healedCount++;
+        }
+      }
+      if (healedCount > 0) {
+        // eslint-disable-next-line no-console
+        console.log(`[executor] Self-healing: Marked ${healedCount} hanging tasks as failed.`);
+      }
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[executor] Self-healing failed:", err);
+  }
+}
+

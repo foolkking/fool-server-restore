@@ -11,6 +11,7 @@
 
 import yaml from "yaml";
 import type { Playbook, Task, ModuleResult, SshExecutor, AnsibleModule, TaskExecutionLog } from "./types.js";
+import { renderTemplate } from "./template-parser.js";
 import { packageModule } from "./modules/package.js";
 import { serviceModule } from "./modules/service.js";
 import { lineinfileModule } from "./modules/lineinfile.js";
@@ -99,18 +100,13 @@ export function parsePlaybook(text: string): Playbook {
   return parsed as Playbook;
 }
 
-/** 简单的变量替换：{{ var_name }} → vars[var_name] */
+/** 变量及模板替换，支持高级 Jinja2-lite AST 解析 */
 export function substitute(value: unknown, vars: Record<string, unknown>): unknown {
   if (typeof value === "string") {
-    return value.replace(/\{\{\s*(\w+(?:\.\w+)*)\s*\}\}/g, (_, expr: string) => {
-      const parts = expr.split(".");
-      let v: any = vars;
-      for (const p of parts) {
-        if (v == null) return "";
-        v = v[p];
-      }
-      return v == null ? "" : String(v);
-    });
+    if (value.includes("{{") || value.includes("{%")) {
+      return renderTemplate(value, vars);
+    }
+    return value;
   }
   if (Array.isArray(value)) return value.map((v) => substitute(v, vars));
   if (value && typeof value === "object") {
@@ -121,12 +117,31 @@ export function substitute(value: unknown, vars: Record<string, unknown>): unkno
   return value;
 }
 
-/** 求值 when 表达式（支持简单形式：var.changed, !var.changed） */
+/** 求值 when 表达式，支持 and/or 以及逻辑取反 */
 export function evalWhen(expr: string, vars: Record<string, unknown>): boolean {
-  const negated = expr.trim().startsWith("not ") || expr.trim().startsWith("!");
-  const cleanExpr = expr.trim().replace(/^(not |!)/, "").trim();
-  const result = substitute(`{{ ${cleanExpr} }}`, vars);
-  const truthy = result !== "" && result !== "false" && result !== "0" && result != null;
+  const trimmed = expr.trim();
+  if (trimmed.includes(" and ")) {
+    return trimmed.split(" and ").every((e) => evalWhen(e, vars));
+  }
+  if (trimmed.includes(" or ")) {
+    return trimmed.split(" or ").some((e) => evalWhen(e, vars));
+  }
+
+  const negated = trimmed.startsWith("not ") || trimmed.startsWith("!");
+  const cleanExpr = trimmed.replace(/^(not |!)/, "").trim();
+
+  // Resolve standard property path
+  const parts = cleanExpr.split(".");
+  let v: any = vars;
+  for (const p of parts) {
+    if (v == null) {
+      v = undefined;
+      break;
+    }
+    v = v[p];
+  }
+
+  const truthy = v !== "" && v !== false && v !== "false" && v !== 0 && v !== "0" && v != null;
   return negated ? !truthy : truthy;
 }
 

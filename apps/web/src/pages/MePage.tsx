@@ -361,6 +361,11 @@ export function MePage({
     window.location.href = "/api/auth/github";
   }
 
+  async function startGoogleLogin() {
+    // Browser does the redirect — server's GET /api/auth/google replies 302.
+    window.location.href = "/api/auth/google";
+  }
+
   async function submitForgotPassword() {
     setForgotMessage("");
     setForgotDevUrl("");
@@ -586,6 +591,11 @@ export function MePage({
               {providers?.github ? (
                 <button className="secondary-action" type="button" onClick={() => void startGitHubLogin()}>
                   {locale === "zh" ? "使用 GitHub 登录" : "Sign in with GitHub"}
+                </button>
+              ) : null}
+              {providers?.google ? (
+                <button className="secondary-action" type="button" onClick={() => void startGoogleLogin()}>
+                  {locale === "zh" ? "使用 Google 登录" : "Sign in with Google"}
                 </button>
               ) : null}
               {authMode === "login" ? (

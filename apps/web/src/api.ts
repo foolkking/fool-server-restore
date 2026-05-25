@@ -600,6 +600,15 @@ export async function startGitHubLink(token: string, redirectTo?: string): Promi
   return readJsonOrThrow(r, "GitHub link failed");
 }
 
+export async function startGoogleLink(token: string, redirectTo?: string): Promise<{ authorizeUrl: string }> {
+  const r = await fetch("/api/me/identities/google/connect", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ redirectTo: redirectTo ?? "/account/identities" })
+  });
+  return readJsonOrThrow(r, "Google link failed");
+}
+
 export async function unlinkIdentity(token: string, provider: "github" | "google"): Promise<{ ok: true }> {
   const r = await fetch(`/api/me/identities/${provider}`, {
     method: "DELETE",
@@ -1692,4 +1701,46 @@ export async function resetAdminCatalog(token: string, id: string): Promise<void
     headers: { "Authorization": `Bearer ${token}` }
   });
   await readJsonOrThrow(r, "Reset catalog failed");
+}
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: "user" | "admin";
+  createdAt: string;
+  deletedAt?: string;
+}
+
+export interface AdminQueueItem {
+  connectionId: string;
+  running: boolean;
+  queued: number;
+}
+
+export async function fetchAdminUsers(token: string): Promise<{ users: AdminUser[] }> {
+  const r = await fetch("/api/admin/users", { headers: { "Authorization": `Bearer ${token}` } });
+  return readJsonOrThrow(r, "Fetch admin users failed");
+}
+
+export async function updateAdminUserRole(token: string, userId: string, role: "user" | "admin"): Promise<{ user: AdminUser }> {
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/role`, {
+    method: "PUT",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ role })
+  });
+  return readJsonOrThrow(r, "Update user role failed");
+}
+
+export async function toggleAdminUserLock(token: string, userId: string): Promise<{ user: AdminUser }> {
+  const r = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/toggle-lock`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Toggle user lock failed");
+}
+
+export async function fetchAdminQueues(token: string): Promise<{ queues: AdminQueueItem[] }> {
+  const r = await fetch("/api/admin/queue", { headers: { "Authorization": `Bearer ${token}` } });
+  return readJsonOrThrow(r, "Fetch admin queues failed");
 }

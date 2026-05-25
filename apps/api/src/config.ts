@@ -40,6 +40,11 @@ export interface AppConfig {
     /** Must match the Authorization callback URL configured in the GitHub OAuth App. */
     redirectUri: string;
   };
+  google: {
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+  };
 }
 
 export function getConfig(): AppConfig {
@@ -72,6 +77,11 @@ export function getConfig(): AppConfig {
       clientId: (process.env.GITHUB_CLIENT_ID ?? "").trim(),
       clientSecret: (process.env.GITHUB_CLIENT_SECRET ?? "").trim(),
       redirectUri: (process.env.GITHUB_REDIRECT_URI ?? "").trim()
+    },
+    google: {
+      clientId: (process.env.GOOGLE_CLIENT_ID ?? "").trim(),
+      clientSecret: (process.env.GOOGLE_CLIENT_SECRET ?? "").trim(),
+      redirectUri: (process.env.GOOGLE_REDIRECT_URI ?? "").trim()
     }
   };
 }

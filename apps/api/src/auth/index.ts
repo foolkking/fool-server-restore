@@ -28,6 +28,9 @@ export type { StatePayload, CreateStateInput, VerifyResult as OAuthStateVerifyRe
 export { getAuthorizeUrl, exchangeCodeForToken, fetchProfile, DEFAULT_SCOPES } from "./oauth/github.js";
 export type { GitHubProfile } from "./oauth/github.js";
 
+export { getAuthorizeUrl as getGoogleAuthorizeUrl, exchangeCodeForToken as exchangeGoogleCode, fetchProfile as fetchGoogleProfile } from "./oauth/google.js";
+export type { GoogleProfile } from "./oauth/google.js";
+
 export {
   findOrCreateFromOAuth,
   linkIdentityToUser,

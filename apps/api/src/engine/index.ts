@@ -38,10 +38,11 @@ export async function executePlaybook(
   const playbook = parsePlaybook(yamlText);
 
   const client = await connectSsh(connection);
+  const executor = new Ssh2Executor(client);
   try {
-    const executor = new Ssh2Executor(client);
     return await runPlaybook(playbook, executor, options);
   } finally {
+    await executor.close();
     client.end();
   }
 }
@@ -169,6 +170,7 @@ export async function executeBatchPlaybooks(
       }
     }
   } finally {
+    await executor.close();
     client.end();
   }
 

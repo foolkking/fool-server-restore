@@ -29,6 +29,7 @@ import {
   deleteAccount,
   fetchIdentities,
   startGitHubLink,
+  startGoogleLink,
   unlinkIdentity,
   fetchTwoFactorStatus,
   startTwoFactorEnroll,
@@ -479,6 +480,16 @@ function IdentitiesSection({ locale, authToken, identities, providers, onRefresh
     }
   }
 
+  async function linkGoogle() {
+    setError("");
+    try {
+      const r = await startGoogleLink(authToken);
+      window.location.href = r.authorizeUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
   async function unlink(provider: "github" | "google") {
     if (!confirm(locale === "zh" ? `确定解绑 ${provider} 吗？` : `Unlink ${provider}?`)) return;
     setError("");
@@ -491,6 +502,7 @@ function IdentitiesSection({ locale, authToken, identities, providers, onRefresh
   }
 
   const githubLinked = identities.some((i) => i.provider === "github");
+  const googleLinked = identities.some((i) => i.provider === "google");
 
   return (
     <section className="settings-section">
@@ -508,11 +520,18 @@ function IdentitiesSection({ locale, authToken, identities, providers, onRefresh
           </li>
         ))}
       </ul>
-      {providers?.github && !githubLinked ? (
-        <button className="secondary-action" type="button" onClick={() => void linkGitHub()} style={{ marginTop: "8px" }}>
-          {locale === "zh" ? "绑定 GitHub" : "Link GitHub"}
-        </button>
-      ) : null}
+      <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+        {providers?.github && !githubLinked ? (
+          <button className="secondary-action" type="button" onClick={() => void linkGitHub()}>
+            {locale === "zh" ? "绑定 GitHub" : "Link GitHub"}
+          </button>
+        ) : null}
+        {providers?.google && !googleLinked ? (
+          <button className="secondary-action" type="button" onClick={() => void linkGoogle()}>
+            {locale === "zh" ? "绑定 Google" : "Link Google"}
+          </button>
+        ) : null}
+      </div>
       {error ? <p className="connection-error">{error}</p> : null}
     </section>
   );

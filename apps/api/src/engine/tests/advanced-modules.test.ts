@@ -4,7 +4,8 @@
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { templateModule, renderTemplate } from "../modules/template.js";
+import { templateModule } from "../modules/template.js";
+import { renderTemplate } from "../template-parser.js";
 import { fileModule } from "../modules/file.js";
 import { userModule } from "../modules/user.js";
 import { ufwModule } from "../modules/ufw.js";

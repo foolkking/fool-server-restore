@@ -19,8 +19,9 @@ import {
 import type { Locale } from "../lib/types";
 import { CatalogAdminPanel } from "../components/CatalogAdminPanel";
 import { AccountPanel } from "../components/AccountPanel";
+import { AdminPanel } from "../components/AdminPanel";
 
-type Tab = "schedules" | "webhooks" | "tokens" | "modules" | "drift" | "catalog" | "account";
+type Tab = "schedules" | "webhooks" | "tokens" | "modules" | "drift" | "catalog" | "account" | "admin";
 
 export function SettingsPage({
   locale,
@@ -70,9 +71,14 @@ export function SettingsPage({
           📚 {locale === "zh" ? "模块文档" : "Module docs"}
         </button>
         {isAdmin && (
-          <button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")} type="button">
-            🛡️ {locale === "zh" ? "配置市场（管理员）" : "Catalog (admin)"}
-          </button>
+          <>
+            <button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")} type="button">
+              🛡️ {locale === "zh" ? "配置市场（管理员）" : "Catalog (admin)"}
+            </button>
+            <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")} type="button">
+              🛡️ {locale === "zh" ? "用户与队列（管理员）" : "Users & Queues (admin)"}
+            </button>
+          </>
         )}
       </nav>
       <div className="settings-body">
@@ -95,6 +101,9 @@ export function SettingsPage({
         )}
         {tab === "catalog" && isAdmin && (
           <CatalogAdminPanel locale={locale} authToken={authToken} />
+        )}
+        {tab === "admin" && isAdmin && (
+          <AdminPanel locale={locale} authToken={authToken} connections={connections} />
         )}
       </div>
     </div>

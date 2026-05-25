@@ -34,6 +34,9 @@ try {
     info: (msg) => app.log.info(msg),
     warn: (msg) => app.log.warn(msg)
   });
+  // Self-heal running/queued tasks from last crash/restart.
+  const { healTaskStates } = await import("./executor.js");
+  await healTaskStates();
   // Start the cron-style scheduler (idempotent).
   startScheduler();
   app.log.info("Scheduler started");
