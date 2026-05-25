@@ -126,7 +126,7 @@ test("identity: returning oauth user → returns existing user, no new row", asy
   }
 });
 
-test("identity: oauth login with email already used by local account → EmailConflictError", async () => {
+test("identity: oauth login with email already used by local account → automatically links identity", async () => {
   const env = await setupTempDb({
     users: [
       {
@@ -143,20 +143,23 @@ test("identity: oauth login with email already used by local account → EmailCo
     ]
   });
   try {
-    await assert.rejects(
-      findOrCreateFromOAuth({
-        provider: "github",
-        providerUserId: "9999",
-        email: "charlie@example.com",
-        profile: { login: "charliedev" }
-      }),
-      EmailConflictError
-    );
+    const result = await findOrCreateFromOAuth({
+      provider: "github",
+      providerUserId: "9999",
+      email: "charlie@example.com",
+      profile: { login: "charliedev" }
+    });
 
-    // No user / identity should be created
+    assert.equal(result.created, false);
+    assert.equal(result.user.id, "u_local");
+    assert.equal(result.identity.provider, "github");
+    assert.equal(result.identity.providerUserId, "9999");
+
+    // The user and new identity should be saved
     const after = JSON.parse(await fs.readFile(env.dbPath, "utf8"));
     assert.equal(after.users.length, 1);
-    assert.equal(after.identities.length, 0);
+    assert.equal(after.identities.length, 1);
+    assert.equal(after.identities[0].userId, "u_local");
   } finally {
     await env.cleanup();
   }

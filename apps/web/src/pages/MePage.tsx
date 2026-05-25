@@ -223,7 +223,7 @@ export function MePage({
   const [verifyCode, setVerifyCode] = useState("");
   // P1.10 — 2FA-pending session: after login, if backend says needs2FA, we capture
   // the intermediate token and render a 6-digit / recovery-code input step.
-  const [pending2FA, setPending2FA] = useState<{ intermediateToken: string; user: AuthUser } | null>(null);
+  const [pending2FA, setPending2FA] = useState<{ intermediateToken: string; user?: AuthUser } | null>(null);
   const [twoFactorCode, setTwoFactorCode] = useState("");
   // P1.7 — provider availability (decides whether to render the GitHub button).
   const [providers, setProviders] = useState<{ github: boolean; google: boolean } | null>(null);
@@ -273,6 +273,11 @@ export function MePage({
   // Provider check on mount (so we know whether to show GitHub button).
   useEffect(() => {
     fetchAuthProviders().then(setProviders).catch(() => setProviders({ github: false, google: false }));
+    const oauth2faToken = localStorage.getItem("envforge_pending_2fa");
+    if (oauth2faToken) {
+      setPending2FA({ intermediateToken: oauth2faToken });
+      localStorage.removeItem("envforge_pending_2fa");
+    }
   }, []);
 
   async function submitAuth(mode: "login" | "register") {

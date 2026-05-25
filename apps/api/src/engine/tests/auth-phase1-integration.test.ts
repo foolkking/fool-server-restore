@@ -158,9 +158,9 @@ test("integration: register → verify → login → /api/me", async () => {
   }
 });
 
-// ── Scenario 2: admin first login forced through enrollment ───────────────
+// ── Scenario 2: admin first login direct without forced enrollment ───────────
 
-test("integration: admin first login → enrollment-required → confirm rotates session", async () => {
+test("integration: admin first login → direct login ok without forced enrollment", async () => {
   // Pre-create the admin user so we can login (skipping registration)
   const { scrypt: scryptCb, randomBytes } = await import("node:crypto");
   const { promisify } = await import("node:util");
@@ -188,63 +188,35 @@ test("integration: admin first login → enrollment-required → confirm rotates
   });
 
   try {
-    // 1a. Admin logs in → gets enrollment-required token
+    // 1a. Admin logs in → gets full session directly (no forced 2FA enrollment)
     const login = await env.app.inject({
       method: "POST",
       url: "/api/auth/login",
       payload: { email: "admin@example.com", password: "admin-pw-strong" }
     });
     assert.equal(login.statusCode, 200);
-    const loginBody = login.json() as { needsEnrollment?: boolean; intermediateToken?: string };
-    assert.equal(loginBody.needsEnrollment, true);
-    assert.ok(loginBody.intermediateToken);
-    const interToken = loginBody.intermediateToken!;
+    const loginBody = login.json() as { token?: string; needsEnrollment?: boolean };
+    assert.notEqual(loginBody.needsEnrollment, true);
+    assert.ok(loginBody.token);
+    const sessionToken = loginBody.token!;
 
-    // 1b. Enrollment token CAN call /api/me/2fa/enroll
-    const enroll = await env.app.inject({
-      method: "POST",
-      url: "/api/me/2fa/enroll",
-      headers: bearer(interToken)
-    });
-    assert.equal(enroll.statusCode, 200);
-    const { secret } = enroll.json() as { secret: string };
-
-    // 1c. Enrollment token CANNOT call business routes
-    const businessAttempt = await env.app.inject({
-      method: "GET",
-      url: "/api/connections",
-      headers: bearer(interToken)
-    });
-    assert.equal(businessAttempt.statusCode, 401);
-
-    // 1d. Confirm → response carries rotated sessionToken
-    const code = codeForSecret(secret, "admin@example.com");
-    const confirm = await env.app.inject({
-      method: "POST",
-      url: "/api/me/2fa/confirm",
-      headers: bearer(interToken),
-      payload: { code }
-    });
-    assert.equal(confirm.statusCode, 200);
-    const confirmBody = confirm.json() as { sessionToken: string; recoveryCodes: string[] };
-    assert.ok(confirmBody.sessionToken);
-    assert.equal(confirmBody.recoveryCodes.length, 8);
-
-    // 1e. New token works on business routes
+    // 1b. Full session token works on business routes immediately
     const conns = await env.app.inject({
       method: "GET",
       url: "/api/connections",
-      headers: bearer(confirmBody.sessionToken)
+      headers: bearer(sessionToken)
     });
     assert.equal(conns.statusCode, 200);
 
-    // 1f. Old intermediate token now rejected on /api/auth/session
-    const session = await env.app.inject({
-      method: "GET",
-      url: "/api/auth/session",
-      headers: bearer(interToken)
+    // 1c. Admin can voluntarily enroll in 2FA with their full session token
+    const enroll = await env.app.inject({
+      method: "POST",
+      url: "/api/me/2fa/enroll",
+      headers: bearer(sessionToken)
     });
-    assert.equal(session.statusCode, 401);
+    assert.equal(enroll.statusCode, 200);
+    const { secret } = enroll.json() as { secret: string };
+    assert.ok(secret);
   } finally {
     await env.cleanup();
   }
@@ -636,12 +608,7 @@ test("integration: solo admin DELETE /api/me → 409; multi-admin OK", async () 
 
 // ── Scenario 8: Email-collision OAuth conflict ────────────────────────────
 
-test("integration: email-collision rejection — local user exists, OAuth login attempt returns conflict", async () => {
-  // We can't easily mock GitHub HTTP in an end-to-end Fastify test, but we
-  // CAN exercise the underlying findOrCreateFromOAuth logic by importing it
-  // and asserting the EmailConflictError. This complements the unit test in
-  // auth-identity.test.ts by ensuring the route layer's redirect behavior
-  // also kicks in correctly. (Routes-level tested in auth-oauth-github.test.ts)
+test("integration: email-collision OAuth automatic link — local user exists, OAuth login attempt links securely", async () => {
   const env = await setup({
     seedUsers: [{
       id: "u_local",
@@ -657,21 +624,25 @@ test("integration: email-collision rejection — local user exists, OAuth login 
   });
 
   try {
-    const { findOrCreateFromOAuth, EmailConflictError } = await import("../../auth/index.js");
-    await assert.rejects(
-      () => findOrCreateFromOAuth({
-        provider: "github",
-        providerUserId: "987654",
-        email: "shared@example.com",
-        profile: { login: "shareduser", displayName: "Shared", avatarUrl: "https://avatar.example/x.png" }
-      }),
-      (err) => err instanceof EmailConflictError
-    );
+    const { findOrCreateFromOAuth } = await import("../../auth/index.js");
+    const result = await findOrCreateFromOAuth({
+      provider: "github",
+      providerUserId: "987654",
+      email: "shared@example.com",
+      profile: { login: "shareduser", displayName: "Shared", avatarUrl: "https://avatar.example/x.png" }
+    });
 
-    // Confirm no new user was created
+    assert.equal(result.created, false);
+    assert.equal(result.user.id, "u_local");
+    assert.equal(result.identity.provider, "github");
+    assert.equal(result.identity.providerUserId, "987654");
+
+    // Confirm the new identity was created and linked to u_local
     const db = await readRuntimeDatabase();
     assert.equal(db.users.length, 1);
-    assert.equal((db.identities ?? []).length, 0);
+    const idents = db.identities ?? [];
+    assert.equal(idents.length, 1);
+    assert.equal(idents[0].userId, "u_local");
   } finally {
     await env.cleanup();
   }

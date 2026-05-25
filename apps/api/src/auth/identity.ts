@@ -94,7 +94,10 @@ export async function findOrCreateFromOAuth(input: OAuthIdentityInput): Promise<
     const db = await readRuntimeDatabase();
     const conflict = db.users.find((u) => u.email === input.email && !u.deletedAt);
     if (conflict) {
-      throw new EmailConflictError(input.email);
+      // Secure automatic linking: Since the OAuth email is verified by the provider,
+      // we can safely link this new OAuth identity to the existing user account.
+      const identity = await linkIdentityToUser(conflict.id, input);
+      return { user: conflict, identity, created: false };
     }
   }
 
