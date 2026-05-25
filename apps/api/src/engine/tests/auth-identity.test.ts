@@ -420,3 +420,175 @@ test("identity: user with passwordHash and no local row → listIdentities retur
     await env.cleanup();
   }
 });
+
+// ── Component 8: Soft-deleted user stale identity cleanup tests ───────────
+
+test("identity: findOrCreateFromOAuth cleans up stale identity and creates a new user when owner is soft-deleted", async () => {
+  const env = await setupTempDb({
+    users: [
+      {
+        id: "u_deleted",
+        name: "Deleted User",
+        email: "deleted@example.com",
+        username: "deleted",
+        role: "user",
+        deletedAt: "2026-05-25T10:00:00Z",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z"
+      }
+    ],
+    identities: [
+      {
+        id: "ident_stale",
+        userId: "u_deleted",
+        provider: "github",
+        providerUserId: "12345",
+        providerEmail: "deleted@example.com",
+        createdAt: "2026-01-01T00:00:00Z"
+      }
+    ]
+  });
+  try {
+    const result = await findOrCreateFromOAuth({
+      provider: "github",
+      providerUserId: "12345",
+      email: "new_active@example.com",
+      profile: { login: "new_active" }
+    });
+
+    assert.equal(result.created, true);
+    assert.equal(result.user.email, "new_active@example.com");
+    assert.equal(result.identity.provider, "github");
+    assert.equal(result.identity.providerUserId, "12345");
+
+    const after = JSON.parse(await fs.readFile(env.dbPath, "utf8"));
+    // Stale identity for deleted user should have been cleaned up
+    const staleIdent = after.identities.find((i: any) => i.id === "ident_stale");
+    assert.equal(staleIdent, undefined, "Stale identity row should be deleted");
+    
+    // Total identities should be 1 (the new one)
+    assert.equal(after.identities.length, 1);
+    assert.equal(after.identities[0].userId, result.user.id);
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("identity: findOrCreateFromOAuth cleans up stale identity and links to an existing user (email collision) when owner is soft-deleted", async () => {
+  const env = await setupTempDb({
+    users: [
+      {
+        id: "u_deleted",
+        name: "Deleted User",
+        email: "deleted@example.com",
+        username: "deleted",
+        role: "user",
+        deletedAt: "2026-05-25T10:00:00Z",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z"
+      },
+      {
+        id: "u_active",
+        name: "Active User",
+        email: "active@example.com",
+        username: "active",
+        passwordHash: "h",
+        passwordSalt: "s",
+        role: "user",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z"
+      }
+    ],
+    identities: [
+      {
+        id: "ident_stale",
+        userId: "u_deleted",
+        provider: "github",
+        providerUserId: "12345",
+        providerEmail: "deleted@example.com",
+        createdAt: "2026-01-01T00:00:00Z"
+      }
+    ]
+  });
+  try {
+    const result = await findOrCreateFromOAuth({
+      provider: "github",
+      providerUserId: "12345",
+      email: "active@example.com", // Collision with active user
+      profile: { login: "activedev" }
+    });
+
+    assert.equal(result.created, false);
+    assert.equal(result.user.id, "u_active");
+    assert.equal(result.identity.provider, "github");
+    assert.equal(result.identity.providerUserId, "12345");
+
+    const after = JSON.parse(await fs.readFile(env.dbPath, "utf8"));
+    const staleIdent = after.identities.find((i: any) => i.id === "ident_stale");
+    assert.equal(staleIdent, undefined, "Stale identity row should be deleted");
+    
+    assert.equal(after.identities.length, 1);
+    assert.equal(after.identities[0].userId, "u_active");
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("identity: linkIdentityToUser cleans up stale identity and links to the active user when owner is soft-deleted", async () => {
+  const env = await setupTempDb({
+    users: [
+      {
+        id: "u_deleted",
+        name: "Deleted User",
+        email: "deleted@example.com",
+        username: "deleted",
+        role: "user",
+        deletedAt: "2026-05-25T10:00:00Z",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z"
+      },
+      {
+        id: "u_active",
+        name: "Active User",
+        email: "active@example.com",
+        username: "active",
+        passwordHash: "h",
+        passwordSalt: "s",
+        role: "user",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z"
+      }
+    ],
+    identities: [
+      {
+        id: "ident_stale",
+        userId: "u_deleted",
+        provider: "github",
+        providerUserId: "12345",
+        providerEmail: "deleted@example.com",
+        createdAt: "2026-01-01T00:00:00Z"
+      }
+    ]
+  });
+  try {
+    const ident = await linkIdentityToUser("u_active", {
+      provider: "github",
+      providerUserId: "12345",
+      email: "active@example.com",
+      profile: { login: "activedev" }
+    });
+
+    assert.equal(ident.userId, "u_active");
+    assert.equal(ident.provider, "github");
+    assert.equal(ident.providerUserId, "12345");
+
+    const after = JSON.parse(await fs.readFile(env.dbPath, "utf8"));
+    const staleIdent = after.identities.find((i: any) => i.id === "ident_stale");
+    assert.equal(staleIdent, undefined, "Stale identity row should be deleted");
+    
+    assert.equal(after.identities.length, 1);
+    assert.equal(after.identities[0].userId, "u_active");
+  } finally {
+    await env.cleanup();
+  }
+});

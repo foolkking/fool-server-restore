@@ -73,8 +73,11 @@ export async function findOrCreateFromOAuth(input: OAuthIdentityInput): Promise<
     const db = await readRuntimeDatabase();
     const user = db.users.find((u) => u.id === existingIdent.userId && !u.deletedAt);
     if (!user) {
-      // Stale identity row pointing at a deleted user — treat as missing.
-      // Fall through to creation path below.
+      // Stale identity row pointing at a deleted user — clean it up securely to prevent duplicates/conflicts
+      await updateRuntimeDatabase((d) => {
+        d.identities = (d.identities ?? []).filter((i) => i.id !== existingIdent.id);
+      });
+      // Treat as missing, fall through to creation path below.
     } else {
       // Refresh profile snapshot + lastUsedAt
       await updateRuntimeDatabase((d) => {
@@ -126,20 +129,30 @@ export async function linkIdentityToUser(
 ): Promise<UserIdentity> {
   const existing = await findIdentity(input.provider, input.providerUserId);
   if (existing) {
-    if (existing.userId === userId) {
-      // Already linked to this user — refresh profile, no-op otherwise
+    const db = await readRuntimeDatabase();
+    const owner = db.users.find((u) => u.id === existing.userId && !u.deletedAt);
+    if (!owner) {
+      // Stale identity row pointing to a deleted/soft-deleted user.
+      // Clean it up first before creating the new link!
       await updateRuntimeDatabase((d) => {
-        const ident = (d.identities ?? []).find((i) => i.id === existing.id);
-        if (ident) {
-          ident.lastUsedAt = new Date().toISOString();
-          if (input.profile) ident.providerData = { ...ident.providerData, ...input.profile };
-          if (input.email) ident.providerEmail = input.email;
-        }
+        d.identities = (d.identities ?? []).filter((i) => i.id !== existing.id);
       });
-      return existing;
+    } else {
+      if (existing.userId === userId) {
+        // Already linked to this user — refresh profile, no-op otherwise
+        await updateRuntimeDatabase((d) => {
+          const ident = (d.identities ?? []).find((i) => i.id === existing.id);
+          if (ident) {
+            ident.lastUsedAt = new Date().toISOString();
+            if (input.profile) ident.providerData = { ...ident.providerData, ...input.profile };
+            if (input.email) ident.providerEmail = input.email;
+          }
+        });
+        return existing;
+      }
+      // Linked to a different user — reject.
+      throw new IdentityAlreadyLinkedError(input.provider);
     }
-    // Linked to a different user — reject.
-    throw new IdentityAlreadyLinkedError(input.provider);
   }
 
   // Create new identity row pointing at the existing user
