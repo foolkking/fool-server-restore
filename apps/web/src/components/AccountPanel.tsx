@@ -91,7 +91,7 @@ export function AccountPanel({ locale, authToken }: Props) {
       <ProfileSection locale={locale} authToken={authToken} me={me} onRefresh={reload} />
       <EmailChangeSection locale={locale} authToken={authToken} me={me} onRefresh={reload} />
       <PasswordSection locale={locale} authToken={authToken} me={me} onRefresh={reload} />
-      <TwoFactorSection locale={locale} authToken={authToken} status={me.twoFactor} onRefresh={reload} />
+      <TwoFactorSection locale={locale} authToken={authToken} status={me.twoFactor} isAdmin={me.user.role === "admin"} onRefresh={reload} />
       <IdentitiesSection locale={locale} authToken={authToken} identities={me.identities} providers={providers} onRefresh={reload} />
       <NotificationsSection locale={locale} authToken={authToken} prefs={me.notificationPrefs} onRefresh={reload} />
       <ActivitySection locale={locale} activity={me.activity} />
@@ -311,10 +311,11 @@ function PasswordSection({ locale, authToken, me, onRefresh: _onRefresh }: {
 
 // ── 2FA ────────────────────────────────────────────────────────────────────
 
-function TwoFactorSection({ locale, authToken, status, onRefresh }: {
+function TwoFactorSection({ locale, authToken, status, isAdmin, onRefresh }: {
   locale: Locale;
   authToken: string;
   status: TwoFactorStatus;
+  isAdmin: boolean;
   onRefresh: () => Promise<void>;
 }) {
   const [enrolling, setEnrolling] = useState<{ secret: string; qrDataUrl: string; otpauthUri: string } | null>(null);
@@ -392,9 +393,40 @@ function TwoFactorSection({ locale, authToken, status, onRefresh }: {
             ? `已启用。剩余恢复码 ${status.recoveryCodesRemaining} 个。`
             : `Enabled. ${status.recoveryCodesRemaining} recovery codes remaining.`)
           : (locale === "zh"
-            ? "未启用。建议为 admin 账号必须启用。"
-            : "Not enabled. Required for admin accounts.")}
+            ? "未启用。建议开启两步验证以防范未授权访问。"
+            : "Not enabled. Highly recommended to enable 2FA for account safety.")}
       </p>
+
+      {!status.enabled && !enrolling && (
+        <div style={{
+          background: "rgba(245, 158, 11, 0.08)",
+          border: "1px solid rgba(245, 158, 11, 0.25)",
+          borderRadius: "8px",
+          padding: "12px 16px",
+          color: "#f59e0b",
+          fontSize: "13px",
+          marginBottom: "16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "4px"
+        }}>
+          <strong style={{ fontWeight: "600" }}>
+            ⚠️ {locale === "zh" ? "安全提示：建议启用两步验证" : "Security Tip: Enable Two-Factor Authentication"}
+          </strong>
+          <span>
+            {locale === "zh"
+              ? "两步验证 (2FA) 目前未启用。为确保您的虚拟机配置资产及凭据安全，强烈建议您立即开始绑定 TOTP。"
+              : "Two-Factor Authentication (2FA) is currently disabled. To secure your configuration playbooks and credentials, we strongly recommend completing the TOTP setup."}
+            {isAdmin && (
+              <span style={{ display: "block", marginTop: "4px", fontWeight: "bold" }}>
+                {locale === "zh"
+                  ? "作为系统管理员，启用 2FA 对于维护整个平台的管理安全极其关键。"
+                  : "As an administrator, enabling 2FA is crucial to maintain system-wide administrative safety."}
+              </span>
+            )}
+          </span>
+        </div>
+      )}
 
       {!status.enabled && !enrolling ? (
         <button className="primary-action" type="button" onClick={() => void startEnroll()}>

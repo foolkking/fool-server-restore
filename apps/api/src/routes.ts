@@ -616,7 +616,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     // GitHub may return user-aborted flows with ?error=access_denied (no code/state).
     if (query.error || !query.code || !query.state) {
-      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=cancelled`);
+      reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=cancelled`);
       return;
     }
 
@@ -626,7 +626,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       // Don't leak which specific check failed — that's a CSRF oracle.
       // The client gets a single generic error; server logs may have details.
       request.log.warn({ reason: stateResult.reason }, "OAuth state verification failed");
-      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=invalid_state`);
+      reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=invalid_state`);
       return;
     }
     const { purpose, userId: linkUserId, redirectTo } = stateResult.payload;
@@ -638,14 +638,14 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       profile = await fetchGitHubProfile(accessToken);
     } catch (err) {
       request.log.warn({ err: err instanceof Error ? err.message : err }, "GitHub OAuth exchange/fetch failed");
-      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=provider_error`);
+      reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=provider_error`);
       return;
     }
 
     // 3. Branch: login flow vs link-existing-user flow
     if (purpose === "link") {
       if (!linkUserId) {
-        reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=invalid_state`);
+        reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=invalid_state`);
         return;
       }
       try {
@@ -659,15 +659,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             login: profile.login
           }
         });
-        reply.redirect(`${cfg.publicBaseUrl}${redirectTo ?? "/account/identities"}?oauth=linked`);
+        reply.redirect(`${cfg.publicBaseUrl}/#oauth=linked&provider=github`);
         return;
       } catch (err) {
         if (err instanceof IdentityAlreadyLinkedError) {
-          reply.redirect(`${cfg.publicBaseUrl}/account/identities?oauth_error=already_linked`);
+          reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=already_linked`);
           return;
         }
         request.log.error({ err: err instanceof Error ? err.message : err }, "OAuth link failed");
-        reply.redirect(`${cfg.publicBaseUrl}/account/identities?oauth_error=link_failed`);
+        reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=link_failed`);
         return;
       }
     }
@@ -690,11 +690,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         // Per spec D-1.1: user must log in with their existing local account
         // first, then link GitHub from settings. Surface this clearly.
         const emailHint = encodeURIComponent(err.email);
-        reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=email_conflict&email=${emailHint}`);
+        reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=email_conflict&email=${emailHint}`);
         return;
       }
       request.log.error({ err: err instanceof Error ? err.message : err }, "OAuth login failed");
-      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=login_failed`);
+      reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=login_failed`);
       return;
     }
 
@@ -705,12 +705,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const userRow = dbForSession.users.find((u) => u.id === result.user.id);
     if (!userRow) {
       request.log.error({ userId: result.user.id }, "OAuth: user vanished between create and session-issue");
-      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=login_failed`);
+      reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=login_failed`);
       return;
     }
 
     const totpEnabled = !!userRow.totpEnabledAt;
-    const adminNeedsEnrollment = userRow.role === "admin" && !totpEnabled;
+    const adminNeedsEnrollment = false; // Cancel forced 2FA for administrators
 
     const now = new Date().toISOString();
     const token = createSessionToken();
@@ -730,25 +730,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         });
       });
       const fragment = `#2fa=1&intermediateToken=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
-      reply.redirect(`${cfg.publicBaseUrl}/login/2fa${fragment}`);
-      return;
-    }
-
-    if (adminNeedsEnrollment) {
-      // Admin who hasn't set up 2FA yet — D-2.1 makes it mandatory.
-      const expiresAt = new Date(Date.now() + ENROLLMENT_REQUIRED_TTL_MS).toISOString();
-      await updateRuntimeDatabase((db) => {
-        db.sessions = db.sessions.filter((s) => new Date(s.expiresAt).getTime() > Date.now());
-        db.sessions.push({
-          token,
-          userId: userRow.id,
-          createdAt: now,
-          expiresAt,
-          enrollmentRequired: true
-        });
-      });
-      const fragment = `#enroll=1&token=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
-      reply.redirect(`${cfg.publicBaseUrl}/account/security/enroll${fragment}`);
+      reply.redirect(`${cfg.publicBaseUrl}/${fragment}`);
       return;
     }
 
@@ -763,7 +745,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     // localStorage (the SPA reads `#token=...` on /oauth/return). Fragments
     // never hit our server logs nor reverse-proxy access logs.
     const fragment = `#token=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
-    reply.redirect(`${cfg.publicBaseUrl}${redirectTo ?? "/oauth/return"}${fragment}`);
+    reply.redirect(`${cfg.publicBaseUrl}/${fragment}`);
   });
 
   // ── Google OAuth ──────────────────────────────────────────
@@ -782,14 +764,14 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const cfg = getConfig();
 
     if (query.error || !query.code || !query.state) {
-      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=cancelled`);
+      reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=cancelled`);
       return;
     }
 
     const stateResult = verifyState(query.state);
     if (!stateResult.ok) {
       request.log.warn({ reason: stateResult.reason }, "OAuth state verification failed");
-      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=invalid_state`);
+      reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=invalid_state`);
       return;
     }
     const { purpose, userId: linkUserId, redirectTo } = stateResult.payload;
@@ -800,13 +782,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       profile = await fetchGoogleProfile(accessToken);
     } catch (err) {
       request.log.warn({ err: err instanceof Error ? err.message : err }, "Google OAuth exchange/fetch failed");
-      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=provider_error`);
+      reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=provider_error`);
       return;
     }
 
     if (purpose === "link") {
       if (!linkUserId) {
-        reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=invalid_state`);
+        reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=invalid_state`);
         return;
       }
       try {
@@ -820,15 +802,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             login: profile.displayName || profile.email?.split("@")[0]
           }
         });
-        reply.redirect(`${cfg.publicBaseUrl}${redirectTo ?? "/account/identities"}?oauth=linked`);
+        reply.redirect(`${cfg.publicBaseUrl}/#oauth=linked&provider=google`);
         return;
       } catch (err) {
         if (err instanceof IdentityAlreadyLinkedError) {
-          reply.redirect(`${cfg.publicBaseUrl}/account/identities?oauth_error=already_linked`);
+          reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=already_linked`);
           return;
         }
         request.log.error({ err: err instanceof Error ? err.message : err }, "OAuth link failed");
-        reply.redirect(`${cfg.publicBaseUrl}/account/identities?oauth_error=link_failed`);
+        reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=link_failed`);
         return;
       }
     }
@@ -849,11 +831,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     } catch (err) {
       if (err instanceof EmailConflictError) {
         const emailHint = encodeURIComponent(err.email);
-        reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=email_conflict&email=${emailHint}`);
+        reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=email_conflict&email=${emailHint}`);
         return;
       }
       request.log.error({ err: err instanceof Error ? err.message : err }, "OAuth login failed");
-      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=login_failed`);
+      reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=login_failed`);
       return;
     }
 
@@ -861,12 +843,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const userRow = dbForSession.users.find((u) => u.id === result.user.id);
     if (!userRow) {
       request.log.error({ userId: result.user.id }, "OAuth: user vanished between create and session-issue");
-      reply.redirect(`${cfg.publicBaseUrl}/login?oauth_error=login_failed`);
+      reply.redirect(`${cfg.publicBaseUrl}/?oauth_error=login_failed`);
       return;
     }
 
     const totpEnabled = !!userRow.totpEnabledAt;
-    const adminNeedsEnrollment = userRow.role === "admin" && !totpEnabled;
+    const adminNeedsEnrollment = false; // Cancel forced 2FA for administrators
 
     const now = new Date().toISOString();
     const token = createSessionToken();
@@ -884,24 +866,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         });
       });
       const fragment = `#2fa=1&intermediateToken=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
-      reply.redirect(`${cfg.publicBaseUrl}/login/2fa${fragment}`);
-      return;
-    }
-
-    if (adminNeedsEnrollment) {
-      const expiresAt = new Date(Date.now() + ENROLLMENT_REQUIRED_TTL_MS).toISOString();
-      await updateRuntimeDatabase((db) => {
-        db.sessions = db.sessions.filter((s) => new Date(s.expiresAt).getTime() > Date.now());
-        db.sessions.push({
-          token,
-          userId: userRow.id,
-          createdAt: now,
-          expiresAt,
-          enrollmentRequired: true
-        });
-      });
-      const fragment = `#enroll=1&token=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
-      reply.redirect(`${cfg.publicBaseUrl}/account/security/enroll${fragment}`);
+      reply.redirect(`${cfg.publicBaseUrl}/${fragment}`);
       return;
     }
 
@@ -913,7 +878,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
 
     const fragment = `#token=${encodeURIComponent(token)}&new=${result.created ? "1" : "0"}`;
-    reply.redirect(`${cfg.publicBaseUrl}${redirectTo ?? "/oauth/return"}${fragment}`);
+    reply.redirect(`${cfg.publicBaseUrl}/${fragment}`);
   });
 
 

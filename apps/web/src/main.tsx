@@ -144,19 +144,31 @@ function App() {
       return;
     }
 
-    // 4. OAuth error
-    const oauthError = url.searchParams.get("oauth_error");
+    // 4. OAuth link success callback
+    const oauthLinked = url.searchParams.get("oauth") === "linked" || fragParams.get("oauth") === "linked";
+    if (oauthLinked) {
+      const provider = url.searchParams.get("provider") || fragParams.get("provider") || "OAuth";
+      alert(locale === "zh"
+        ? `${provider} 账号绑定成功！`
+        : `${provider} account linked successfully!`);
+      history.replaceState(null, "", url.origin + "/");
+      setPage("settings");
+      return;
+    }
+
+    // 5. OAuth error
+    const oauthError = url.searchParams.get("oauth_error") || fragParams.get("oauth_error");
     if (oauthError) {
-      const conflictEmail = url.searchParams.get("email");
+      const conflictEmail = url.searchParams.get("email") || fragParams.get("email");
       const msg = oauthError === "email_conflict"
         ? (locale === "zh"
-          ? `邮箱 ${conflictEmail ?? ""} 已被注册。请先使用密码登录，再到设置里绑定 GitHub。`
-          : `The email ${conflictEmail ?? ""} is already registered. Sign in with your password first, then link GitHub from settings.`)
+          ? `邮箱 ${conflictEmail ?? ""} 已被注册。请先使用密码登录，再到设置里绑定三方账号。`
+          : `The email ${conflictEmail ?? ""} is already registered. Sign in with your password first, then link the provider from settings.`)
         : (locale === "zh"
           ? `登录未成功（${oauthError}）。`
           : `Login failed (${oauthError}).`);
       alert(msg);
-      history.replaceState(null, "", url.origin + url.pathname);
+      history.replaceState(null, "", url.origin + "/");
       return;
     }
 

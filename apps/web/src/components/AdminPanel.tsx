@@ -282,7 +282,7 @@ export function AdminPanel({ locale, authToken, connections }: Props) {
                   <th style={{ padding: "12px 8px", color: "#94a3b8", fontWeight: "600" }}>{locale === "zh" ? "角色" : "Role"}</th>
                   <th style={{ padding: "12px 8px", color: "#94a3b8", fontWeight: "600" }}>{locale === "zh" ? "状态" : "Status"}</th>
                   <th style={{ padding: "12px 8px", color: "#94a3b8", fontWeight: "600" }}>{locale === "zh" ? "注册时间" : "Joined"}</th>
-                  <th style={{ padding: "12px 8px", color: "#94a3b8", fontWeight: "600", textRight: "right" }}>{locale === "zh" ? "操作" : "Actions"}</th>
+                  <th style={{ padding: "12px 8px", color: "#94a3b8", fontWeight: "600", textAlign: "right" }}>{locale === "zh" ? "操作" : "Actions"}</th>
                 </tr>
               </thead>
               <tbody>

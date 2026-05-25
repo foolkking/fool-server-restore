@@ -142,17 +142,17 @@
       "expiresAt": "2026-05-31T11:45:09.429Z"
     },
     {
-      "token": "Z1AITG0z1wdc8yAdqT_aLOzS4NY7rXJkbCjU8JVvmDg",
-      "userId": "user_d1f26311f40b4fc497",
-      "createdAt": "2026-05-25T07:15:23.822Z",
-      "expiresAt": "2026-05-25T07:20:23.822Z",
-      "twofaPending": true
-    },
-    {
       "token": "iImJWgxbLxG3MkkmOrRpCtOX-lwcLT1APPzyTJdKNJw",
       "userId": "user_d1f26311f40b4fc497",
       "createdAt": "2026-05-25T07:15:50.598Z",
       "expiresAt": "2026-06-01T07:15:50.597Z"
+    },
+    {
+      "token": "V3B1X0Jti-dTI2pj2OSoFlc5pyYaw1jY7MA_tuFG0NI",
+      "userId": "user_d1f26311f40b4fc497",
+      "createdAt": "2026-05-25T08:42:21.103Z",
+      "expiresAt": "2026-05-25T08:47:21.103Z",
+      "twofaPending": true
     }
   ],
   "connections": [
