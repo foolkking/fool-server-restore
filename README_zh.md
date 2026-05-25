@@ -1,8 +1,8 @@
-# EnvForge
+# EnvForge — 自托管 Linux 服务器配置管理平台
 
 自托管的 Linux 服务器配置管理平台。通过 SSH 连接虚拟机，一键安装软件、管理配置、保留环境，把整套系统状态变成可重用的 Playbook。
 
-> 项目仓库：<https://github.com/foolkking/envforge>
+> 项目主页及代码仓库：<https://github.com/foolkking/envforge>
 
 ---
 
@@ -36,7 +36,7 @@
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | 工程架构、解耦边界、SQLite混合数据表定义、WAL 刷盘策略、WorkerRuntime 生命周期 |
 | [docs/future_plan.md](./docs/future_plan.md) | 长期分布式演进蓝图、解耦接口定义、系统容量极限、运维 SOP 故障预案手册 |
 | [docs/CATALOG.md](./docs/CATALOG.md) | 100 软件 + 15 组合 = 115 项 catalog 完整清单（按 category 分组） |
-| [docs/CATALOG_AUTHORING.md](./docs/CATALOG_AUTHORING.md) | 新增 / 修改 catalog 项的统一规范（md / yaml / vars.json / catalog.ts） |
+| [docs/CATALOG_AUTHORING.md](./docs/CATALOG_AUTHORING.md) | 新增 / 修改 catalog 项 of 统一规范（md / yaml / vars.json / catalog.ts） |
 | [docs/DEPLOY.md](./docs/DEPLOY.md) | Docker 从零部署：依赖、HTTPS、systemd、备份、升级、排错 |
 | [docs/DEPLOY_SELF.md](./docs/DEPLOY_SELF.md) | 用现有 EnvForge 部署一台新的 EnvForge 服务器（多区域 / 蓝绿升级 / 给客户复制） |
 | [docs/CROSS_DISTRO_STRATEGY.md](./docs/CROSS_DISTRO_STRATEGY.md) | 跨发行版兼容策略：包名/服务名翻译、preflight、compatibility 声明 |
@@ -63,6 +63,6 @@ node --test apps/api/dist/engine/tests/*.test.js
 
 100+ 个引擎单元测试覆盖：runner / 模块（package / service / shell / lineinfile / cron / systemd / sysctl / etc）/ 任务队列 / 敏感扫描 / migrations / catalog overrides / 跨发行版翻译 / preflight 阶段 / SQLite 压测与崩溃回滚。
 
-## License
+## 许可证
 
 MIT

@@ -1,20 +1,23 @@
 # EnvForge — 工程架构与设计
 
-最后更新：2026-05-24
+最后更新：2026-05-25
 
-> 本文合并自 PROJECT_STRUCTURE、AUTH_AND_CONCURRENCY_PLAN、ADMIN_CATALOG_PLAN、BUILD_AND_RESTORE_FLOW、DEPLOYMENT 五篇旧文档。
+> 本文合并自 PROJECT_STRUCTURE、AUTH_AND_CONCURRENCY_PLAN、ADMIN_CATALOG_PLAN、BUILD_AND_RESTORE_FLOW、DEPLOYMENT 五篇旧文档，并全面同步了 2026-05 引入的 SQLite 高鲁棒性混合持久化架构及社区生态组件设计。
 
 ## 一、技术栈
 
 | 层 | 技术 |
 |----|------|
-| 后端 | Node.js 20+ / Fastify / TypeScript |
-| 前端 | React 18 / Vite / TypeScript / lucide-react |
-| 引擎 | Ansible-Compatible TypeScript 原生执行器（无 Python 依赖） |
-| SSH | `ssh2` library + SFTP |
-| 存储 | JSON 文件（`SafeJsonStore`：原子写 + .bak 备份 + 写锁 + 读缓存） |
-| 加密 | scrypt（密码 hash）+ AES-256-GCM（凭据加密，master key 来自 `.env`） |
-| YAML | `yaml` package（不手工拼接，所有序列化走库） |
+| **后端** | Node.js 20+ / Fastify / TypeScript |
+| **前端** | React 18 / Vite / TypeScript / lucide-react |
+| **引擎** | Ansible-Compatible TypeScript 原生执行器（无 Python 依赖） |
+| **SSH** | `ssh2` library + SFTP |
+| **存储** | **SQLite 混合型持久化引擎**（基于 `better-sqlite3`：WAL 模式 + 延迟/即时事务控制 + 物理写锁重试 + 语句预编译缓存） |
+| **安全过滤** | AST 级禁止 HTML 解析（`marked` html=false） + 链接 URI Whitelist 协议校验 + 极速后端 HTML 实体字符实体编码 |
+| **加密** | scrypt（密码 hash）+ AES-256-GCM（凭据加密，master key 来自 `.env`） |
+| **YAML** | `yaml` package（不手工拼接，所有序列化走库） |
+
+---
 
 ## 二、目录结构
 
@@ -24,369 +27,151 @@ EnvForge/
 │   ├── api/                   Node.js Fastify 后端
 │   │   └── src/
 │   │       ├── server.ts      入口（启动 fastify + scheduler + migrations）
-│   │       ├── routes.ts      所有 HTTP 路由
-│   │       ├── auth.ts        scrypt 密码哈希 + 会话 token + API token
-│   │       ├── config.ts      .env 解析（含 ENVFORGE_ADMIN_EMAILS）
-│   │       ├── runtime-store.ts   主数据库（users / connections / playbooks / schedules / ...）
-│   │       ├── migrations.ts  启动时一次性数据迁移
-│   │       ├── connections.ts SSH 连接档案 + 加密存储
-│   │       ├── ssh.ts         SSH 连接测试 + 探测
-│   │       ├── ssh-pool.ts    SSH 客户端构造助手（keepalive 30s）
-│   │       ├── collectors/
-│   │       │   └── remote-collector.ts  25+ 来源系统采集（apt-mark showmanual + initial-status.gz 过滤）
-│   │       ├── capture.ts     环境保留：反向生成 Playbook
-│   │       ├── sensitive-scan.ts  13 条敏感字段扫描规则
-│   │       ├── snapshot-deploy.ts vm-snapshot 四阶段拆分
-│   │       ├── catalog.ts     基线 catalog（115 项静态硬编码）
-│   │       ├── catalog-overrides.ts  admin overlay（merge / Playbook YAML / Markdown）
-│   │       ├── database.ts    catalog 读取（baseline + override merge）
-│   │       ├── config-files.ts  远程配置文件 list/read/write/diff
-│   │       ├── preflight.ts   执行前检查（sudo/磁盘/网络/apt lock/systemd）
-│   │       ├── drift.ts       漂移检测：setBaseline / runDriftCheck
-│   │       ├── scheduler.ts   cron-style 任务调度器（30s tick）
-│   │       ├── cron.ts        手写 5 字段 cron 解析器（无依赖）
-│   │       ├── webhooks.ts    HMAC-SHA256 签名 + 5s 超时 + 并行投递
-│   │       ├── task-queue.ts  per-connectionId FIFO 互斥队列
-│   │       ├── executor.ts    任务执行器（包装 enqueueTask）
-│   │       ├── profiles.ts    用户上传的 combo / vm-snapshot
-│   │       ├── rbac.ts        三级角色 + canUploadKind
-│   │       ├── crypto.ts      AES-256-GCM 凭据加密
-│   │       ├── key-store.ts   SSH 密钥加密存储（data/keys/）
-│   │       └── engine/
-│   │           ├── index.ts            Playbook 引擎入口
-│   │           ├── runner.ts           runPlaybook + 模块注册表（13 模块）
-│   │           ├── ssh-executor.ts     ssh2 适配器（exec / putFile / getFile）
-│   │           ├── module-docs.ts      自描述模块文档（前端模块浏览器用）
-│   │           ├── errors.ts           错误分类 + 中英文修复建议
-│   │           ├── impact.ts           影响范围预估
-│   │           ├── modules/
-│   │           │   ├── package.ts      apt/yum/dnf 幂等安装
-│   │           │   ├── service.ts      systemctl 幂等管理
-│   │           │   ├── lineinfile.ts   配置文件单行编辑（含 .envforge.bak 备份）
-│   │           │   ├── copy.ts         SFTP 上传（含备份）
-│   │           │   ├── shell.ts        逃生口（creates/removes 实现幂等）
-│   │           │   ├── template.ts     Jinja2-lite 渲染
-│   │           │   ├── user.ts         系统用户管理
-│   │           │   ├── file.ts         文件 / 目录 mode/owner
-│   │           │   ├── ufw.ts          防火墙规则
-│   │           │   ├── cron.ts         crontab 管理
-│   │           │   ├── systemd_unit.ts 创建 .service 单元
-│   │           │   ├── sysctl.ts       内核参数
-│   │           │   └── acme.ts         Let's Encrypt 证书签发
-│   │           └── tests/              90 个单元测试
-│   └── web/                   React + Vite 前端
+│   │       ├── routes.ts      所有 HTTP 路由 (评论、提议、站内信、审核、被举报处理)
+│   │       ├── auth/          鉴权、2FA 模块 (OAuth / MFA / 密码策略)
+│   │       ├── config.ts      .env 解析（包含 SMTP 及三方 OAuth 配置）
+│   │       ├── db-sqlite.ts   核心 SQLite 引擎（连接池、PRAGMA、StatementRegistry、SHA-256校验迁移）
+│   │       ├── db-store.ts    数据库存储兼容网桥（路由 SafeJsonStore 读写）
+│   │       ├── runtime-store.ts   数据仓储与接口层（CommentRepository, QueueProvider, SearchProvider）
+│   │       ├── scheduler.ts   WorkerRuntime 调度引擎（WAL Checkpoint, VACUUM, Data Retention 清洗）
+│   │       ├── migrations.ts  升级迁移控制脚本
+│   │       └── engine/        Ansible-Compatible Playbook 核心解析与执行器
+│   └── web/                   React 18 + Vite 前端
 │       └── src/
-│           ├── main.tsx       根组件 + 导航 + 全局状态
-│           ├── api.ts         所有 fetch 包装
-│           ├── styles.css     全局样式
-│           ├── pages/
-│           │   ├── MachinePage.tsx     虚拟机管理
-│           │   ├── MarketPage.tsx      配置市场（含 Preflight + 安装后 Markdown 弹窗）
-│           │   ├── PlaybookPage.tsx    Playbook 编辑器
-│           │   ├── SettingsPage.tsx    高级设置（5 个标签页 + admin Catalog）
-│           │   └── MePage.tsx          我的空间
-│           ├── components/
-│           │   ├── TerminalPanel.tsx   底部终端日志（可拉伸）
-│           │   ├── ConfigFilesPanel.tsx 配置文件 view/edit/diff/template
-│           │   ├── InventoryPanel.tsx  软件清单（含批量卸载）
-│           │   ├── ConnectionDetailPanel.tsx
-│           │   ├── PreflightPanel.tsx  执行前检查报告
-│           │   ├── PlaybookEditor.tsx
-│           │   ├── MarkdownOverlay.tsx
-│           │   ├── ComponentPreview.tsx
-│           │   ├── OnboardingWizard.tsx 4 步首次启动向导
-│           │   ├── CatalogAdminPanel.tsx admin catalog 管理
-│           │   └── InfoPair.tsx
-│           └── lib/types.ts   Locale / Page / navItems / text 字典
-├── configs/
-│   └── catalog/
-│       ├── playbooks/<id>.yaml  115 个基线 Playbook
-│       ├── software/<id>.md     软件说明
-│       ├── combos/<id>.md       组合说明
-│       ├── docker/<id>.yaml     docker-compose 片段
-│       └── admin-notes/         管理员备选 MD
-├── data/                      运行时数据（不入 git）
-│   ├── runtime-db.json        主数据库（users / connections / playbooks / schedules / webhooks / tokens / catalogOverrides ...）
-│   ├── snapshots/             历史采集快照
-│   ├── keys/<userId>/<keyId>.enc  加密的 SSH 私钥
-│   └── catalog-overrides/     admin 修改的 catalog 内容
-│       ├── playbooks/<id>.yaml
-│       └── guides/<id>.md
-├── docs/
-│   ├── PRODUCT.md             产品定位与设计
-│   ├── ARCHITECTURE.md        本文（工程架构 / 引擎设计 / 测试）
-│   ├── DEPLOY.md              纯手动 Docker 部署
-│   ├── DEPLOY_SELF.md         用现有 EnvForge 部署一台新 EnvForge 服务器
-│   ├── CATALOG.md             115 项 catalog 完整清单
-│   ├── CATALOG_AUTHORING.md   catalog 项编写规范
-│   ├── CATALOG_EXPAND_PROMPT.md   给 LLM 的扩展 prompt
-│   ├── CROSS_DISTRO_STRATEGY.md   跨发行版兼容策略
-│   └── AGENT_HANDOFF.md       会话交接文件
-├── scripts/
-│   ├── preflight.mjs          npm run preflight
-│   ├── start-production.sh    Linux 启动脚本
-│   └── start-production.ps1   Windows 启动脚本
-├── docker-compose.yml         生产部署
-├── docker-compose.demo.yml    沙盒（含一台 Ubuntu sandbox VM）
-├── Dockerfile                 多阶段构建
-├── .env.example               环境变量模板
-└── package.json
+│           ├── api.ts         前端 HTTP 请求客户端（Cursor 评论分页）
+│           ├── main.tsx       路由入口、头部 Inbox 站内信气泡下拉面板
+│           ├── components/    AccountPanel (2FA提示), AdminPanel (Diff视图建议审核), MarkdownOverlay (三栏详情)
+│           └── pages/         MachinePage, MarketPage (新增提议弹窗), SettingsPage
+├── configs/                   内置基线配置与 Playbook
+├── data/                      运行时本地持久化目录（不入 Git）
+│   ├── envforge.db            主 SQLite 数据库文件
+│   ├── envforge.db-wal        SQLite WAL 日志文件
+│   ├── keys/                  加密保存的目标 VM 私钥
+│   └── archives/              按年自动压缩归档的审计与风控历史记录
+└── docs/                      工程与产品说明文档
 ```
 
-## 三、Ansible-Compatible 引擎
+---
 
-### 数据模型
+## 三、系统解耦 ── 模块化边界设计
+
+为了保障系统的长期可扩展性并防止 SQLite 发生“职责过度承载”的危机，EnvForge 引入了 **Repository & Provider 抽象边界模式**。业务控制器仅能通过标准抽象接口与数据源交互，禁止任何 SQL 穿透：
+
+```
++-----------------------------------------------------------------------------------+
+|                                Fastify Controllers                                |
++-----------------------------------------------------------------------------------+
+       |                    |                    |                   |
+       v                    v                    v                   v
++--------------+     +--------------+     +--------------+    +--------------+
+| Persistence  |     |   Comment    |     |    Queue     |    |    Search    |
+|  Subsystem   |     |  Subsystem   |     |  Subsystem   |    |  Subsystem   |
+| (JSON Store) |     | (Relational) |     | (Async Jobs) |    |  (FTS / SQL) |
++--------------+     +--------------+     +--------------+    +--------------+
+```
+
+1.  **Persistence Subsystem** (存储配置子系统)：采用 ACID 键值文档设计（`system_kv`），确保系统高内聚性和极致的向后兼容；
+2.  **Comment Subsystem** (评论交互子系统)：管理评论、点赞、被举报风控状态，使用专门的关系型 SQL 表；
+3.  **Queue Subsystem** (异步任务队列子系统)：引入 `NotificationQueueProvider` 接口，当前由 `SQLiteQueueProvider` 执行，未来可平滑升级至 **Redis (bullmq)**；
+4.  **Search Subsystem** (搜索子系统)：引入 `SearchProvider` 接口，当前版本对中文搜索采用索引友好的 SQL `LIKE` 模糊查询，英文搜索则结合 FTS5 虚拟表。长远可无缝切至 **Meilisearch**；
+5.  **Moderation Subsystem** (社区风控子系统)：利用 `ModerationProvider` 处理自动阈值隐藏及告警升级。
+
+---
+
+## 四、混合型 SQLite 数据库设计
+
+### 1. 表结构 DDL 定义
+
+*   **`system_kv`**：核心系统配置表（Document Store）
+    *   `key` (TEXT PRIMARY KEY) / `value` (TEXT NOT NULL, 存放 RuntimeDatabase JSON 字符串)
+*   **`schema_migrations`**：迁移历史与文件完整性校验表
+    *   `version` (INTEGER PRIMARY KEY) / `checksum` (TEXT NOT NULL, SHA-256 签名) / `applied_at` (TEXT)
+*   **`users_cache_mirror`**：Lookup 外键约束专用用户元数据缓存表（只读 Cache 镜像，最终一致性同步）
+    *   `id` (TEXT PRIMARY KEY) / `username` (TEXT) / `display_name` (TEXT) / `avatar_url` (TEXT) / `role` (TEXT) / `deleted_at` (TEXT)
+*   **`catalog_comments`**：paginated 关系评论表
+    *   `id` (TEXT PRIMARY KEY) / `catalog_id` (TEXT) / `user_id` (TEXT) / `username` (TEXT) / `display_name` (TEXT) / `avatar_url` (TEXT) / `content` (TEXT) / `visibility` (TEXT, 默认 'public') / `created_at` (TEXT)
+    *   *索引设计*：`idx_comments_page ON catalog_comments(catalog_id, visibility, created_at DESC, id DESC)`（极致紧凑复合游标分页索引，**剔除了 text 列以防 B-Tree 严重膨胀**）。
+*   **`comment_likes`** 与 **`comment_reports`**：高频点赞/举报表
+    *   点赞主键：`PRIMARY KEY (user_id, comment_id)`（利用引擎级联合索引，完全杜绝重复点赞）。
+    *   举报唯一性约束：`UNIQUE(user_id, comment_id)`。
+*   **`catalog_suggestions`**：修改建议与提案表
+    *   `id` (TEXT PRIMARY KEY) / `catalog_id` (TEXT NULL) / `user_id` (TEXT) / `type` (TEXT) / `name_zh` / `name_en` / `playbook_yaml` / `guide_markdown` / `remark` / `status` (TEXT, 'pending'|'accepted'|'rejected') / `feedback` / `processed_by` / `processed_at` / `created_at` / `updated_at`
+*   **`admin_audit_logs`**：管理员不可篡改单向审计日志表
+    *   `id` (TEXT PRIMARY KEY) / `admin_id` / `action` / `target_id` / `old_value` / `new_value` / `feedback` / `timestamp`
+    *   *不可篡改铁律*：在 `admin_audit_logs` 上部署 SQLite `BEFORE UPDATE` 和 `BEFORE DELETE` 级联触发器，强行抛出 `ABORT` 阻断一切修改与删除尝试。
+*   **`notification_queue`** 与 **`fts_sync_queue`**：可靠后台工作队列表
+    *   包含 `status` ('pending'|'processing'|'failed'|'done'|'dead_letter')，`attempts`（重试次数，最大 5 次），`next_retry_at`（基于指数退避的时间戳），`last_error` 字段，提供 At-Least-Once (至少一次) 强力投递保障与死信丢弃。
+
+### 2. PRAGMA 与并发优化配置
 
 ```typescript
-interface Playbook {
-  name: string;
-  hosts: "all" | string;
-  vars?: Record<string, unknown>;
-  tasks: Task[];
-}
-
-interface Task {
-  name: string;
-  module: string;            // package / service / lineinfile / ...
-  args: Record<string, unknown>;
-  when?: string;
-  tags?: string[];
-  register?: string;
-  loop?: unknown[];
-}
-
-interface AnsibleModule<Args> {
-  name: string;
-  run(executor: SshExecutor, args: Args, dryRun: boolean): Promise<ModuleResult>;
-}
-
-interface ModuleResult {
-  changed: boolean;
-  failed?: boolean;
-  msg?: string;
-  stdout?: string;
-  stderr?: string;
-  exitCode?: number;
-}
+db.pragma("journal_mode = WAL");          // 启用 Write-Ahead Logging 提升读写并行度
+db.pragma("synchronous = NORMAL");         // WAL 下 NORMAL 级即可提供极致安全性与磁盘吞吐力
+db.pragma("foreign_keys = ON");           // 激活关系表物理外键关联，杜绝僵尸数据
+db.pragma("busy_timeout = 5000");          // 设定 5000ms 写锁等待超时，防止 SQLITE_BUSY
+db.pragma("wal_autocheckpoint = 1000");    // 设定 1000 page 自动 Checkpoint 阀值
 ```
 
-每个模块自带幂等性：先 check 当前状态，再决定是否 apply。`shell` 模块用 `creates` / `removes` 实现幂等。
+### 3. 锁策略分级 (Graduated Locking)
 
-### YAML ↔ JS 序列化
+*   **Deferred Lock (延迟锁 - `BEGIN`)**：高频、轻量级日常操作（创建评论、点赞、举报）。允许多个读取连接并行，仅在实际执行 INSERT 写入时才升级为写锁，极大提高吞吐量，减少锁争抢。
+*   **Immediate Lock (即时写锁 - `BEGIN IMMEDIATE`)**：复杂、多步骤的事务（建议处理、管理员审核、结构迁移）。在事务开启瞬间即索取排它写锁，确保数据一致，防范并发升级死锁。
 
-**绝对不要手工拼接 YAML**。所有 Playbook 生成走 `yaml.stringify(obj)`，避免 `'\''` 等 shell 转义被 YAML 解析为非法 escape。
+### 4. 语句句柄编译缓存 (StatementRegistry)
 
-## 四、并发控制 — 任务队列
-
-```
-模块：apps/api/src/task-queue.ts
-```
-
+为了免除每次 Fastify 请求频繁 parse SQL 所浪费的 CPU 算力，`db-sqlite.ts` 引入了 `StatementRegistry`：
 ```typescript
-// queues: Map<connectionId, QueueEntry[]>
-// draining: Map<connectionId, boolean>
+class StatementRegistry {
+  private cache = new Map<string, any>();
+  constructor(private db: any) {}
+  get(sql: string) {
+    if (!this.cache.has(sql)) {
+      this.cache.set(sql, this.db.prepare(sql));
+    }
+    return this.cache.get(sql);
+  }
+}
 ```
 
-任务状态流转：
+---
 
-```
-created
-  → registerBatchTask
-  → enqueueTask
-  → 队列前面有任务 → status = "queued", queuePosition = N
-  → 队列空 → 立即开始
-  → onStart() → status = "running"
-  → run() → "succeeded" | "failed" | "cancelled"
-```
+## 五、异步运行时与生命周期调度 (WorkerRuntime)
 
-| 取消语义 | 行为 |
-|---------|------|
-| queued | 从队列移除 + status = cancelled，永远不会跑 |
-| running | 设 cancelFlag，任务在下一个 yield 点退出 |
-| 其它 | 无操作 |
+为了确保自托管环境的免运维特征，EnvForge 引入了统一的 **`WorkerRuntime` 异步生命周期管理引擎**，统一收拢所有后台定时作业，防止 cron 散落：
 
-## 五、认证体系
+### 1. 任务调度管理
+由 `BackgroundTaskScheduler` 调度四类后台微任务，运行指标（状态、耗时、最近执行时间、错误日志）均实时上报至 `background_tasks` 系统表中：
+*   **Hourly Checkpoint**：每小时整点调用 `PRAGMA wal_checkpoint(PASSIVE);` 强制合并 WAL 日志，防范日志无限膨胀；
+*   **Daily Hot Backup**：每日凌晨 03:00 自动调用 SQLite 级 `db.backup()` 安全热备份；
+*   **Weekly Vacuum & Defragmentation**：每周日凌晨 04:00 调用 `VACUUM; ANALYZE;` 重整碎片并重新收集索引树规划器统计数据；
+*   **Event Retention Policy**：定时根据保留策略清理过期数据（Notification queue 保留 7 天，已读 Inbox 保留 180 天）。
 
-### 三种 token
+### 2. 平滑关机序列 (Graceful Shutdown)
+全局拦截系统的 `SIGTERM` 与 `SIGINT` 终止信号：
+1.  **挂起 Worker**：后台队列状态即刻标为 `'paused'`，拒绝消费新事件；
+2.  **缓冲退出**：阻塞主进程退出最大 `5000ms`，静待当前执行中的发送任务/FTS 同步原子执行完毕；
+3.  **最终 Checkpoint**：调用 `PRAGMA wal_checkpoint(TRUNCATE);` 将 WAL 更改强制物理同步回 `envforge.db`；
+4.  **安全 Close**：干净地关闭 SQLite 句柄并调用 `process.exit(0)`，保证零脏页和零数据损毁。
 
-| 类型 | 前缀 | 用途 | 存储 |
-|------|------|------|------|
-| Session token | base64url 32 字节 | Web 登录 | `runtime-db.sessions[]`，TTL 24h |
-| API token | `envf_*` | CI/CD 集成 | `runtime-db.apiTokens[]`，存 SHA-256 hash |
-| OAuth token | （未实现） | GitHub OAuth | 未实现 |
+---
 
-`auth.ts` 的 `getUserByToken` 同时识别 session 和 `envf_*` 前缀。
+## 六、可观测性与运维边界
 
-### 一次性数据迁移
-
-`apps/api/src/migrations.ts` 在启动时执行（幂等）。当前一条迁移：把 `users` 中所有 `name.toLowerCase() === "fool"` 的账户提升为 `role = "admin"`。
-
-未来添加新迁移：在 `MIGRATIONS[]` 数组里追加 `{ id, description, run }`，系统会自动跑。
-
-### 待实现：GitHub OAuth
-
-```
-GET /api/auth/github            → 重定向到 GitHub authorize（含 state 防 CSRF）
-GET /api/auth/github/callback   → 用 code 换 token，登录或自动注册
+### 1. 慢查询日志追踪
+在 `StatementRegistry` 执行中注入高频高精度计时器：
+```typescript
+const start = performance.now();
+const result = stmt.run(...);
+const duration = performance.now() - start;
+if (duration > 100) {
+  log.warn({ sql, duration }, "Slow query detected (>100ms)");
+}
 ```
 
-实现要点：
-- `.env` 加 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` / `GITHUB_REDIRECT_URI`
-- 用 `node:fetch`（不引入 passport），自己实现两次跳转
-- 邮箱已有账户 → 绑定 `oauthProvider: "github"` 后登录
-- 邮箱未注册 → 新建账户（无密码）
-- `StoredUser` 扩展 `oauthProvider` / `oauthSubject` / `avatarUrl`
+### 2. 容量极限与 PostgreSQL 迁移阈值
 
-### 待实现：邮箱验证码
-
-```
-POST /api/auth/email/send-code   → 发送 6 位验证码到邮箱
-POST /api/auth/email/verify      → 验证码正确后才创建账户
-```
-
-- `.env` 加 `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM`
-- 引入 `nodemailer`
-- 验证码存 `data/email-codes.json`（TTL 10 分钟，错误 5 次锁邮箱 1 小时）
-- 开发降级：无 SMTP 时 console.log 输出验证码
-
-## 六、Admin Catalog 管理 — overlay 模式
-
-### 数据布局
-
-```
-configs/catalog/playbooks/<id>.yaml  ← 基线 Playbook（只读，115 项随代码发布）
-configs/catalog/software/<id>.md     ← 基线说明（只读）
-data/catalog-overrides/playbooks/<id>.yaml  ← admin override Playbook
-data/catalog-overrides/guides/<id>.md       ← admin override 说明
-runtime-db.catalogOverrides[]               ← 元数据 override + hidden 标记
-```
-
-### 4 种状态
-
-| 状态 | 来源 |
-|------|------|
-| **baseline** | 仅基线，无 override |
-| **modified** | 有元数据或文件 override |
-| **added** | 完全 user-added（无 baseId） |
-| **hidden** | 基线项被设 `hidden: true`，市场不再显示 |
-
-### 加载顺序
-
-`loadPlaybookFromCatalog(id)`：
-1. `data/catalog-overrides/playbooks/<id>.yaml` 优先
-2. fallback `configs/catalog/playbooks/<id>.yaml`
-3. 都没有：404
-
-`readCatalogGuide(id)`：同样的双层 fallback。
-
-`listCatalogFromDatabase()`：基线 + override 元数据合并（`mergeCatalog`），过滤掉 hidden。
-
-### 为什么不直接改基线？
-
-- 升级 EnvForge 时基线代码新增的 catalog 自然出现，不需要数据迁移
-- admin 可以「重置为基线」恢复
-- 改动集中在 `data/`，备份 / 迁移容易
-
-### 安全护栏
-
-- 严格 id 正则 `^[a-z0-9][a-z0-9-]{0,59}$` 防路径注入
-- 保存前服务端 `parsePlaybook(yaml)` 校验
-- API 端点全部要 `role === "admin"`，否则 403
-
-## 七、构建与部署
-
-### 本地开发 / 生产部署
-
-```bash
-git clone https://github.com/foolkking/envforge.git
-cd envforge
-npm install
-echo "ENVFORGE_MASTER_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" > .env
-npm run build
-node apps/api/dist/server.js     # 或 npm run start:prod
-```
-
-### Docker 部署（推荐）
-
-```bash
-git clone https://github.com/foolkking/envforge.git
-cd envforge
-cp .env.example .env
-# 编辑 .env：填 ENVFORGE_MASTER_KEY（必填）+ ENVFORGE_ADMIN_EMAILS（强烈建议）
-docker compose up -d
-# 默认绑 127.0.0.1:5173 → 用 nginx 反代到外部
-```
-
-> 从零开始的详细步骤（装 Docker、生成 master key、git clone、配 .env、HTTPS 反代、
-> systemd 自启、备份恢复、升级卸载、排错）见 **[docs/DEPLOY.md](./DEPLOY.md)**。
->
-> 已有一台运行中的 EnvForge，想用它部署一台新的 EnvForge 服务器（多实例 / 蓝绿升级 / 客户复制）见
-> **[docs/DEPLOY_SELF.md](./DEPLOY_SELF.md)**。
-
-### 沙盒演示（含一台 Ubuntu target VM）
-
-```bash
-docker compose -f docker-compose.demo.yml up -d
-# 访问 http://localhost:5173
-# VM Manager 添加连接：host=sandbox-vm port=22 user=demo password=demo
-```
-
-### 健康检查
-
-```bash
-GET /api/health   # 简单 ping
-GET /api/ready    # 检查数据目录可写、web 静态文件存在
-npm run smoke:test
-```
-
-### 测试
-
-```bash
-npm run build --workspace @fool/api
-node --test apps/api/dist/engine/tests/*.test.js
-```
-
-```
-# tests 116
-# pass 116
-# fail 0
-```
-
-测试套件覆盖：runner / errors / 各模块（package / service / shell / lineinfile 等）/ 任务队列 / 敏感扫描 / cron 解析器 / migrations / catalog overrides / 跨发行版翻译 / 包模块 preflight 阶段 (EPEL/module/exclude 探测)。
-
-### 关键 .env 变量
-
-```text
-NODE_ENV=production
-HOST=0.0.0.0
-PORT=5173
-ENVFORGE_MASTER_KEY=<base64 32 字节>     # 必填，凭据加密
-SESSION_TTL_HOURS=24
-SERVE_WEB=1
-WEB_DIST_DIR=apps/web/dist
-ENVFORGE_ADMIN_EMAILS=admin@example.com  # 可选，admin 邮箱白名单（逗号分隔）
-# 待实现：
-# GITHUB_CLIENT_ID=
-# GITHUB_CLIENT_SECRET=
-# SMTP_HOST=
-# SMTP_PORT=
-```
-
-### 部署安全边界
-
-- `data/` 加入备份策略，**不入 git**
-- 公网部署需要反向代理 HTTPS、登录速率限制
-- Master key 一旦丢失，所有加密的 SSH 密码 / 密钥无法解密
-- 推荐 systemd 或 pm2 做进程管理
-
-## 八、关键设计决策
-
-| 决策 | 理由 |
-|------|------|
-| 自建引擎而非集成 Ansible | 避免 Python 依赖；YAML 格式兼容，用户随时可迁移 |
-| JSON 文件 + SafeJsonStore 而非 SQLite | 减少 native 编译依赖，部署简单；写锁 + 原子写已足够 |
-| 手写 cron 解析器而非 node-schedule | 减少依赖，5 字段语义足够，8 个测试覆盖 |
-| Catalog overlay 而非可写 catalog | 升级时基线新项自动出现；可重置 |
-| Per-connectionId 互斥而非全局锁 | 多 VM 并行 + 同 VM 串行，符合实际工作负载 |
-| Ansible 兼容的 YAML 格式 | 用户学到的就是 Ansible，不锁定 |
-| TypeScript 全栈而非分语言 | 单一团队心智，类型穿透前后端 |
+自托管 SQLite 运行模式建议遵守如下最大容量边界。一旦实际运维数据穿透阈值，应自动使用 `docs/future_plan.md` 提供的预置脚本平滑平移至 PostgreSQL / Redis：
+*   **社区评论总容量**：最大 **1,000,000** 条记录；
+*   **每日事务量**：最大 **50,000** 次写 / 天；
+*   **瞬时并发写**：最大 **50** 事务 / 秒；
+*   **异步队列堆积**：最大 **100,000** 条 pending。
