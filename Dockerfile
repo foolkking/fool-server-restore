@@ -21,8 +21,11 @@ COPY packages/cli/package.json ./packages/cli/
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 
+# Install build dependencies for native C++ addons like sqlite3
+RUN apk add --no-cache python3 make g++
+
 # Install ALL dependencies (build needs devDeps like typescript, vite)
-RUN npm ci --ignore-scripts
+RUN npm ci
 
 # Copy source
 COPY tsconfig.base.json ./
@@ -61,7 +64,9 @@ COPY packages/cli/package.json ./packages/cli/
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 
-RUN npm ci --omit=dev --ignore-scripts
+RUN apk add --no-cache python3 make g++ \
+ && npm ci --omit=dev \
+ && apk del python3 make g++
 
 # Copy built artifacts from builder stage
 COPY --from=builder /app/packages/core/dist ./packages/core/dist
