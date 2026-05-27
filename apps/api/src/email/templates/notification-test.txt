@@ -1,0 +1,11 @@
+Subject: EnvForge notification test
+
+Hello {{ displayName }},
+
+This is a test notification from EnvForge.
+
+Your in-app inbox is working, and this email confirms that email delivery can be queued for your account.
+
+Sent at: {{ sentAt }}
+
+EnvForge - {{ publicBaseUrl }}

@@ -38,7 +38,7 @@ export function SettingsPage({
   catalog: CatalogItem[];
   isAdmin: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>("schedules");
+  const [tab, setTab] = useState<Tab>("account");
 
   return (
     <div className="settings-page">

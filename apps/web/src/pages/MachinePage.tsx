@@ -35,6 +35,7 @@ import {
 import { ConnectionDetailPanel } from "../components/ConnectionDetailPanel";
 import { InventoryPanel } from "../components/InventoryPanel";
 import { ConfigFilesPanel } from "../components/ConfigFilesPanel";
+import { MigrationPlanPanel } from "../components/MigrationPlanPanel";
 
 // Use a structural type so both zh and en locales are accepted
 type TextDict = {
@@ -687,6 +688,15 @@ export function MachinePage({
       </section>
 
       {/* 配置文件管理面板 */}
+      {connected && authToken && activeConnectionId ? (
+        <MigrationPlanPanel
+          locale={locale}
+          authToken={authToken}
+          connectionId={activeConnectionId}
+          pushLog={pushLog}
+        />
+      ) : null}
+
       {connected && authToken && activeConnectionId ? (
         <ConfigFilesPanel
           locale={locale}

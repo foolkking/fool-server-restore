@@ -241,6 +241,8 @@ export interface RuntimeDatabase {
   identities?: UserIdentity[];
   sessions: StoredSession[];
   connections: StoredConnection[];
+  /** Per-user migration candidate decisions keyed by connection and candidate id. */
+  migrationDecisions?: StoredMigrationDecision[];
   userProfiles: StoredUserProfile[];
   /** 任务历史（仅记录最近 200 条，老的自动清理） */
   tasks?: StoredTaskHistory[];
@@ -686,6 +688,7 @@ function createRuntimeDatabase(): RuntimeDatabase {
     identities: [],
     sessions: [],
     connections: [],
+    migrationDecisions: [],
     userProfiles: [],
     tasks: [],
     playbooks: []
@@ -719,6 +722,7 @@ function normalizeRuntimeDatabase(database: Partial<RuntimeDatabase>): RuntimeDa
       status: c.status ?? "validated",
       tags: c.tags ?? []
     })) as StoredConnection[],
+    migrationDecisions: database.migrationDecisions ?? [],
     userProfiles: (database.userProfiles ?? []).map((p) => ({
       ...p,
       visibility: p.visibility ?? ("public" as const)
@@ -904,6 +908,7 @@ export async function reportComment(
 
   const comment = await db.get("SELECT 1 FROM catalog_comments WHERE id = ? AND is_deleted = 0", commentId);
   if (!comment) throw new Error("Comment not found or deleted");
+  const runtimeDb = await readRuntimeDatabase();
 
   await db.exec("BEGIN IMMEDIATE;");
   try {
@@ -932,6 +937,19 @@ export async function reportComment(
         "UPDATE catalog_comments SET visibility = 'hidden_pending_review', status = 'flagged' WHERE id = ?",
         commentId
       );
+
+      const admins = runtimeDb.users.filter((u) => u.role === "admin" && !u.deletedAt);
+      for (const admin of admins) {
+        await db.run(
+          `INSERT INTO inbox_messages (id, user_id, title, content, is_read, created_at)
+           VALUES (?, ?, ?, ?, 0, ?)`,
+          createId("msg"),
+          admin.id,
+          "Comment flagged for review",
+          `Comment ${commentId} has received ${reportsCount} pending reports and was hidden for review.`,
+          now
+        );
+      }
     }
 
     await db.exec("COMMIT;");
@@ -1268,6 +1286,15 @@ export async function deleteInboxMessage(id: string, userId: string): Promise<vo
   );
 }
 
+export async function getUnreadInboxCount(userId: string): Promise<number> {
+  const db = await initializeDatabase();
+  const row = await db.get<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM inbox_messages WHERE user_id = ? AND is_read = 0",
+    userId
+  );
+  return row?.count ?? 0;
+}
+
 export async function writeAdminAuditLog(
   adminId: string,
   action: string,
@@ -1291,5 +1318,221 @@ export async function writeAdminAuditLog(
     feedback,
     now
   );
+}
+
+// ── Catalog Suggestions CRUD ──────────────────────────────────────────────────
+
+export async function addSuggestion(
+  userId: string,
+  input: {
+    catalogId?: string;
+    type: string;
+    nameZh: string;
+    nameEn: string;
+    category?: string;
+    playbookYaml?: string;
+    guideMarkdown?: string;
+    remark?: string;
+  }
+): Promise<any> {
+  const db = await initializeDatabase();
+
+  // Fetch user profile from memory/store
+  const userStore = await readRuntimeDatabase();
+  const user = userStore.users.find((u) => u.id === userId);
+  if (!user) throw new Error("User not found");
+
+  const id = createId("suggestion");
+  const now = new Date().toISOString();
+  const escapedNameZh = escapeHtml(input.nameZh.trim());
+  const escapedNameEn = escapeHtml(input.nameEn.trim());
+  const escapedRemark = input.remark ? escapeHtml(input.remark.trim()) : null;
+
+  await db.run(
+    `INSERT INTO catalog_suggestions (id, catalog_id, user_id, username, display_name, avatar_url, type, name_zh, name_en, category, playbook_yaml, guide_markdown, remark, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+    id,
+    input.catalogId || null,
+    userId,
+    user.username ?? "",
+    user.displayName || user.name || "",
+    user.avatarUrl || null,
+    input.type,
+    escapedNameZh,
+    escapedNameEn,
+    input.category || null,
+    input.playbookYaml || null,
+    input.guideMarkdown || null,
+    escapedRemark,
+    now,
+    now
+  );
+
+  return {
+    id,
+    catalogId: input.catalogId || null,
+    userId,
+    username: user.username || "",
+    displayName: user.displayName || user.name || "",
+    avatarUrl: user.avatarUrl || null,
+    type: input.type,
+    nameZh: escapedNameZh,
+    nameEn: escapedNameEn,
+    category: input.category || null,
+    playbookYaml: input.playbookYaml || null,
+    guideMarkdown: input.guideMarkdown || null,
+    remark: escapedRemark,
+    status: "pending",
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+export async function getSuggestions(options: {
+  userId?: string;
+  status?: string;
+  limit?: number;
+  cursorCreatedAt?: string;
+  cursorId?: string;
+}): Promise<{ suggestions: any[]; nextCursor?: { createdAt: string; id: string } }> {
+  const db = await initializeDatabase();
+  const limit = options.limit ?? 20;
+
+  let query = `SELECT * FROM catalog_suggestions WHERE 1=1`;
+  const params: any[] = [];
+
+  if (options.userId) {
+    query += ` AND user_id = ?`;
+    params.push(options.userId);
+  }
+
+  if (options.status) {
+    query += ` AND status = ?`;
+    params.push(options.status);
+  }
+
+  if (options.cursorCreatedAt && options.cursorId) {
+    query += ` AND (created_at < ? OR (created_at = ? AND id < ?))`;
+    params.push(options.cursorCreatedAt, options.cursorCreatedAt, options.cursorId);
+  }
+
+  query += ` ORDER BY created_at DESC, id DESC LIMIT ?`;
+  params.push(limit);
+
+  const rows = await db.all(query, ...params);
+
+  const suggestions = rows.map((r) => ({
+    id: r.id,
+    catalogId: r.catalog_id,
+    userId: r.user_id,
+    username: r.username,
+    displayName: r.display_name,
+    avatarUrl: r.avatar_url || null,
+    type: r.type,
+    nameZh: r.name_zh,
+    nameEn: r.name_en,
+    category: r.category || null,
+    playbookYaml: r.playbook_yaml || null,
+    guideMarkdown: r.guide_markdown || null,
+    remark: r.remark || null,
+    status: r.status,
+    feedback: r.feedback || null,
+    processedBy: r.processed_by || null,
+    processedAt: r.processed_at || null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }));
+
+  const nextCursor =
+    rows.length === limit
+      ? {
+          createdAt: rows[rows.length - 1].created_at,
+          id: rows[rows.length - 1].id
+        }
+      : undefined;
+
+  return { suggestions, nextCursor };
+}
+
+export async function getSuggestionById(id: string): Promise<any | null> {
+  const db = await initializeDatabase();
+  const row = await db.get("SELECT * FROM catalog_suggestions WHERE id = ?", id);
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    catalogId: row.catalog_id,
+    userId: row.user_id,
+    username: row.username,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url || null,
+    type: row.type,
+    nameZh: row.name_zh,
+    nameEn: row.name_en,
+    category: row.category || null,
+    playbookYaml: row.playbook_yaml || null,
+    guideMarkdown: row.guide_markdown || null,
+    remark: row.remark || null,
+    status: row.status,
+    feedback: row.feedback || null,
+    processedBy: row.processed_by || null,
+    processedAt: row.processed_at || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export async function processSuggestion(
+  suggestionId: string,
+  adminId: string,
+  action: "accepted" | "rejected",
+  feedback?: string
+): Promise<void> {
+  const db = await initializeDatabase();
+  const now = new Date().toISOString();
+
+  await db.exec("BEGIN IMMEDIATE;");
+  try {
+    const existing = await db.get("SELECT * FROM catalog_suggestions WHERE id = ?", suggestionId);
+    if (!existing) throw new Error("Suggestion not found");
+
+    await db.run(
+      `UPDATE catalog_suggestions SET status = ?, feedback = ?, processed_by = ?, processed_at = ?, updated_at = ? WHERE id = ?`,
+      action,
+      feedback || null,
+      adminId,
+      now,
+      now,
+      suggestionId
+    );
+
+    await db.run(
+      `INSERT INTO admin_audit_logs (id, admin_id, action, target_id, old_value, new_value, feedback, timestamp)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      createId("audit"),
+      adminId,
+      `suggestion.${action}`,
+      suggestionId,
+      existing.status,
+      action,
+      feedback || null,
+      now
+    );
+
+    await db.exec("COMMIT;");
+  } catch (err) {
+    await db.exec("ROLLBACK;");
+    throw err;
+  }
+}
+
+export interface StoredMigrationDecision {
+  id: string;
+  userId: string;
+  connectionId: string;
+  candidateId: string;
+  decision: "pending" | "approved" | "skipped";
+  note?: string;
+  updatedAt: string;
 }
 

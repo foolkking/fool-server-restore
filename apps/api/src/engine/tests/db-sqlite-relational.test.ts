@@ -177,6 +177,10 @@ test("relational-comments: reportComment threshold escalates comment visibility"
     assert.ok(adminReports.length >= 6);
     assert.equal(adminReports[0].commentId, comment.id);
     assert.equal(adminReports[0].commentContent, comment.content);
+
+    const inboxRow = await db.get("SELECT * FROM inbox_messages WHERE user_id = ?", "u_admin");
+    assert.ok(inboxRow, "Auto-escalation should create an admin inbox notification");
+    assert.equal(inboxRow.title, "Comment flagged for review");
   } finally {
     await env.cleanup();
   }

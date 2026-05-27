@@ -1,8 +1,16 @@
 import type { LucideIcon } from "lucide-react";
 import type { CatalogItem } from "../api";
 import {
-  Box, Cpu, Database, Server, Settings2, ShieldCheck, Wifi,
-  MonitorCog, PackagePlus, UserRound
+  Box,
+  Cpu,
+  Database,
+  MonitorCog,
+  PackagePlus,
+  Server,
+  Settings2,
+  ShieldCheck,
+  UserRound,
+  Wifi
 } from "lucide-react";
 
 export type Locale = "zh" | "en";
@@ -12,16 +20,16 @@ export type ConnectionMethod = "ssh-password" | "ssh-key";
 export const text = {
   zh: {
     appName: "EnvForge",
-    subtitle: "虚拟机软硬件配置管理",
+    subtitle: "虚拟机软件与配置管理",
     machine: "虚拟机管理",
     market: "配置市场",
     me: "我的空间",
     playbooks: "Playbook",
     settings: "高级设置",
-    search: "搜索可加入虚拟机的软件、配置、系统策略",
+    search: "搜索可加入虚拟机的软件、配置和系统策略",
     filter: "筛选",
-    connectTitle: "连接至远程服务器",
-    connectHint: "成功连接后才展示完整系统信息；未连接时仅可选择连接方式和凭据。",
+    connectTitle: "连接到远程服务器",
+    connectHint: "成功连接后展示完整系统信息；未连接时仅可选择连接方式和凭据。",
     runScan: "扫描当前虚拟机",
     upload: "上传当前虚拟机配置",
     selected: "已选择",
@@ -48,12 +56,12 @@ export const text = {
     agentProbe: "探测真实数据",
     agentOnline: "SSH 在线",
     agentOffline: "Agent 离线",
-    probing: "探测中…",
+    probing: "探测中...",
     realData: "真实数据"
   },
   en: {
     appName: "EnvForge",
-    subtitle: "VM software and hardware configuration manager",
+    subtitle: "VM software and configuration manager",
     machine: "VM Manager",
     market: "Config Market",
     me: "My Space",
@@ -89,7 +97,7 @@ export const text = {
     agentProbe: "Probe real data",
     agentOnline: "SSH online",
     agentOffline: "Agent offline",
-    probing: "Probing…",
+    probing: "Probing...",
     realData: "Live data"
   }
 } as const;

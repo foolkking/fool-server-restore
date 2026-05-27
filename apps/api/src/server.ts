@@ -2,9 +2,9 @@ import Fastify from "fastify";
 import { getConfig } from "./config.js";
 import { registerRoutes } from "./routes.js";
 import { registerStaticWeb } from "./static-web.js";
-import { startScheduler } from "./scheduler.js";
+import { shutdownScheduler, startScheduler } from "./scheduler.js";
 import { runMigrations } from "./migrations.js";
-import { initializeDatabase } from "./db-sqlite.js";
+import { initializeDatabase, shutdownSqliteDatabase } from "./db-sqlite.js";
 
 const config = getConfig();
 
@@ -20,6 +20,26 @@ app.addHook("onRequest", async (_request, reply) => {
 });
 
 await initializeDatabase();
+
+let shuttingDown = false;
+async function gracefulShutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  app.log.info({ signal }, "Graceful shutdown started");
+  try {
+    await shutdownScheduler(5000);
+    await app.close();
+    await shutdownSqliteDatabase();
+    app.log.info("Graceful shutdown complete");
+    process.exit(0);
+  } catch (error) {
+    app.log.error(error, "Graceful shutdown failed");
+    process.exit(1);
+  }
+}
+
+process.once("SIGTERM", (signal) => { void gracefulShutdown(signal); });
+process.once("SIGINT", (signal) => { void gracefulShutdown(signal); });
 
 await registerRoutes(app);
 if (config.serveWeb) {

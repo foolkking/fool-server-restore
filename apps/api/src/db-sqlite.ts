@@ -11,6 +11,7 @@ let _db: Database | null = null;
 let _registry: StatementRegistry | null = null;
 let lastDbPath: string | null = null;
 let idleTimer: NodeJS.Timeout | null = null;
+let signalHandlersInstalled = false;
 
 // Monkey-patch fs.rm to cleanly close active sqlite handle when test runner deletes the temp directories
 const patchRm = (targetObj: any) => {
@@ -82,6 +83,68 @@ export async function _resetSqliteDbForTests(): Promise<void> {
     } catch {}
     _db = null;
   }
+}
+
+export async function shutdownSqliteDatabase(): Promise<void> {
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+  if (_registry) {
+    await _registry.finalizeAll();
+    _registry = null;
+  }
+  if (_db) {
+    await _db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+    await _db.close();
+    _db = null;
+  }
+}
+
+export async function checkpointSqliteWal(): Promise<void> {
+  if (_db) {
+    await _db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  }
+}
+
+export async function getDatabaseMetrics(): Promise<{
+  walSizeBytes: number;
+  queueBacklog: { pending: number; retry: number; deadLetter: number };
+  ftsBacklog: { pending: number; retry: number; deadLetter: number };
+  ftsLagSeconds: number | null;
+}> {
+  const db = await getSqliteDb();
+  const walPath = lastDbPath ? `${lastDbPath}-wal` : "";
+  const walSizeBytes = walPath && fsOriginal.existsSync(walPath)
+    ? fsOriginal.statSync(walPath).size
+    : 0;
+
+  const queueRows = await db.all(
+    "SELECT status, COUNT(*) as count FROM notification_queue GROUP BY status"
+  ).catch(() => []);
+  const ftsRows = await db.all(
+    "SELECT status, COUNT(*) as count FROM fts_sync_queue GROUP BY status"
+  ).catch(() => []);
+  const lagRow = await db.get(
+    `SELECT MIN(created_at) as oldest FROM fts_sync_queue
+     WHERE status IN ('pending', 'retry')`
+  ).catch(() => null);
+
+  const countByStatus = (rows: any[]) => ({
+    pending: Number(rows.find((r) => r.status === "pending")?.count ?? 0),
+    retry: Number(rows.find((r) => r.status === "retry")?.count ?? 0),
+    deadLetter: Number(rows.find((r) => r.status === "dead_letter")?.count ?? 0)
+  });
+
+  const oldest = lagRow?.oldest ? new Date(lagRow.oldest).getTime() : Number.NaN;
+  return {
+    walSizeBytes,
+    queueBacklog: countByStatus(queueRows),
+    ftsBacklog: countByStatus(ftsRows),
+    ftsLagSeconds: Number.isFinite(oldest)
+      ? Math.max(0, Math.floor((Date.now() - oldest) / 1000))
+      : null
+  };
 }
 
 export function resetIdleTimer() {
@@ -288,15 +351,9 @@ export async function initializeDatabase(): Promise<Database> {
       clearTimeout(idleTimer);
       idleTimer = null;
     }
-    if (_registry) {
-      await _registry.finalizeAll();
-      _registry = null;
-    }
     try {
-      await _db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
-      await _db.close();
+      await shutdownSqliteDatabase();
     } catch {}
-    _db = null;
   }
 
   if (_db) return _db;
@@ -324,19 +381,19 @@ export async function initializeDatabase(): Promise<Database> {
   // 3. Run Transactional old JSON to SQLite safe migration
   await migrateLegacyJson(jsonPath, db);
 
-  // 4. Graceful Shutdown Hooks
-  const gracefulShutdown = async () => {
-    try {
-      if (_registry) await _registry.finalizeAll();
-      if (_db) {
-        await _db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
-        await _db.close();
-      }
-    } catch {}
-    process.exit(0);
-  };
-  process.on("SIGTERM", gracefulShutdown);
-  process.on("SIGINT", gracefulShutdown);
+  // 4. Fallback shutdown hook for module-level use. server.ts installs the
+  // full scheduler-aware shutdown path when the API process starts.
+  if (!signalHandlersInstalled && process.env.NODE_ENV === "test") {
+    signalHandlersInstalled = true;
+    const gracefulShutdown = async () => {
+      try {
+        await shutdownSqliteDatabase();
+      } catch {}
+      process.exit(0);
+    };
+    process.once("SIGTERM", gracefulShutdown);
+    process.once("SIGINT", gracefulShutdown);
+  }
 
   resetIdleTimer();
   return db;

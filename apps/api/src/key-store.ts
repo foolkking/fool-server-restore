@@ -10,6 +10,7 @@
  */
 
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { encryptSecret, decryptSecret } from "./crypto.js";
@@ -89,7 +90,13 @@ export async function readUserKey(userId: string, keyId: string): Promise<string
   if (!/^[a-f0-9]{16}$/.test(keyId)) {
     throw new Error("Invalid key ID format.");
   }
-  const encrypted = await fs.readFile(keyPath(userId, keyId), "utf8");
+  const targetPath = keyPath(userId, keyId);
+  if (!fsSync.existsSync(targetPath)) {
+    throw new Error(
+      `Uploaded SSH key ${keyId} is missing for this user. Re-upload the key or edit the connection to select an existing key.`
+    );
+  }
+  const encrypted = await fs.readFile(targetPath, "utf8");
   return decryptSecret(encrypted);
 }
 

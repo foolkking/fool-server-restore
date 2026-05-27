@@ -27,6 +27,7 @@ import { initializeDatabase } from "./db-sqlite.js";
 /** Start the scheduler. Idempotent. */
 export function startScheduler(): void {
   if (tickerHandle) return;
+  workerRuntimePaused = false;
   // Initialize nextRunAt for any schedule that doesn't have one
   void initializeNextRunTimes();
   tickerHandle = setInterval(() => { void tick(); }, TICK_INTERVAL_MS);
@@ -47,10 +48,27 @@ export function stopScheduler(): void {
   }
 }
 
+let workerRuntimePaused = false;
+let activeWorkerOperations = 0;
+
+export async function shutdownScheduler(timeoutMs = 5000): Promise<void> {
+  workerRuntimePaused = true;
+  stopScheduler();
+
+  const deadline = Date.now() + timeoutMs;
+  while (activeWorkerOperations > 0 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  const { checkpointSqliteWal } = await import("./db-sqlite.js");
+  await checkpointSqliteWal();
+}
+
 async function runBackgroundTaskTelemetry(name: string, fn: () => Promise<void>): Promise<void> {
   const db = await initializeDatabase();
   const now = new Date().toISOString();
   const startTime = Date.now();
+  activeWorkerOperations += 1;
 
   try {
     await db.run(
@@ -82,10 +100,14 @@ async function runBackgroundTaskTelemetry(name: string, fn: () => Promise<void>)
       errorStr,
       name
     );
+  } finally {
+    activeWorkerOperations = Math.max(0, activeWorkerOperations - 1);
   }
 }
 
 export async function runWorkersTick(): Promise<void> {
+  if (workerRuntimePaused) return;
+
   // 1. Process FTS Sync
   const { syncCommentsFts } = await import("./runtime-store.js");
   await runBackgroundTaskTelemetry("fts_sync", async () => {

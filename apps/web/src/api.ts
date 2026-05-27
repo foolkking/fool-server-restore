@@ -678,6 +678,14 @@ export async function updateNotificationPrefs(token: string, patch: Partial<Omit
 }
 
 // ── Password reset (anonymous endpoints) ──
+export async function sendNotificationTest(token: string): Promise<{ ok: boolean; inboxQueued: boolean; emailQueued: boolean; emailEnabled: boolean }> {
+  const r = await fetch("/api/me/notification-prefs/test", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Notification test failed");
+}
+
 export async function requestPasswordReset(email: string): Promise<{ message: string; devResetUrl?: string }> {
   const r = await fetch("/api/auth/password-reset/request", {
     method: "POST",
@@ -1284,6 +1292,14 @@ export interface ConfigFileInfo {
   modifiedAt: string;
   category: "system" | "user" | "app";
   associatedSoftware?: string;
+  discovery?: {
+    source: "catalog-rule" | "system-default" | "user-dotfile" | "package-manager-modified";
+    ruleId?: string;
+    ruleName?: string;
+    reasons: string[];
+    sensitivity: "safe" | "review" | "secret";
+    secretPatterns?: string[];
+  };
 }
 
 export interface ConfigFileContent {
@@ -1292,6 +1308,10 @@ export interface ConfigFileContent {
   size: number;
   modifiedAt: string;
   encoding: "utf8";
+  secretScan?: {
+    hasSecrets: boolean;
+    hits: Array<{ pattern: string; line: number }>;
+  };
 }
 
 export async function fetchConfigFiles(token: string, connectionId: string): Promise<ConfigFileInfo[]> {
@@ -1327,6 +1347,223 @@ export async function fetchConfigFileDiff(
     headers: { "Authorization": `Bearer ${token}` }
   });
   return readJsonOrThrow(response, "Diff failed");
+}
+
+export type MigrationClass =
+  | "managed-software"
+  | "system-baseline"
+  | "user-dotfile"
+  | "service-config"
+  | "language-global-package"
+  | "container-workload"
+  | "manual-install"
+  | "unknown-review"
+  | "do-not-migrate";
+
+export type ConfidenceBand = "high" | "medium" | "low" | "ignore";
+
+export interface MigrationCandidate {
+  id: string;
+  name: string;
+  source: string;
+  version: string;
+  migrationClass: MigrationClass;
+  confidence: number;
+  band: ConfidenceBand;
+  catalogRuleId?: string;
+  catalogRuleName?: string;
+  reasons: string[];
+  risks: string[];
+  recommendedActions: string[];
+}
+
+export interface MigrationCandidateReport {
+  sourceHost: string;
+  generatedAt: string;
+  summary: Record<ConfidenceBand | "total", number>;
+  candidates: MigrationCandidate[];
+}
+
+export interface MigrationDecision {
+  id: string;
+  userId: string;
+  connectionId: string;
+  candidateId: string;
+  decision: "pending" | "approved" | "skipped";
+  note?: string;
+  updatedAt: string;
+}
+
+export interface MigrationReviewQueueItem {
+  candidate: MigrationCandidate;
+  reason: string;
+  decision: "pending" | "approved" | "skipped";
+  note?: string;
+}
+
+export interface MigrationPlan {
+  sourceHost: string;
+  generatedAt: string;
+  items: Array<{
+    id: string;
+    name: string;
+    type: MigrationClass;
+    confidence: number;
+    actions: Array<{ kind: string; label: string; command?: string; requiresSudo?: boolean; backup?: boolean }>;
+    risks: string[];
+    userDecision: "pending" | "approved" | "skipped";
+  }>;
+}
+
+export type MigrationDryRunStepStatus = "would-run" | "needs-review" | "blocked";
+
+export interface MigrationDryRunResult {
+  sourceHost: string;
+  generatedAt: string;
+  dryRun: true;
+  summary: Record<MigrationDryRunStepStatus | "total", number>;
+  steps: Array<{
+    id: string;
+    itemId: string;
+    itemName: string;
+    actionKind: string;
+    label: string;
+    status: MigrationDryRunStepStatus;
+    command?: string;
+    reason: string;
+    requiresSudo: boolean;
+    validationHook?: string;
+  }>;
+}
+
+export type MigrationVerificationSeverity = "required" | "recommended" | "manual";
+
+export interface MigrationVerificationPreview {
+  sourceHost: string;
+  generatedAt: string;
+  summary: Record<MigrationVerificationSeverity | "total", number>;
+  checks: Array<{
+    id: string;
+    itemId: string;
+    itemName: string;
+    kind: "command" | "service" | "manual";
+    severity: MigrationVerificationSeverity;
+    label: string;
+    command?: string;
+    expected: string;
+    sourceAction: string;
+  }>;
+}
+
+export interface MigrationVerificationRunResult {
+  sourceHost: string;
+  generatedAt: string;
+  ok: boolean;
+  summary: { passed: number; failed: number; skipped: number; total: number };
+  checks: Array<MigrationVerificationPreview["checks"][number] & {
+    status: "passed" | "failed" | "skipped";
+    stdout: string;
+    stderr: string;
+    exitCode: number | null;
+    durationMs: number;
+  }>;
+}
+
+export interface MigrationApplyReadiness {
+  ready: boolean;
+  generatedAt: string;
+  blockers: string[];
+  warnings: string[];
+  items: Array<{ id: string; name: string; ready: boolean; blockers: string[]; warnings: string[] }>;
+}
+
+export async function fetchMigrationCandidates(token: string, connectionId: string): Promise<MigrationCandidateReport> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/migration-candidates`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ report: MigrationCandidateReport }>(response, "Fetch migration candidates failed");
+  return body.report;
+}
+
+export async function fetchMigrationReviewQueue(token: string, connectionId: string): Promise<MigrationReviewQueueItem[]> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/migration-review-queue`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ queue: MigrationReviewQueueItem[] }>(response, "Fetch migration review queue failed");
+  return body.queue;
+}
+
+export async function saveMigrationDecision(
+  token: string,
+  connectionId: string,
+  candidateId: string,
+  decision: MigrationDecision["decision"],
+  note?: string
+): Promise<MigrationDecision> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/migration-decisions`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ candidateId, decision, note })
+  });
+  const body = await readJsonOrThrow<{ decision: MigrationDecision }>(response, "Save migration decision failed");
+  return body.decision;
+}
+
+export async function fetchMigrationPlan(token: string, connectionId: string): Promise<MigrationPlan> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/migration-plan`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ plan: MigrationPlan }>(response, "Fetch migration plan failed");
+  return body.plan;
+}
+
+export async function exportMigrationPlan(
+  token: string,
+  connectionId: string,
+  format: "json" | "markdown" | "bash" | "ansible"
+): Promise<string> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/migration-plan/export?format=${encodeURIComponent(format)}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? "Export migration plan failed");
+  }
+  return response.text();
+}
+
+export async function dryRunMigrationPlan(token: string, connectionId: string): Promise<MigrationDryRunResult> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/migration-plan/dry-run`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ result: MigrationDryRunResult }>(response, "Dry-run migration plan failed");
+  return body.result;
+}
+
+export async function fetchMigrationVerifyPreview(token: string, connectionId: string): Promise<MigrationVerificationPreview> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/migration-plan/verify-preview`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ preview: MigrationVerificationPreview }>(response, "Fetch migration verification preview failed");
+  return body.preview;
+}
+
+export async function runMigrationVerify(token: string, connectionId: string): Promise<MigrationVerificationRunResult> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/migration-plan/verify-run`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ result: MigrationVerificationRunResult }>(response, "Run migration verification failed");
+  return body.result;
+}
+
+export async function fetchMigrationApplyReadiness(token: string, connectionId: string): Promise<MigrationApplyReadiness> {
+  const response = await fetch(`/api/connections/${encodeURIComponent(connectionId)}/migration-plan/apply-readiness`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const body = await readJsonOrThrow<{ readiness: MigrationApplyReadiness }>(response, "Fetch apply readiness failed");
+  return body.readiness;
 }
 
 
@@ -1743,4 +1980,282 @@ export async function toggleAdminUserLock(token: string, userId: string): Promis
 export async function fetchAdminQueues(token: string): Promise<{ queues: AdminQueueItem[] }> {
   const r = await fetch("/api/admin/queue", { headers: { "Authorization": `Bearer ${token}` } });
   return readJsonOrThrow(r, "Fetch admin queues failed");
+}
+
+// ── Community Comments & Suggestions ────────────────────────
+
+export interface CatalogComment {
+  id: string;
+  catalogId: string;
+  userId: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  content: string;
+  visibility: string;
+  createdAt: string;
+  likesCount: number;
+  likedByMe: boolean;
+}
+
+export interface CommentCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface CatalogSuggestion {
+  id: string;
+  catalogId: string | null;
+  userId: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  type: "new_item" | "modify";
+  nameZh: string;
+  nameEn: string;
+  category: string | null;
+  playbookYaml: string | null;
+  guideMarkdown: string | null;
+  remark: string | null;
+  status: "pending" | "accepted" | "rejected";
+  feedback: string | null;
+  processedBy: string | null;
+  processedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InboxMessage {
+  id: string;
+  userId: string;
+  title: string;
+  content: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface AdminReport {
+  id: string;
+  commentId: string;
+  userId: string;
+  reason: string;
+  status: string;
+  createdAt: string;
+  commentContent: string;
+  commentUsername: string;
+  commentDisplayName: string;
+}
+
+// ── Comments ──
+
+export async function fetchCatalogComments(
+  catalogId: string,
+  token?: string,
+  cursor?: CommentCursor,
+  limit = 20
+): Promise<{ comments: CatalogComment[]; nextCursor?: CommentCursor }> {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (cursor) {
+    params.set("cursorCreatedAt", cursor.createdAt);
+    params.set("cursorId", cursor.id);
+  }
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const r = await fetch(`/api/catalog/${encodeURIComponent(catalogId)}/comments?${params}`, { headers });
+  return readJsonOrThrow(r, "Fetch comments failed");
+}
+
+export async function postCatalogComment(
+  token: string,
+  catalogId: string,
+  content: string
+): Promise<CatalogComment> {
+  const r = await fetch(`/api/catalog/${encodeURIComponent(catalogId)}/comments`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ content })
+  });
+  return readJsonOrThrow(r, "Post comment failed");
+}
+
+export async function toggleCommentLike(
+  token: string,
+  commentId: string
+): Promise<{ liked: boolean; likesCount: number }> {
+  const r = await fetch(`/api/catalog/comments/${encodeURIComponent(commentId)}/like`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Toggle like failed");
+}
+
+export async function reportCatalogComment(
+  token: string,
+  commentId: string,
+  reason: string
+): Promise<{ success: boolean }> {
+  const r = await fetch(`/api/catalog/comments/${encodeURIComponent(commentId)}/report`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ reason })
+  });
+  return readJsonOrThrow(r, "Report comment failed");
+}
+
+// ── Inbox ──
+
+export async function fetchInboxMessages(
+  token: string,
+  cursor?: CommentCursor,
+  limit = 20
+): Promise<{ messages: InboxMessage[]; nextCursor?: CommentCursor }> {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (cursor) {
+    params.set("cursorCreatedAt", cursor.createdAt);
+    params.set("cursorId", cursor.id);
+  }
+  const r = await fetch(`/api/me/inbox?${params}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Fetch inbox failed");
+}
+
+export async function markInboxRead(token: string, messageId: string): Promise<void> {
+  const r = await fetch(`/api/me/inbox/${encodeURIComponent(messageId)}/read`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow(r, "Mark inbox read failed");
+}
+
+export async function deleteInboxMessage(token: string, messageId: string): Promise<void> {
+  const r = await fetch(`/api/me/inbox/${encodeURIComponent(messageId)}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  await readJsonOrThrow(r, "Delete inbox message failed");
+}
+
+export async function fetchInboxUnreadCount(token: string): Promise<number> {
+  const r = await fetch("/api/me/inbox/unread-count", {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const result = await readJsonOrThrow<{ count: number }>(r, "Fetch unread inbox count failed");
+  return result.count;
+}
+
+// ── Suggestions ──
+
+export async function fetchMySuggestions(
+  token: string,
+  cursor?: CommentCursor,
+  limit = 20
+): Promise<{ suggestions: CatalogSuggestion[]; nextCursor?: CommentCursor }> {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (cursor) {
+    params.set("cursorCreatedAt", cursor.createdAt);
+    params.set("cursorId", cursor.id);
+  }
+  const r = await fetch(`/api/suggestions?${params}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Fetch suggestions failed");
+}
+
+export async function submitSuggestion(
+  token: string,
+  input: {
+    catalogId?: string;
+    type: "new_item" | "modify";
+    nameZh: string;
+    nameEn: string;
+    category?: string;
+    playbookYaml?: string;
+    guideMarkdown?: string;
+    remark?: string;
+  }
+): Promise<CatalogSuggestion> {
+  const r = await fetch("/api/suggestions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return readJsonOrThrow(r, "Submit suggestion failed");
+}
+
+// ── Admin: Reports ──
+
+export async function fetchAdminReports(
+  token: string,
+  limit = 20,
+  offset = 0
+): Promise<{ reports: AdminReport[] }> {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+  const r = await fetch(`/api/admin/reports?${params}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Fetch admin reports failed");
+}
+
+export async function resolveAdminReport(
+  token: string,
+  reportId: string,
+  action: "keep" | "delete"
+): Promise<{ success: boolean }> {
+  const r = await fetch(`/api/admin/reports/${encodeURIComponent(reportId)}/resolve`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ action })
+  });
+  return readJsonOrThrow(r, "Resolve report failed");
+}
+
+// ── Admin: Suggestions ──
+
+export async function fetchAdminSuggestions(
+  token: string,
+  status?: string,
+  cursor?: CommentCursor,
+  limit = 20
+): Promise<{ suggestions: CatalogSuggestion[]; nextCursor?: CommentCursor }> {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (status) params.set("status", status);
+  if (cursor) {
+    params.set("cursorCreatedAt", cursor.createdAt);
+    params.set("cursorId", cursor.id);
+  }
+  const r = await fetch(`/api/admin/suggestions?${params}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Fetch admin suggestions failed");
+}
+
+export async function fetchAdminSuggestionDetail(
+  token: string,
+  id: string
+): Promise<CatalogSuggestion> {
+  const r = await fetch(`/api/admin/suggestions/${encodeURIComponent(id)}`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  return readJsonOrThrow(r, "Fetch suggestion detail failed");
+}
+
+export async function processAdminSuggestion(
+  token: string,
+  id: string,
+  action: "accepted" | "rejected",
+  feedback?: string
+): Promise<{ success: boolean }> {
+  const r = await fetch(`/api/admin/suggestions/${encodeURIComponent(id)}/process`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ action, feedback })
+  });
+  return readJsonOrThrow(r, "Process suggestion failed");
 }

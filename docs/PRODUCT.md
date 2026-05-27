@@ -1,94 +1,143 @@
-# EnvForge — 产品定位与设计
+# EnvForge Product Positioning
 
-最后更新：2026-05-25
+Last updated: 2026-05-27
 
-> 本文合并自 PRODUCT_STRATEGY、PROJECT_BLUEPRINT、REVISED_PRODUCT_UNDERSTANDING、UI_AND_VM_MANAGEMENT、MARKET_MD_AND_MIGRATION_PLAN、PRIVACY_AND_RESTORE_STRATEGY、SYNC_MODEL 七篇旧文档，并补充了 2026-05 SQLite 数据库升级与社区配置生态子系统的最新架构与产品定义。
+EnvForge is a Linux VM environment migration, rebuild, and configuration governance platform.
 
-## 一、产品定位
+It connects to an old Linux VM over SSH, collects a read-only environment snapshot, identifies the software capabilities and configuration changes that matter, and generates a migration plan that can be reviewed, replayed, verified, and rolled back before rebuilding the environment on a new VM.
 
-**EnvForge** 是一个**自托管的 Linux 服务器配置管理网站**。
+```text
+Old Linux VM
+  -> Discover host state
+  -> Classify real migration intent
+  -> Build reviewable migration plan
+  -> Apply to new VM
+  -> Verify
+  -> Rollback if needed
+```
 
-服务端是一个 Node.js + Fastify Web 应用，用户通过浏览器登录后，用 SSH 连接目标 Linux VM，在 Web UI 中：
+## What EnvForge Is
 
-- 浏览**配置市场**（72 个预置 Playbook：运行时 / 数据库 / 安全 / 网络 / 容器…）
-- 一键安装 / 卸载软件，配置文件查看与编辑
-- **环境保留**：从已连接 VM 反向生成可重建的 Playbook
-- 多目标批量执行同一 Playbook，定时调度，漂移检测
-- **社区化共建生态**：用户可以对市场中的软件进行评论、提议修改建议（附带 Playbook 和 Markdown 指南）或发起新增软件提议，由系统管理员统一审核并支持 Visual Diff 审阅，构建共建共享的自研配置运维生态。
+EnvForge is a tool for turning an existing Linux VM into a safe, explainable, rebuildable migration plan.
 
-### 不做的事
+The user problem is usually not "install nginx". The user problem is:
 
-| 不做 | 原因 |
-|------|------|
-| 完整磁盘镜像备份 | 偏离配置管理定位（用 Restic / Borg） |
-| 浏览器数据 / 密码库同步 | 安全风险高（用 1Password / Bitwarden） |
-| Windows 目标机器支持 | Linux-only 已确立 |
-| PTY 终端模拟器 | 用户要的是命令日志（已实现），不是交互 shell |
-| 容器编排 (Kubernetes) | 用 Argo CD / Flux |
-| 直接集成 Ansible（python 依赖） | 自建 Ansible-Compatible 引擎，详见架构文档 |
-| GitHub 同步主流程 | 已弃用；EnvForge 是配置管理平台，不是配置仓库 |
-| CLI bootstrap 工具 | Web 优先 + Docker 部署已替代 |
+- Which packages on this old VM are actually part of the environment?
+- Which packages are just base image noise or dependencies?
+- Which configuration files were changed by the user?
+- Which files contain secrets and cannot be copied blindly?
+- Which services need data migration, not just config migration?
+- Which parts of the environment can be rebuilt on a different distro?
+- How do we verify the new VM behaves like the old one?
+- How do we roll back safely if the migration fails?
 
-## 二、信息架构
+EnvForge solves this through inventory modeling, intent scoring, configuration governance, catalog rules, migration planning, verification, and rollback.
 
-主导航 5 个页面：
+## What EnvForge Is Not
 
-| 页面 | 内容 |
-|------|------|
-| **虚拟机管理** | 已保存的连接列表 + 连接详情（硬件摘要、软件清单、系统配置清单、配置文件、环境保留） |
-| **配置市场** | 应用商店式卡片网格 + 分类筛选 + 影响范围预估 + 一键安装 + “新增配置提议” + 软件详情页 (文档/评论板/改进建议) |
-| **Playbook** | 我的 Playbook 列表 + 编辑器 + 版本管理 + 多目标执行 |
-| **高级设置** | 定时任务 / 漂移检测 / Webhooks / API tokens / 模块文档 / Catalog 管理（仅 admin） / 账号安全 (2FA + 绑定) |
-| **我的空间** | 个人资料 + 已上传的 combo / vm-snapshot + 任务历史 + 站内邮箱 (Inbox) + 提议状态跟踪 |
+EnvForge is not a generic server control panel.
 
-视觉规范：
+It should not be positioned as a replacement for BaoTa, 1Panel, Cockpit, cPanel, Webmin, or a hosting dashboard. Those products focus on day-to-day server administration, app installation, file browsing, databases, websites, and runtime operations. EnvForge focuses on environment extraction and rebuild.
 
-- 采用毛玻璃（Glassmorphism）与卡片式轻量级设计
-- 背景 `#f6f8fa`（暗色模式下为 `#1e1e2e`），卡片白色 + 细灰边框，圆角 10-12px
-- 主操作色 teal/emerald，警告 amber，错误 red，信息 blue
-- 字体 Inter / system-ui
-- 暗色模式跟随系统 `prefers-color-scheme`，前端具备一键切换开关
-- 移动端单列响应式，头部内置站内信气泡下拉通知中心
+EnvForge also does not promise 100% fully automatic migration of every Linux machine. Linux hosts can contain hand-built binaries, undocumented scripts, secrets, external databases, local state, custom kernels, and hidden operational knowledge. EnvForge's promise is human-assisted migration:
 
-## 三、用户角色（三级）
+- discover as much as possible automatically;
+- explain what was found;
+- score confidence and risk;
+- ask for confirmation where the system is uncertain;
+- produce artifacts that can be reviewed and replayed.
 
-| 角色 | 标识 | 能力 |
-|------|------|------|
-| **guest** | 未登录 | 浏览 catalog 列表 / 查看公开 MD / 浏览只读评论 |
-| **user** | 登录用户 | guest 全部 + 连接 VM + 安装 / 卸载 + 环境保留 + 提议修改/新增 + 发表评论与点赞/举报 + 个人站内信管理 |
-| **admin** | `role = "admin"` | user 全部 + 审核社区建议/新增提议 (Visual Diff) + 处理被举报评论 + 管理 catalog (增删改) + 管理用户/监控全局队列 |
+## Core Scenario
 
-**Admin 提升规则**：
-- 注册用户的邮箱在 `.env` 中 `ENVFORGE_ADMIN_EMAILS` 列表里，自动提升为 admin
-- 历史用户名或当前注册名为 `fool` 的账户：启动时自动提升（见 ARCHITECTURE.md）
+The primary scenario is old VM to new VM migration:
 
-## 四、社区共建与审核生态 (Catalog Ecosystem)
+1. The user connects EnvForge to an old source VM.
+2. EnvForge collects a read-only HostSnapshot.
+3. EnvForge classifies packages, services, configs, runtimes, containers, data paths, and unknown artifacts.
+4. EnvForge generates migration candidates with confidence levels.
+5. The user reviews high, medium, low, ignored, and unknown items.
+6. EnvForge builds a migration plan for a target VM.
+7. The user confirms plan items and risks.
+8. EnvForge applies the plan through SSH or exports it as an EnvForge plan, Ansible playbook, Bash script, or Markdown report.
+9. EnvForge runs validation hooks.
+10. If verification fails, EnvForge rolls back files, packages, and service state where possible.
 
-为保证配置市场的长期活力，EnvForge 引入了社区驱动的配置共建体系：
+## Product Philosophy
 
-### 1. 评论板与互动
-*   每个市场软件/组合详情页中内置**评论看板**。支持发表纯文本评论，并应用高性能的 HTML 实体编码安全防御，杜绝 XSS 注入。
-*   支持点赞 (Like) 切换与举报 (Report) 滥用行为。采用唯一性主键防护，杜绝恶意刷量。
-*   **自动风控与隐藏 (Moderation Escalation)**：当某条评论累计被不同用户举报超过 **5 次** 时，其状态将自动流转为 `hidden_pending_review`，在普通用户界面瞬时隐藏并保留上下文，同时向全体管理员站内邮箱推送紧急风控通知，等待审核。
+### Automatic Discovery, Cautious Migration
 
-### 2. 改进建议 (Modification Suggestions)
-*   用户发现现存配置有 Bug 或可以优化时，可针对该配置卡片提交**修改建议**。
-*   提议内容包括：建议标题、问题描述、提议的 Playbook YAML 剧本片段和提议的 Markdown 指南。
-*   管理员后台在审阅修改建议时，系统将自动加载 **Visual Diff 视图**，清晰对比原始文件与修改提议，支持“一键采纳”或“填写反馈拒绝”。
+EnvForge should collect broadly but migrate conservatively. It is acceptable to discover 900 packages, but not acceptable to present 900 packages as "things the user wants to migrate."
 
-### 3. 新增配置提议 (New Package Proposals)
-*   用户可以对市场中尚不存在的软件或组合提议新增。
-*   提议内容强制包含：中文名称、英文名称、分类（如 Runtime/Database 等）、Playbook YAML、安装指南 Markdown 以及备注信息。
-*   包含具体的包名或备注加上 playbook 的提议更易被管理员采纳。
+### Installed Does Not Mean Intended
 
-### 4. 审核反馈与站内信通知机制
-*   提议的处理流程完全由事务保证，具有绝对一致性：
-    *   **被拒绝 (Rejected)**：状态变更为 `rejected`，系统向提议用户的**站内邮箱 (Inbox)** 推送一封详细的拒绝说明，包含管理员撰写的拒绝理由，不向外部真实邮箱发送垃圾邮件打扰用户。
-    *   **被采纳 (Accepted)**：状态变更为 `accepted`。系统向用户站内邮箱发送 congratulation 通知，并同时触发 **SMTP 电子邮件通知**，使用户获得社区贡献荣誉感。
+`apt-mark showmanual`, `dpkg-query`, `rpm -qa`, `pacman -Q`, and language package managers are signals, not final decisions. EnvForge uses Package Intent Score to infer likely user intent.
 
-## 五、高鲁棒性 SQLite 存储层 (ACID Database Layer)
+### Catalog as Capability Rules
 
-EnvForge 摒弃了不稳定的原始 JSON 文件写入设计，升级为 **SQLite Relational-Document 混合持久化架构**：
-*   **核心配置**：采用极轻量级的 ACID 键值文档设计（`system_kv`），确保系统高内聚性和极致的向后兼容；
-*   **交互数据**：针对评论、修改建议、举报、点赞、站内信和审计日志，开辟独立的 SQL 关系型表，搭配严苛的二级复合索引，实现高并发场景下的 sub-millisecond（亚毫秒级）极速拉取；
-*   **运维保障**：后台集成专属 `BackgroundTaskScheduler`，负责每小时 WAL Checkpoint 物理落盘、每日数据库热备份（`VACUUM INTO`）、每周数据库物理碎片整理（`VACUUM; ANALYZE;`）以及过期数据的自动清理，为自托管用户提供全免运维的生产级数据库环境。
+The catalog is not an app store. It is a rule library describing capabilities:
+
+- how to detect software;
+- how to decide whether it is migration-worthy;
+- where its configs live;
+- which configs are default or custom;
+- which data paths matter;
+- which references must be resolved;
+- how to validate and roll back.
+
+### Human-in-the-Loop by Design
+
+Unknown software, custom scripts, `/opt` installs, private binaries, suspicious secrets, and cross-distro uncertainty should enter Review Queue. EnvForge should not silently ignore them or migrate them without confirmation.
+
+## User Roles
+
+| Role | Need |
+| :-- | :-- |
+| Individual developer | Rebuild a personal VPS or dev server on a new VM |
+| Homelab operator | Understand what matters on an old server before replacing it |
+| Small team admin | Standardize migration reports and reduce undocumented manual work |
+| Platform engineer | Export reproducible migration plans and review risky changes |
+| Catalog contributor | Add high-quality capability rules for software and profiles |
+
+## Primary UI Areas
+
+| Area | Purpose |
+| :-- | :-- |
+| Machine Snapshot | OS, package managers, services, ports, containers, runtimes, security, and warnings |
+| Migration Candidates | High, medium, low, ignored, and review-queue items |
+| Configuration Governance | Config ownership, default/custom status, secret status, diff, edit, validate, backup |
+| Migration Plan | Actions, risk, completeness, dependencies, target compatibility, user decisions |
+| Execution Result | Apply logs, validation checks, failed items, rollback availability, export report |
+| Capability Catalog | Software/profile rules, support level, comments, suggestions, admin review |
+| Account / Inbox | User identity, notification preferences, suggestion feedback, moderation notices |
+
+## Non-Goals
+
+- Full disk image backup and restore. Use Restic, Borg, snapshots, or cloud image tools.
+- Secret vault replacement. EnvForge may integrate with secret managers later, but does not store arbitrary production secrets by default.
+- Kubernetes platform management. EnvForge may detect Kubernetes tools, but is not Argo CD, Flux, Rancher, or a cluster control plane.
+- Browser password, desktop app, or personal device migration.
+- Blind copying of database data directories.
+- Blind copying of `/var/lib/docker`.
+- Direct shell terminal replacement. Logs and controlled commands are preferred over a raw shell-first UX.
+
+## Success Metrics
+
+EnvForge is successful when a user can answer:
+
+- What is actually worth migrating from this VM?
+- Why does EnvForge think this item matters?
+- What will be changed on the target VM?
+- What is risky or incomplete?
+- Which secrets or data paths need manual handling?
+- How can I verify the rebuilt environment?
+- How can I roll back if something breaks?
+
+## Product Roadmap Themes
+
+1. Deep catalog support for 10 core capabilities: nginx, docker, postgresql, mysql/mariadb, redis, nodejs/npm, python/pip/pipx, ssh, ufw, fail2ban.
+2. Package Intent Score MVP.
+3. Config Ownership Graph and Default-vs-Custom Detector.
+4. Secret-aware safe read, preview, edit, and migration.
+5. Migration Completeness Score and Review Queue.
+6. Plan / Apply / Verify / Rollback engine.
+7. Exportable artifacts: EnvForge plan, Ansible playbook, Bash script, Markdown report.

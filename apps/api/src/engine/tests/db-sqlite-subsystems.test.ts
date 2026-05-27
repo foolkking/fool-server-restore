@@ -202,6 +202,41 @@ test("subsystems: admin_audit_logs write log and enforces strict immutability tr
   }
 });
 
+test("subsystems: suggestion processing rolls back when audit logging fails", async () => {
+  const env = await setupEnv();
+  try {
+    const { addSuggestion, processSuggestion } = await import("../../runtime-store.js");
+    const { getSqliteDb } = await import("../../db-sqlite.js");
+
+    const suggestion = await addSuggestion("u_active_1", {
+      type: "new_item",
+      nameZh: "Test Software ZH",
+      nameEn: "Test Software"
+    });
+
+    const db = await getSqliteDb();
+    await db.exec(`
+      CREATE TRIGGER fail_audit_insert BEFORE INSERT ON admin_audit_logs BEGIN
+        SELECT RAISE(ABORT, 'forced audit failure');
+      END;
+    `);
+
+    await assert.rejects(
+      async () => {
+        await processSuggestion(suggestion.id, "u_admin", "accepted", "Looks good");
+      },
+      (err: Error) => err.message.includes("forced audit failure")
+    );
+
+    const row = await db.get("SELECT * FROM catalog_suggestions WHERE id = ?", suggestion.id);
+    assert.equal(row.status, "pending");
+    assert.equal(row.processed_by, null);
+    assert.equal(row.processed_at, null);
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("subsystems: BackgroundTaskScheduler executes WorkersTick and records telemetries in background_tasks table", async () => {
   const env = await setupEnv();
   try {

@@ -51,10 +51,18 @@ import { createUserProfile, listUserProfiles, getUserProfile, updateUserProfile 
 import { buildInstallTask, buildSnapshotDeployTask, executeTask, getTask, subscribeTask } from "./executor.js";
 import { listCatalogFromDatabase, listMigrationStrategies, readCatalogGuide } from "./database.js";
 import { runReadinessChecks } from "./readiness.js";
-import { readRuntimeDatabase, updateRuntimeDatabase, createId, addComment, getComments, toggleCommentLike, reportComment, getAdminReports, resolveReport, syncCommentsFts } from "./runtime-store.js";
+import { readRuntimeDatabase, updateRuntimeDatabase, createId, addComment, getComments, toggleCommentLike, reportComment, getAdminReports, resolveReport, syncCommentsFts, addSuggestion, getSuggestions, getSuggestionById, processSuggestion, addInboxMessage, getUnreadInboxCount, type StoredMigrationDecision } from "./runtime-store.js";
+import { enqueueEmail } from "./email/index.js";
 import { listSnapshots, persistSnapshot } from "./snapshot-store.js";
 import { probeAgent, pingAgent } from "./probe.js";
-import { listConfigFiles, readConfigFile, writeConfigFile, readConfigFileWithBackup } from "./config-files.js";
+import { ConfigConnectionError, listConfigFiles, readConfigFile, writeConfigFile, readConfigFileWithBackup, getConfigRollbackPreview } from "./config-files.js";
+import { buildMigrationCandidateReport, buildMigrationPlanFromCandidates } from "./migration-classifier.js";
+import { exportMigrationPlan, type MigrationExportFormat } from "./migration-exporter.js";
+import { buildMigrationDryRun } from "./migration-dry-run.js";
+import { buildMigrationVerificationPreview } from "./migration-verify.js";
+import { buildUnknownReviewQueue, decisionMap } from "./migration-review.js";
+import { runMigrationVerificationPreview } from "./migration-verify-runner.js";
+import { assessMigrationApplyReadiness } from "./migration-apply-readiness.js";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/health", async () => ({
@@ -548,6 +556,40 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (typeof body.emailSuggestionStatus === "boolean") patch.emailSuggestionStatus = body.emailSuggestionStatus;
     if (typeof body.emailPublishStatus === "boolean") patch.emailPublishStatus = body.emailPublishStatus;
     return await updateNotificationPrefs(user.id, patch);
+  });
+
+  app.post("/api/me/notification-prefs/test", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+
+    const now = new Date().toISOString();
+    await addInboxMessage(
+      user.id,
+      "EnvForge notification test",
+      "Your in-app inbox is working. Email delivery is queued when notification preferences allow it."
+    );
+
+    const prefs = await getNotificationPrefs(user.id);
+    const emailEnabled = prefs.emailMentions || prefs.emailComments || prefs.emailSuggestionStatus || prefs.emailPublishStatus;
+    let emailQueued = false;
+    if (emailEnabled) {
+      emailQueued = await enqueueEmail({
+        to: user.email,
+        userId: user.id,
+        templateId: "notification-test",
+        context: {
+          displayName: user.name || user.username || user.email,
+          sentAt: now
+        }
+      });
+    }
+
+    return {
+      ok: true,
+      inboxQueued: true,
+      emailQueued,
+      emailEnabled
+    };
   });
 
   /**
@@ -2289,7 +2331,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const softwareNames = conn.probeSnapshot?.software?.map((s) => s.name) ?? [];
       const files = await listConfigFiles(conn, softwareNames);
       return { files };
-    } catch (err) { reply.code(500); return { error: err instanceof Error ? err.message : "Failed" }; }
+    } catch (err) {
+      reply.code(err instanceof ConfigConnectionError ? err.statusCode : 500);
+      return { error: err instanceof Error ? err.message : "Failed" };
+    }
   });
 
   app.get("/api/connections/:id/configs/read", async (request, reply) => {
@@ -2302,7 +2347,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
     if (!conn) { reply.code(404); return { error: "Connection not found." }; }
     try { return await readConfigFile(conn, filePath); }
-    catch (err) { reply.code(500); return { error: err instanceof Error ? err.message : "Failed" }; }
+    catch (err) {
+      reply.code(err instanceof ConfigConnectionError ? err.statusCode : 500);
+      return { error: err instanceof Error ? err.message : "Failed" };
+    }
   });
 
   app.post("/api/connections/:id/configs/write", async (request, reply) => {
@@ -2315,7 +2363,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
     if (!conn) { reply.code(404); return { error: "Connection not found." }; }
     try { return await writeConfigFile(conn, body.path, body.content, body.backup !== false); }
-    catch (err) { reply.code(500); return { error: err instanceof Error ? err.message : "Failed" }; }
+    catch (err) {
+      reply.code(err instanceof ConfigConnectionError ? err.statusCode : 500);
+      return { error: err instanceof Error ? err.message : "Failed" };
+    }
   });
 
   // Diff: current file vs the .envforge.bak created on first write
@@ -2329,10 +2380,192 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
     if (!conn) { reply.code(404); return { error: "Connection not found." }; }
     try { return await readConfigFileWithBackup(conn, filePath); }
-    catch (err) { reply.code(500); return { error: err instanceof Error ? err.message : "Failed" }; }
+    catch (err) {
+      reply.code(err instanceof ConfigConnectionError ? err.statusCode : 500);
+      return { error: err instanceof Error ? err.message : "Failed" };
+    }
   });
 
   // ── Schedules (cron) ────────────────────────────────────
+
+  app.get("/api/connections/:id/configs/rollback-preview", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const { path: filePath } = request.query as { path?: string };
+    if (!filePath) { reply.code(400); return { error: "path query parameter is required." }; }
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    try { return await getConfigRollbackPreview(conn, filePath); }
+    catch (err) {
+      reply.code(err instanceof ConfigConnectionError ? err.statusCode : 500);
+      return { error: err instanceof Error ? err.message : "Failed" };
+    }
+  });
+
+  app.get("/api/connections/:id/migration-candidates", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    if (!conn.probeSnapshot) { reply.code(400); return { error: "Probe this connection before building migration candidates." }; }
+    const decisions = (db.migrationDecisions ?? []).filter((row) => row.userId === user.id && row.connectionId === id);
+    return {
+      report: buildMigrationCandidateReport(conn.probeSnapshot, { host: conn.fields.host ?? conn.label }),
+      decisions
+    };
+  });
+
+  app.get("/api/connections/:id/migration-plan", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    if (!conn.probeSnapshot) { reply.code(400); return { error: "Probe this connection before building a migration plan." }; }
+    const decisions = (db.migrationDecisions ?? []).filter((row) => row.userId === user.id && row.connectionId === id);
+    const report = buildMigrationCandidateReport(conn.probeSnapshot, { host: conn.fields.host ?? conn.label });
+    return { plan: buildMigrationPlanFromCandidates(report, decisionMap(decisions)) };
+  });
+
+  app.get("/api/connections/:id/migration-review-queue", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    if (!conn.probeSnapshot) { reply.code(400); return { error: "Probe this connection before building review queue." }; }
+    const decisions = (db.migrationDecisions ?? []).filter((row) => row.userId === user.id && row.connectionId === id);
+    const report = buildMigrationCandidateReport(conn.probeSnapshot, { host: conn.fields.host ?? conn.label });
+    return { queue: buildUnknownReviewQueue(report, decisions) };
+  });
+
+  app.post("/api/connections/:id/migration-decisions", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { candidateId?: string; decision?: StoredMigrationDecision["decision"]; note?: string };
+    if (!body.candidateId || !["pending", "approved", "skipped"].includes(body.decision ?? "")) {
+      reply.code(400);
+      return { error: "candidateId and decision are required." };
+    }
+    const candidateId = body.candidateId;
+    const decision = body.decision as StoredMigrationDecision["decision"];
+    const now = new Date().toISOString();
+    const saved = await updateRuntimeDatabase((db) => {
+      const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+      if (!conn) return null;
+      if (!db.migrationDecisions) db.migrationDecisions = [];
+      const existing = db.migrationDecisions.find((row) => row.userId === user.id && row.connectionId === id && row.candidateId === candidateId);
+      if (existing) {
+        existing.decision = decision;
+        existing.note = body.note?.trim() || undefined;
+        existing.updatedAt = now;
+        return existing;
+      }
+      const row: StoredMigrationDecision = {
+        id: createId("mdec"),
+        userId: user.id,
+        connectionId: id,
+        candidateId,
+        decision,
+        note: body.note?.trim() || undefined,
+        updatedAt: now
+      };
+      db.migrationDecisions.push(row);
+      return row;
+    });
+    if (!saved) { reply.code(404); return { error: "Connection not found." }; }
+    return { decision: saved };
+  });
+
+  app.get("/api/connections/:id/migration-plan/export", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const { format = "markdown" } = request.query as { format?: MigrationExportFormat };
+    if (!["json", "markdown", "bash", "ansible"].includes(format)) {
+      reply.code(400);
+      return { error: "format must be json, markdown, bash, or ansible." };
+    }
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    if (!conn.probeSnapshot) { reply.code(400); return { error: "Probe this connection before exporting a migration plan." }; }
+    const decisions = (db.migrationDecisions ?? []).filter((row) => row.userId === user.id && row.connectionId === id);
+    const report = buildMigrationCandidateReport(conn.probeSnapshot, { host: conn.fields.host ?? conn.label });
+    const plan = buildMigrationPlanFromCandidates(report, decisionMap(decisions));
+    const content = exportMigrationPlan(plan, format);
+    reply.header("content-type", format === "json" ? "application/json; charset=utf-8" : "text/plain; charset=utf-8");
+    return content;
+  });
+
+  app.post("/api/connections/:id/migration-plan/dry-run", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    if (!conn.probeSnapshot) { reply.code(400); return { error: "Probe this connection before dry-running a migration plan." }; }
+    const decisions = (db.migrationDecisions ?? []).filter((row) => row.userId === user.id && row.connectionId === id);
+    const report = buildMigrationCandidateReport(conn.probeSnapshot, { host: conn.fields.host ?? conn.label });
+    const plan = buildMigrationPlanFromCandidates(report, decisionMap(decisions));
+    return { result: buildMigrationDryRun(plan) };
+  });
+
+  app.get("/api/connections/:id/migration-plan/verify-preview", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    if (!conn.probeSnapshot) { reply.code(400); return { error: "Probe this connection before building verification preview." }; }
+    const decisions = (db.migrationDecisions ?? []).filter((row) => row.userId === user.id && row.connectionId === id);
+    const report = buildMigrationCandidateReport(conn.probeSnapshot, { host: conn.fields.host ?? conn.label });
+    const plan = buildMigrationPlanFromCandidates(report, decisionMap(decisions));
+    return { preview: buildMigrationVerificationPreview(plan) };
+  });
+
+  app.post("/api/connections/:id/migration-plan/verify-run", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    if (!conn.probeSnapshot) { reply.code(400); return { error: "Probe this connection before running verification." }; }
+    const decisions = (db.migrationDecisions ?? []).filter((row) => row.userId === user.id && row.connectionId === id);
+    const report = buildMigrationCandidateReport(conn.probeSnapshot, { host: conn.fields.host ?? conn.label });
+    const plan = buildMigrationPlanFromCandidates(report, decisionMap(decisions));
+    const preview = buildMigrationVerificationPreview(plan);
+    try {
+      return { result: await runMigrationVerificationPreview(user.id, conn, preview) };
+    } catch (err) {
+      reply.code(500);
+      return { error: err instanceof Error ? err.message : "Verification failed." };
+    }
+  });
+
+  app.get("/api/connections/:id/migration-plan/apply-readiness", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    const { id } = request.params as { id: string };
+    const db = await readRuntimeDatabase();
+    const conn = db.connections.find((c) => c.id === id && c.userId === user.id);
+    if (!conn) { reply.code(404); return { error: "Connection not found." }; }
+    if (!conn.probeSnapshot) { reply.code(400); return { error: "Probe this connection before assessing apply readiness." }; }
+    const decisions = (db.migrationDecisions ?? []).filter((row) => row.userId === user.id && row.connectionId === id);
+    const report = buildMigrationCandidateReport(conn.probeSnapshot, { host: conn.fields.host ?? conn.label });
+    const plan = buildMigrationPlanFromCandidates(report, decisionMap(decisions));
+    return { readiness: assessMigrationApplyReadiness(plan) };
+  });
 
   app.get("/api/schedules", async (request, reply) => {
     const user = await getUserByToken(readBearerToken(request.headers.authorization));
@@ -3141,6 +3374,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // ── Subsystem Operations Inbox (Stage 3) ──────────────────────────────────────────
 
   /**
+   * GET /api/me/inbox/unread-count
+   * Returns a cheap unread badge count for the current user.
+   */
+  app.get("/api/me/inbox/unread-count", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) { reply.code(401); return { error: "Login required." }; }
+    return { count: await getUnreadInboxCount(user.id) };
+  });
+
+  /**
    * GET /api/me/inbox
    * Returns paginated inbox messages for the current user.
    */
@@ -3194,6 +3437,169 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const { deleteInboxMessage } = await import("./runtime-store.js");
     await deleteInboxMessage(id, user.id);
     return { success: true };
+  });
+
+  // ── Catalog Suggestions (User + Admin) ──────────────────────────────────────────
+
+  /**
+   * GET /api/suggestions
+   * Returns the authenticated user's own suggestions (keyset paginated).
+   */
+  app.get("/api/suggestions", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      reply.code(401);
+      return { error: "Login required." };
+    }
+
+    const query = (request.query ?? {}) as {
+      status?: string;
+      limit?: string;
+      cursorCreatedAt?: string;
+      cursorId?: string;
+    };
+    const limit = Math.min(parseInt(query.limit || "20", 10) || 20, 100);
+
+    return await getSuggestions({
+      userId: user.id,
+      status: query.status,
+      limit,
+      cursorCreatedAt: query.cursorCreatedAt,
+      cursorId: query.cursorId
+    });
+  });
+
+  /**
+   * POST /api/suggestions [Requires Rate Limiting]
+   * Creates a new catalog suggestion.
+   */
+  app.post("/api/suggestions", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user) {
+      reply.code(401);
+      return { error: "Login required." };
+    }
+
+    const body = (request.body ?? {}) as {
+      catalogId?: string;
+      type?: string;
+      nameZh?: string;
+      nameEn?: string;
+      category?: string;
+      playbookYaml?: string;
+      guideMarkdown?: string;
+      remark?: string;
+    };
+
+    if (!body.type || (body.type !== "new_item" && body.type !== "modify")) {
+      reply.code(400);
+      return { error: "type must be 'new_item' or 'modify'." };
+    }
+
+    if (!body.nameZh?.trim() || !body.nameEn?.trim()) {
+      reply.code(400);
+      return { error: "nameZh and nameEn are required." };
+    }
+
+    // [Requires Rate Limiting]: 3 suggestions per minute database-backed check
+    const { getSqliteDb } = await import("./db-sqlite.js");
+    const db = await getSqliteDb();
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    const recentSuggestions = await db.get(
+      "SELECT COUNT(*) as count FROM catalog_suggestions WHERE user_id = ? AND created_at > ?",
+      user.id,
+      oneMinuteAgo
+    );
+    if (recentSuggestions && recentSuggestions.count >= 3) {
+      reply.code(429);
+      return { error: "Rate limit exceeded. You can submit up to 3 suggestions per minute." };
+    }
+
+    return await addSuggestion(user.id, {
+      catalogId: body.catalogId,
+      type: body.type,
+      nameZh: body.nameZh!,
+      nameEn: body.nameEn!,
+      category: body.category,
+      playbookYaml: body.playbookYaml,
+      guideMarkdown: body.guideMarkdown,
+      remark: body.remark
+    });
+  });
+
+  /**
+   * GET /api/admin/suggestions (admin only)
+   * Returns all suggestions with optional status filter (keyset paginated).
+   */
+  app.get("/api/admin/suggestions", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") {
+      reply.code(403);
+      return { error: "Admin role required." };
+    }
+
+    const query = (request.query ?? {}) as {
+      status?: string;
+      limit?: string;
+      cursorCreatedAt?: string;
+      cursorId?: string;
+    };
+    const limit = Math.min(parseInt(query.limit || "20", 10) || 20, 100);
+
+    return await getSuggestions({
+      status: query.status,
+      limit,
+      cursorCreatedAt: query.cursorCreatedAt,
+      cursorId: query.cursorId
+    });
+  });
+
+  /**
+   * GET /api/admin/suggestions/:id (admin only)
+   * Returns a single suggestion detail.
+   */
+  app.get("/api/admin/suggestions/:id", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") {
+      reply.code(403);
+      return { error: "Admin role required." };
+    }
+
+    const { id } = request.params as { id: string };
+    const suggestion = await getSuggestionById(id);
+    if (!suggestion) {
+      reply.code(404);
+      return { error: "Suggestion not found." };
+    }
+    return { suggestion };
+  });
+
+  /**
+   * POST /api/admin/suggestions/:id/process (admin only)
+   * Accepts or rejects a suggestion.
+   */
+  app.post("/api/admin/suggestions/:id/process", async (request, reply) => {
+    const user = await getUserByToken(readBearerToken(request.headers.authorization));
+    if (!user || user.role !== "admin") {
+      reply.code(403);
+      return { error: "Admin role required." };
+    }
+
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { action?: string; feedback?: string };
+
+    if (body.action !== "accepted" && body.action !== "rejected") {
+      reply.code(400);
+      return { error: "action must be 'accepted' or 'rejected'." };
+    }
+
+    try {
+      await processSuggestion(id, user.id, body.action, body.feedback);
+      return { success: true };
+    } catch (error) {
+      reply.code(404);
+      return { error: error instanceof Error ? error.message : "Suggestion not found" };
+    }
   });
 }
 

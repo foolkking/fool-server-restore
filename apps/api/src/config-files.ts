@@ -13,29 +13,19 @@ import type { StoredConnection } from "./runtime-store.js";
 import { decryptStoredFields } from "./connections.js";
 import { readUserKey } from "./key-store.js";
 import fs from "node:fs/promises";
+import { getConfigDiscoveryRules, ruleSecretPatterns, type CatalogDetectionRule } from "./catalog-rules.js";
+
+export class ConfigConnectionError extends Error {
+  statusCode: number;
+
+  constructor(message: string, statusCode = 409) {
+    super(message);
+    this.name = "ConfigConnectionError";
+    this.statusCode = statusCode;
+  }
+}
 
 /** 软件名 → 关联配置文件路径 */
-const SOFTWARE_CONFIG_MAP: Record<string, string[]> = {
-  nginx: ["/etc/nginx/nginx.conf", "/etc/nginx/sites-enabled/default"],
-  redis: ["/etc/redis/redis.conf"],
-  "redis-server": ["/etc/redis/redis.conf"],
-  mysql: ["/etc/mysql/mysql.conf.d/mysqld.cnf", "/etc/mysql/my.cnf"],
-  "mysql-server": ["/etc/mysql/mysql.conf.d/mysqld.cnf", "/etc/mysql/my.cnf"],
-  postgresql: ["/etc/postgresql/*/main/postgresql.conf", "/etc/postgresql/*/main/pg_hba.conf"],
-  postgres: ["/etc/postgresql/*/main/postgresql.conf", "/etc/postgresql/*/main/pg_hba.conf"],
-  ssh: ["/etc/ssh/sshd_config"],
-  "openssh-server": ["/etc/ssh/sshd_config"],
-  sshd: ["/etc/ssh/sshd_config"],
-  docker: ["/etc/docker/daemon.json"],
-  "docker-ce": ["/etc/docker/daemon.json"],
-  fail2ban: ["/etc/fail2ban/jail.local", "/etc/fail2ban/jail.conf"],
-  ufw: ["/etc/ufw/user.rules", "/etc/ufw/user6.rules"],
-  caddy: ["/etc/caddy/Caddyfile"],
-  prometheus: ["/etc/prometheus/prometheus.yml"],
-  grafana: ["/etc/grafana/grafana.ini"],
-  "x-ui": ["/usr/local/x-ui/config.json", "/etc/x-ui/x-ui.db"],
-};
-
 /** 通用系统配置文件（始终采集） */
 const SYSTEM_CONFIGS = [
   "/etc/hosts",
@@ -77,6 +67,7 @@ export interface ConfigFileInfo {
   modifiedAt: string;
   category: "system" | "user" | "app";
   associatedSoftware?: string;
+  discovery?: ConfigDiscoveryInfo;
 }
 
 export interface ConfigFileContent {
@@ -85,6 +76,21 @@ export interface ConfigFileContent {
   size: number;
   modifiedAt: string;
   encoding: "utf8";
+  secretScan?: SecretScanResult;
+}
+
+export interface ConfigDiscoveryInfo {
+  source: "catalog-rule" | "system-default" | "user-dotfile" | "package-manager-modified";
+  ruleId?: string;
+  ruleName?: string;
+  reasons: string[];
+  sensitivity: "safe" | "review" | "secret";
+  secretPatterns?: string[];
+}
+
+export interface SecretScanResult {
+  hasSecrets: boolean;
+  hits: Array<{ pattern: string; line: number }>;
 }
 
 /**
@@ -97,26 +103,35 @@ export async function listConfigFiles(
   const client = await connectForConfig(connection);
   try {
     // Build list of paths to check
-    const pathsToCheck: Array<{ path: string; category: "system" | "user" | "app"; software?: string }> = [];
+    const pathsToCheck: Array<{
+      path: string;
+      category: "system" | "user" | "app";
+      software?: string;
+      source: ConfigDiscoveryInfo["source"];
+      rule?: CatalogDetectionRule;
+      isGlob?: boolean;
+    }> = [];
 
     // System configs
     for (const p of SYSTEM_CONFIGS) {
-      pathsToCheck.push({ path: p, category: "system" });
+      pathsToCheck.push({ path: p, category: "system", source: "system-default" });
     }
 
     // User dotfiles
     for (const p of USER_DOTFILES) {
-      pathsToCheck.push({ path: p, category: "user" });
+      pathsToCheck.push({ path: p, category: "user", source: "user-dotfile" });
     }
 
-    // Software-specific configs
-    for (const sw of installedSoftware) {
-      const paths = SOFTWARE_CONFIG_MAP[sw.toLowerCase()];
-      if (paths) {
-        for (const p of paths) {
-          pathsToCheck.push({ path: p, category: "app", software: sw });
-        }
-      }
+    // Catalog-driven software configs. TypeScript executes rules; the catalog explains software.
+    for (const item of getConfigDiscoveryRules(installedSoftware)) {
+      pathsToCheck.push({
+        path: item.path,
+        category: item.category,
+        software: item.rule.displayName,
+        source: "catalog-rule",
+        rule: item.rule,
+        isGlob: item.isGlob
+      });
     }
 
     // Build a single SSH command to stat all files
@@ -149,9 +164,6 @@ export async function listConfigFiles(
 
       // Skip excluded paths
       if (EXCLUDED_PATHS.some((ex) => filePath.startsWith(ex))) continue;
-      // Skip files > 50KB
-      if (size > 50 * 1024) continue;
-
       // Find category and software
       const match = pathsToCheck.find((p) => {
         if (p.path.includes("*")) {
@@ -160,6 +172,9 @@ export async function listConfigFiles(
         }
         return filePath === p.path.replace("~", "") || filePath.endsWith(p.path.replace("~/", ""));
       });
+      if (match?.rule?.config?.exclude?.some((ex) => pathMatchesRule(filePath, ex))) continue;
+      const maxSizeKb = match?.rule?.config?.maxSizeKB ?? 50;
+      if (size > maxSizeKb * 1024) continue;
 
       results.push({
         path: filePath,
@@ -167,6 +182,7 @@ export async function listConfigFiles(
         modifiedAt: new Date(mtime * 1000).toISOString(),
         category: match?.category ?? "system",
         associatedSoftware: match?.software,
+        discovery: buildDiscovery(match, filePath),
       });
     }
 
@@ -182,6 +198,11 @@ export async function listConfigFiles(
         modifiedAt: new Date().toISOString(),
         category: "system",
         associatedSoftware: undefined,
+        discovery: {
+          source: "package-manager-modified",
+          reasons: ["Package manager reports this conffile differs from the installed default."],
+          sensitivity: "review"
+        },
       });
     }
 
@@ -234,6 +255,7 @@ export async function readConfigFile(
       size: parseInt(sizeStr ?? "0", 10) || stdout.length,
       modifiedAt: new Date((parseInt(mtimeStr ?? "0", 10) || 0) * 1000).toISOString(),
       encoding: "utf8",
+      secretScan: scanConfigSecrets(stdout),
     };
   } finally {
     client.end();
@@ -313,6 +335,113 @@ export async function readConfigFileWithBackup(
 
 // ── SSH helpers ──
 
+export async function getConfigRollbackPreview(
+  connection: StoredConnection,
+  filePath: string
+): Promise<{
+  path: string;
+  backupPath: string;
+  rollbackAvailable: boolean;
+  validationHint?: string;
+}> {
+  const bakPath = `${filePath}.envforge.bak`;
+  try {
+    await readConfigFile(connection, bakPath);
+    return {
+      path: filePath,
+      backupPath: bakPath,
+      rollbackAvailable: true,
+      validationHint: validationHintForPath(filePath)
+    };
+  } catch {
+    return {
+      path: filePath,
+      backupPath: bakPath,
+      rollbackAvailable: false,
+      validationHint: validationHintForPath(filePath)
+    };
+  }
+}
+
+function validationHintForPath(filePath: string): string | undefined {
+  if (filePath.includes("/etc/nginx/")) return "nginx -t";
+  if (filePath.includes("/etc/ssh/")) return "sshd -t";
+  if (filePath.includes("/etc/redis/")) return "redis-server --test-memory 2";
+  if (filePath.includes("/etc/postgresql/")) return "systemctl is-active postgresql";
+  if (filePath.includes("/etc/mysql/") || filePath.includes("/etc/mariadb/")) return "mysql --version";
+  return undefined;
+}
+
+function buildDiscovery(
+  match: {
+    path: string;
+    category: "system" | "user" | "app";
+    software?: string;
+    source: ConfigDiscoveryInfo["source"];
+    rule?: CatalogDetectionRule;
+  } | undefined,
+  filePath: string
+): ConfigDiscoveryInfo {
+  if (!match) {
+    return {
+      source: "system-default",
+      reasons: [`${filePath} was discovered by a generic config scan.`],
+      sensitivity: "review"
+    };
+  }
+  if (match.rule) {
+    return {
+      source: "catalog-rule",
+      ruleId: match.rule.id,
+      ruleName: match.rule.displayName,
+      reasons: [
+        `Discovered by the ${match.rule.displayName} catalog rule.`,
+        "The matched software is present in the latest host inventory.",
+        "Migration should follow this rule's validate and restart guidance."
+      ],
+      sensitivity: match.rule.config?.secretPatterns?.length ? "review" : "safe",
+      secretPatterns: ruleSecretPatterns(match.rule)
+    };
+  }
+  if (match.source === "user-dotfile") {
+    return {
+      source: "user-dotfile",
+      reasons: ["Common user-level configuration file, useful for dotfile migration."],
+      sensitivity: filePath.includes(".ssh") || filePath.endsWith(".npmrc") ? "review" : "safe",
+      secretPatterns: ruleSecretPatterns()
+    };
+  }
+  return {
+    source: "system-default",
+    reasons: ["Common system configuration file; review before migrating to another host."],
+    sensitivity: "review",
+    secretPatterns: ruleSecretPatterns()
+  };
+}
+
+export function scanConfigSecrets(content: string, patterns = ruleSecretPatterns()): SecretScanResult {
+  const hits: SecretScanResult["hits"] = [];
+  const lines = content.split(/\r?\n/);
+  const normalizedPatterns = [...new Set(patterns.filter(Boolean))];
+  lines.forEach((line, index) => {
+    const lower = line.toLowerCase();
+    for (const pattern of normalizedPatterns) {
+      if (lower.includes(pattern.toLowerCase())) {
+        hits.push({ pattern, line: index + 1 });
+      }
+    }
+  });
+  return { hasSecrets: hits.length > 0, hits: hits.slice(0, 50) };
+}
+
+function pathMatchesRule(filePath: string, rulePath: string): boolean {
+  if (rulePath.includes("*")) {
+    const [prefix, suffix = ""] = rulePath.split("*");
+    return filePath.startsWith(prefix) && filePath.endsWith(suffix);
+  }
+  return filePath === rulePath || filePath.startsWith(rulePath);
+}
+
 async function connectForConfig(connection: StoredConnection): Promise<Client> {
   return new Promise((resolve, reject) => {
     const client = new Client();
@@ -335,7 +464,10 @@ async function connectForConfig(connection: StoredConnection): Promise<Client> {
           cfg.privateKey = Buffer.from(key, "utf8");
           if (decrypted._rawPassphrase) cfg.passphrase = decrypted._rawPassphrase;
           client.connect(cfg as any);
-        }).catch((err) => { clearTimeout(timer); reject(err); });
+        }).catch((err) => {
+          clearTimeout(timer);
+          reject(new ConfigConnectionError(err instanceof Error ? err.message : String(err)));
+        });
         return;
       }
       const keyPath = decrypted.privateKeyPath;
@@ -344,11 +476,16 @@ async function connectForConfig(connection: StoredConnection): Promise<Client> {
           cfg.privateKey = key;
           if (decrypted._rawPassphrase) cfg.passphrase = decrypted._rawPassphrase;
           client.connect(cfg as any);
-        }).catch((err) => { clearTimeout(timer); reject(err); });
+        }).catch((err) => {
+          clearTimeout(timer);
+          reject(new ConfigConnectionError(
+            `SSH private key path is not readable: ${keyPath}. Re-upload the key or edit the connection.`
+          ));
+        });
         return;
       }
       clearTimeout(timer);
-      reject(new Error("No SSH key configured"));
+      reject(new ConfigConnectionError("No SSH key configured. Re-upload the key or edit the connection."));
     } else {
       const password = decrypted._rawPassword;
       if (!password) { clearTimeout(timer); reject(new Error("No password")); return; }
